@@ -2,57 +2,70 @@ pub mod cpu;
 pub mod memory;
 pub mod opcodes;
 
-pub fn run(rom: Vec<u8>) {
-    let mut cpu: cpu::Cpu = cpu::Cpu::new();
-    let mut mem: memory::Memory = memory::Memory::new();
+pub struct Emulator {
+    pub cpu: cpu::Cpu,
+    pub mem: memory::Memory
+}
 
-    let mut i = 0;
-    for code in rom.iter() {
-        mem.ram[0x400 + i] = *code;
-        i += 1;
+impl Emulator {
+    pub fn new() -> Emulator {
+        Emulator{
+            cpu: cpu::Cpu::new(),
+            mem: memory::Memory::new()
+        }
     }
 
-    loop {
-        let opcode = mem.ram[cpu.pc as usize];
+    pub fn install_rom(&mut self, rom: Vec<u8>) {
+        let mut i = 0;
+        for code in rom.iter() {
+            self.mem.ram[0x400 + i] = *code;
+            i += 1;
+        }
+    }
 
-        match opcode {
-            opcodes::ADC => {
-                // Add Memory to Accumulator with Carry
-                let operand: u8 = mem.ram[cpu.pc as usize +1];
-                cpu.add_to_a_with_carry(operand);
-                println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t overflow={}", cpu.pc, operand, cpu.a, cpu.overflow_flag());
-                cpu.pc += 2;
-            },
-            opcodes::BRK => {
-                println!("BRK");
-                break;
-            },
-            opcodes::INX => {
-                // Increment Index X by One
-                cpu.x += 1;
-                println!("0x{:x}: INX\t x={:x}", cpu.pc, cpu.x);
+    pub fn run(&mut self) {
+        loop {
+            let opcode = self.mem.ram[self.cpu.pc as usize];
 
-                cpu.pc += 1;
-            },
-            opcodes::LDA => {
-                // TODO: addressing modes
-                cpu.a = mem.ram[cpu.pc as usize+1];
-                println!("0x{:x}: LDA 0x{:x}\t a={:x}", cpu.pc, cpu.pc+1, cpu.a);
-                cpu.pc += 2;
-            },
-            opcodes::STA => {
-                let addr: u16 = mem.get_16b_addr(cpu.pc);
-                mem.ram[addr as usize] = cpu.a;
-                println!("0x{:x}: STA 0x{:x}\t a={:x}",  cpu.pc, addr, cpu.a);
-                cpu.pc += 3
-            },
-            opcodes::TAX => {
-                // Transfer Accumulator to Index X
-                cpu.x = cpu.a;
-                println!("0x{:x}: TAX\t a={:x}", cpu.pc, cpu.a);
-                cpu.pc += 1
-            },
-            _ => panic!("Unkown opcode: 0x{:x}", opcode)
+            match opcode {
+                opcodes::ADC => {
+                    // Add Memory to Accumulator with Carry
+                    let operand: u8 = self.mem.ram[self.cpu.pc as usize +1];
+                    self.cpu.add_to_a_with_carry(operand);
+                    println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t overflow={}", self.cpu.pc, operand, self.cpu.a, self.cpu.overflow_flag());
+                    self.cpu.pc += 2;
+                },
+                opcodes::BRK => {
+                    println!("BRK");
+                    break;
+                },
+                opcodes::INX => {
+                    // Increment Index X by One
+                    self.cpu.x += 1;
+                    println!("0x{:x}: INX\t x={:x}", self.cpu.pc, self.cpu.x);
+
+                    self.cpu.pc += 1;
+                },
+                opcodes::LDA => {
+                    // TODO: addressing modes
+                    self.cpu.a = self.mem.ram[self.cpu.pc as usize+1];
+                    println!("0x{:x}: LDA 0x{:x}\t a={:x}", self.cpu.pc, self.cpu.pc+1, self.cpu.a);
+                    self.cpu.pc += 2;
+                },
+                opcodes::STA => {
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    self.mem.ram[addr as usize] = self.cpu.a;
+                    println!("0x{:x}: STA 0x{:x}\t a={:x}",  self.cpu.pc, addr, self.cpu.a);
+                    self.cpu.pc += 3
+                },
+                opcodes::TAX => {
+                    // Transfer Accumulator to Index X
+                    self.cpu.x = self.cpu.a;
+                    println!("0x{:x}: TAX\t a={:x}", self.cpu.pc, self.cpu.a);
+                    self.cpu.pc += 1
+                },
+                _ => panic!("Unkown opcode: 0x{:x}", opcode)
+            }
         }
     }
 }
