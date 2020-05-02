@@ -1,5 +1,5 @@
 mod asm;
-mod cpu;
+mod emu;
 
 use asm::util;
 
@@ -14,7 +14,7 @@ fn main() {
 
     match args.len() {
         2 => {
-            cpu::run(util::read_code(&args[1]))
+            emu::run(util::read_code(&args[1]))
         },
         _ => help()
     }
