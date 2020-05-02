@@ -28,10 +28,17 @@ impl Emulator {
             let opcode = self.mem.ram[self.cpu.pc as usize];
 
             match opcode {
-                opcodes::ADC => {
+                opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.ram[self.cpu.pc as usize +1];
-                    self.cpu.add_to_a_with_carry(operand);
+                    self.cpu.add_to_a_with_carry(operand, false);
+                    println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t overflow={}", self.cpu.pc, operand, self.cpu.a, self.cpu.overflow_flag());
+                    self.cpu.pc += 2;
+                },
+                opcodes::ADC_ZP => {
+                    // Add Memory to Accumulator with Carry
+                    let operand: u8 = self.mem.ram[self.mem.ram[self.cpu.pc as usize +1] as usize];
+                    self.cpu.add_to_a_with_carry(operand, true);
                     println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t overflow={}", self.cpu.pc, operand, self.cpu.a, self.cpu.overflow_flag());
                     self.cpu.pc += 2;
                 },
@@ -46,17 +53,23 @@ impl Emulator {
 
                     self.cpu.pc += 1;
                 },
-                opcodes::LDA => {
+                opcodes::LDA_ABS => {
                     // TODO: addressing modes
                     self.cpu.a = self.mem.ram[self.cpu.pc as usize+1];
                     println!("0x{:x}: LDA 0x{:x}\t a={:x}", self.cpu.pc, self.cpu.pc+1, self.cpu.a);
                     self.cpu.pc += 2;
                 },
-                opcodes::STA => {
+                opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
                     self.mem.ram[addr as usize] = self.cpu.a;
                     println!("0x{:x}: STA 0x{:x}\t a={:x}",  self.cpu.pc, addr, self.cpu.a);
                     self.cpu.pc += 3
+                },
+                opcodes::STA_ZP => {
+                    let addr: u16 = self.mem.ram[self.cpu.pc as usize + 1].into();
+                    self.mem.ram[addr as usize] = self.cpu.a;
+                    println!("0x{:x}: STA 0x{:x}\t a={:x}",  self.cpu.pc, addr, self.cpu.a);
+                    self.cpu.pc += 2
                 },
                 opcodes::TAX => {
                     // Transfer Accumulator to Index X

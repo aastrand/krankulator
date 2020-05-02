@@ -44,9 +44,22 @@ mod tests {
         emu.install_rom(util::read_code(&String::from("input/instructions")));
         emu.run();
 
-        assert_eq!(emu.cpu.a, 0x85);
+        assert_eq!(emu.cpu.a, 0x84);
         assert_eq!(emu.cpu.x, 0xc1);
-        assert_eq!(emu.cpu.overflow_flag(), true);
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), true);
+    }
 
+    #[test]
+    fn test_adc_zeropage() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/adc_zeropage")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x0);
+        assert_eq!(emu.mem.ram[0x1], 0x80);
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
     }
 }
