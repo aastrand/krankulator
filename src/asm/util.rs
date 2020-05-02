@@ -15,14 +15,14 @@ pub fn read_code(path: &String) -> Vec<u8> {
                if content.len() > 0 {
                    for byte in content.split(' ') {
                        let mut decoded = hex::decode(byte).expect("Decoding failed");
-                       code.append(&mut decoded)
+                       code.append(&mut decoded);
                    }
                }
            }
        }
    }
 
-    code
+   code
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
