@@ -1,0 +1,10 @@
+;LDA #$42
+;TAX
+;TXS
+;INX
+;TSX
+;TAY
+;INY
+;TYA
+;TXA
+ a9 42 aa 9a e8 ba a8 c8 98 8a
