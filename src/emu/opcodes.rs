@@ -12,6 +12,29 @@ pub const DEY: u8 = 0x88;
 
 pub const LDA_ABS: u8 = 0xa9;
 
+/*
+MNEMONIC                       HEX
+CLC (CLear Carry)              $18
+SEC (SEt Carry)                $38
+CLI (CLear Interrupt)          $58
+SEI (SEt Interrupt)            $78
+CLV (CLear oVerflow)           $B8
+CLD (CLear Decimal)            $D8
+SED (SEt Decimal)              $F8
+*/
+pub const CLC: u8 = 0x18;
+pub const SEC: u8 = 0x38;
+#[allow(dead_code)]
+pub const CLI: u8 = 0x58;
+#[allow(dead_code)]
+pub const SEI: u8 = 0x78;
+#[allow(dead_code)]
+pub const CLV: u8 = 0xb8;
+#[allow(dead_code)]
+pub const CLD: u8 = 0xd8;
+#[allow(dead_code)]
+pub const SED: u8 = 0xf8;
+
 pub const STA_ABS: u8 = 0x8d;
 pub const STA_ZP: u8 = 0x85;
 

@@ -31,7 +31,7 @@ impl Emulator {
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.ram[self.cpu.pc as usize +1];
-                    self.cpu.add_to_a_with_carry(operand, false);
+                    self.cpu.add_to_a_with_carry(operand);
                     // TODO: build a common logging system
                     println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t N={}\t V={}\t Z={}\t C={}", self.cpu.pc, operand, self.cpu.a, self.cpu.negative_flag(), self.cpu.overflow_flag(), self.cpu.zero_flag(), self.cpu.carry_flag());
                     self.cpu.pc += 2;
@@ -39,7 +39,7 @@ impl Emulator {
                 opcodes::ADC_ZP => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.ram[self.mem.ram[self.cpu.pc as usize +1] as usize];
-                    self.cpu.add_to_a_with_carry(operand, true);
+                    self.cpu.add_to_a_with_carry(operand);
                     println!("0x{:x}: ADC 0x{:x}\t a=0x{:x}\t N={}\t V={}\t Z={}\t C={}", self.cpu.pc, operand, self.cpu.a, self.cpu.negative_flag(), self.cpu.overflow_flag(), self.cpu.zero_flag(), self.cpu.carry_flag());
                     self.cpu.pc += 2;
                 },
@@ -47,10 +47,16 @@ impl Emulator {
                     println!("BRK");
                     break;
                 },
+                opcodes::CLC => {
+                    let c = self.cpu.carry_flag();
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                    println!("CLC carry was: {}", c);
+                },
                 opcodes::DEX => {
                     // Decrement Index X by One
                     self.cpu.x -= 1;
                     println!("0x{:x}: DEX\t x={:x}", self.cpu.pc, self.cpu.x);
+                    // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
 
@@ -60,6 +66,7 @@ impl Emulator {
                     // Decrement Index Y by One
                     self.cpu.y -= 1;
                     println!("0x{:x}: DEY\t y={:x}", self.cpu.pc, self.cpu.y);
+                    // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.y);
                     self.cpu.check_zero(self.cpu.y);
 
@@ -69,6 +76,7 @@ impl Emulator {
                     // Increment Index X by One
                     self.cpu.x += 1;
                     println!("0x{:x}: INX\t x={:x}", self.cpu.pc, self.cpu.x);
+                    // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
 
@@ -78,6 +86,7 @@ impl Emulator {
                     // Increment Index Y by One
                     self.cpu.y += 1;
                     println!("0x{:x}: INY\t y={:x}", self.cpu.pc, self.cpu.y);
+                    // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.y);
                     self.cpu.check_zero(self.cpu.y);
 
@@ -91,17 +100,23 @@ impl Emulator {
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.ram[self.cpu.pc as usize +1];
-                    self.cpu.sub_from_a_with_carry(operand, false);
+                    self.cpu.sub_from_a_with_carry(operand);
                     println!("0x{:x}: SBC 0x{:x}\t a=0x{:x}\t N={}\t V={}\t Z={}\t C={}", self.cpu.pc, operand, self.cpu.a, self.cpu.negative_flag(), self.cpu.overflow_flag(), self.cpu.zero_flag(), self.cpu.carry_flag());
                     self.cpu.pc += 2;
                 },
                 opcodes::SBC_ZP => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.ram[self.mem.ram[self.cpu.pc as usize +1] as usize];
-                    self.cpu.sub_from_a_with_carry(operand, true);
+                    self.cpu.sub_from_a_with_carry(operand);
                     println!("0x{:x}: SBC 0x{:x}\t a=0x{:x}\t N={}\t V={}\t Z={}\t C={}", self.cpu.pc, operand, self.cpu.a, self.cpu.negative_flag(), self.cpu.overflow_flag(), self.cpu.zero_flag(), self.cpu.carry_flag());
                     self.cpu.pc += 2;
-                },                opcodes::STA_ABS => {
+                },
+                opcodes::SEC => {
+                    let c = self.cpu.carry_flag();
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                    println!("SEC carry was: {}", c);
+                },
+                opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
                     self.mem.ram[addr as usize] = self.cpu.a;
                     println!("0x{:x}: STA 0x{:x}\t a={:x}",  self.cpu.pc, addr, self.cpu.a);

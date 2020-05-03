@@ -1,9 +1,9 @@
 const CODE_START_ADDR: u16 = 0x400;
 
-const NEGATIVE_BIT: u8 = 0b10000000;
-const OVERFLOW_BIT: u8 = 0b01000000;
-const ZERO_BIT: u8 = 0b00000010;
-const CARRY_BIT: u8 = 0b00000001;
+pub const NEGATIVE_BIT: u8 = 0b10000000;
+pub const OVERFLOW_BIT: u8 = 0b01000000;
+pub const ZERO_BIT: u8 = 0b00000010;
+pub const CARRY_BIT: u8 = 0b00000001;
 
 pub struct Cpu {
     pub pc: u16,
@@ -38,43 +38,67 @@ impl Cpu {
         (self.status & ZERO_BIT) == 2
     }
 
-    pub fn add_to_a_with_carry(&mut self, operand: u8, from_mem: bool) {
-        let val: u32 = self.a as u32 + operand as u32;
+    pub fn set_status_flag(&mut self, flag: u8) {
+        self.status |= flag;
+    }
 
-        if val > u8::max_value() as u32 - 1 {
-            if from_mem {
-                self.a = 0;
-            } else {
-                self.a = (val % u8::max_value() as u32) as u8 - 1;
-            }
-            self.status |= CARRY_BIT;
+    pub fn clear_status_flag(&mut self, flag: u8) {
+        self.status &= !flag;
+    }
+
+    pub fn add_to_a_with_carry(&mut self, operand: u8) {
+        let cin = if self.carry_flag() { 1 } else { 0 };
+        let value: u32 = self.a as u32 + operand as u32 + cin as u32;
+        let value = if value > u8::max_value() as u32 {
+            self.set_status_flag(CARRY_BIT);
+            value % u8::max_value() as u32 - 1
         } else {
-            self.a = val as u8;
-            self.status &= !CARRY_BIT;
+            self.clear_status_flag(CARRY_BIT);
+            value
+        };
+
+        let value: u8 = value as u8;
+
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        if (operand^value)&(self.a^value)&0x80 != 0 {
+            self.set_status_flag(OVERFLOW_BIT);
+        } else {
+            self.clear_status_flag(OVERFLOW_BIT);
         }
+
+        self.a = value as u8;
 
         self.check_negative(self.a);
         self.check_zero(self.a)
     }
 
-    pub fn sub_from_a_with_carry(&mut self, operand: u8, from_mem: bool) {
+    pub fn sub_from_a_with_carry(&mut self, operand: u8) {
+        let cin = if self.carry_flag() { 1 } else { 0 };
+        let value: u8 =
         if operand > self.a {
-            if from_mem {
-                self.a = 0;
-            } else {
-                self.a = u8::max_value() - (operand - self.a);
-            }
-            self.status |= CARRY_BIT;
+            // Set borrow, which is !carry
+            self.clear_status_flag(CARRY_BIT);
+            u8::max_value() - (operand - self.a) + 1
         } else {
-            self.a -= operand;
-            self.status &= !CARRY_BIT;
+            self.set_status_flag(CARRY_BIT);
+            self.a - operand
+        } - cin;
+
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        if ((255-operand)^value)&((self.a)^value)&0x80 != 0 {
+            self.set_status_flag(OVERFLOW_BIT);
+        } else {
+            self.clear_status_flag(OVERFLOW_BIT);
         }
+
+        self.a = value;
 
         self.check_negative(self.a);
         self.check_zero(self.a)
     }
 
     pub fn check_negative(&mut self, value: u8) {
+        // After most instructions that have a value result, this flag will contain bit 7 of that result.
         if (value >> 7) == 1 {
             self.status |= NEGATIVE_BIT;
         } else {
@@ -97,74 +121,147 @@ mod tests {
 
     #[test]
     fn test_add_to_a_with_carry() {
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         let mut cpu: Cpu = Cpu::new();
 
-        cpu.add_to_a_with_carry(1, false);
-        assert_eq!(1, cpu.a);
+        cpu.a = 80;
+        cpu.add_to_a_with_carry(16);
+        assert_eq!(96, cpu.a);
         assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.carry_flag());
 
-        cpu.a = 100;
-        cpu.add_to_a_with_carry(100, false);
-        assert_eq!(200, cpu.a);
+        cpu.a = 80;
+        cpu.add_to_a_with_carry(80);
+        assert_eq!(160, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(true, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.carry_flag());
+
+        cpu.a = 80;
+        cpu.add_to_a_with_carry(144);
+        assert_eq!(224, cpu.a);
         assert_eq!(true, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.carry_flag());
 
-        cpu.a = 0xc0;
-        cpu.add_to_a_with_carry(0xc4, false);
-        assert_eq!(0x84, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
+        cpu.a = 80;
+        cpu.add_to_a_with_carry(208);
+        assert_eq!(32, cpu.a);
+        assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
 
-        cpu.a = 0xc0;
-        cpu.add_to_a_with_carry(0xc4, true);
-        assert_eq!(0x0, cpu.a);
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.add_to_a_with_carry(16);
+        assert_eq!(224, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(false, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.add_to_a_with_carry(80);
+        assert_eq!(32, cpu.a);
         assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.add_to_a_with_carry(144);
+        assert_eq!(96, cpu.a);
+        assert_eq!(false, cpu.negative_flag());
+        assert_eq!(true, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.add_to_a_with_carry(208);
+        assert_eq!(160, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(false, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
     }
 
     #[test]
     fn test_sub_from_a_with_carry() {
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         let mut cpu: Cpu = Cpu::new();
 
-        cpu.a = 1;
-        cpu.sub_from_a_with_carry(1, false);
-        assert_eq!(0, cpu.a);
+        cpu.a = 80;
+        cpu.sub_from_a_with_carry(240);
+        assert_eq!(96, cpu.a);
         assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.carry_flag());
 
-        cpu.a = 0x82;
-        cpu.sub_from_a_with_carry(2, false);
-        assert_eq!(0x80, cpu.a);
+        cpu.a = 80;
+        cpu.sub_from_a_with_carry(176);
+        assert_eq!(160, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(true, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.carry_flag());
+
+        cpu.a = 80;
+        cpu.sub_from_a_with_carry(112);
+        assert_eq!(224, cpu.a);
         assert_eq!(true, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.carry_flag());
 
-        cpu.a = 10;
-        cpu.sub_from_a_with_carry(20, false);
-        assert_eq!(245, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
+        cpu.a = 80;
+        cpu.sub_from_a_with_carry(48);
+        assert_eq!(32, cpu.a);
+        assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
 
-        cpu.a = 10;
-        cpu.sub_from_a_with_carry(20, true);
-        assert_eq!(0, cpu.a);
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.sub_from_a_with_carry(240);
+        assert_eq!(224, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(false, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.sub_from_a_with_carry(176);
+        assert_eq!(32, cpu.a);
         assert_eq!(false, cpu.negative_flag());
         assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.sub_from_a_with_carry(112);
+        assert_eq!(96, cpu.a);
+        assert_eq!(false, cpu.negative_flag());
+        assert_eq!(true, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.carry_flag());
+
+        cpu.a = 208;
+        cpu.clear_status_flag(CARRY_BIT);
+        cpu.sub_from_a_with_carry(48);
+        assert_eq!(160, cpu.a);
+        assert_eq!(true, cpu.negative_flag());
+        assert_eq!(false, cpu.overflow_flag());
+        assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
     }
 
@@ -190,5 +287,34 @@ mod tests {
         assert_eq!(true, cpu.zero_flag());
         cpu.check_zero(8);
         assert_eq!(false, cpu.zero_flag());
+    }
+
+    #[test]
+    fn test_status_flag() {
+        let mut cpu: Cpu = Cpu::new();
+
+        assert_eq!(false, cpu.negative_flag());
+        cpu.set_status_flag(NEGATIVE_BIT);
+        assert_eq!(true, cpu.negative_flag());
+        cpu.clear_status_flag(NEGATIVE_BIT);
+        assert_eq!(false, cpu.negative_flag());
+
+        assert_eq!(false, cpu.overflow_flag());
+        cpu.set_status_flag(OVERFLOW_BIT);
+        assert_eq!(true, cpu.overflow_flag());
+        cpu.clear_status_flag(OVERFLOW_BIT);
+        assert_eq!(false, cpu.overflow_flag());
+
+        assert_eq!(false, cpu.zero_flag());
+        cpu.set_status_flag(ZERO_BIT);
+        assert_eq!(true, cpu.zero_flag());
+        cpu.clear_status_flag(ZERO_BIT);
+        assert_eq!(false, cpu.zero_flag());
+
+        assert_eq!(false, cpu.carry_flag());
+        cpu.set_status_flag(CARRY_BIT);
+        assert_eq!(true, cpu.carry_flag());
+        cpu.clear_status_flag(CARRY_BIT);
+        assert_eq!(false, cpu.carry_flag());
     }
 }
