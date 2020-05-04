@@ -4,6 +4,8 @@ pub const ADC_ZP: u8 = 0x65;
 pub const SBC_IMM: u8 = 0xe9;
 pub const SBC_ZP: u8 = 0xe5;
 
+pub const BNE: u8 = 0xd0;
+
 pub const BRK: u8 = 0x0;
 
 pub const CMP_ABS: u8 = 0xcd;
@@ -94,6 +96,10 @@ impl Lookup {
             size: 2
         };
 
+        lookup[BNE as usize] = &Opcode{
+            name: "BNE",
+            size: 2
+        };
         lookup[CLC as usize] = &Opcode{
             name: "CLC",
             size: 1

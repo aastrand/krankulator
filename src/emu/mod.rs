@@ -28,20 +28,28 @@ impl Emulator {
     pub fn run(&mut self) {
         loop {
             let opcode = self.mem.ram[self.cpu.pc as usize];
-            let mut args: Vec<u16> = Vec::<u16>::new();
+            let mut logdata: Vec<u16> = Vec::<u16>::new();
+            logdata.push(self.cpu.pc);
 
             match opcode {
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 },
                 opcodes::ADC_ZP => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
+                },
+                opcodes::BNE => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    if !self.cpu.zero_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
                 },
                 opcodes::BRK => {
                     println!("BRK");
@@ -52,53 +60,53 @@ impl Emulator {
                 },
                 opcodes::CMP_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 },
                 opcodes::CMP_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 },
                 opcodes::CMP_ZP => {
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 },
                 opcodes::CPX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 },
                 opcodes::CPX_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 },
                 opcodes::CPX_ZP => {
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 },
                 opcodes::CPY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 },
                 opcodes::CPY_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 },
                 opcodes::CPY_ZP => {
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 },
                 opcodes::DEX => {
@@ -131,39 +139,39 @@ impl Emulator {
                 },
                 opcodes::LDA_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(value as u16);
+                    logdata.push(value as u16);
                     self.cpu.a = value;
                 },
                 opcodes::LDX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     self.cpu.x = self.mem.value_at_addr(addr);
                 },
                 opcodes::LDX_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(value as u16);
+                    logdata.push(value as u16);
                     self.cpu.x = value;
                 },
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     self.cpu.y = self.mem.value_at_addr(addr);
                 },
                 opcodes::LDY_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(value as u16);
+                    logdata.push(value as u16);
                     self.cpu.y = value;
                 },
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 },
                 opcodes::SBC_ZP => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    args.push(operand as u16);
+                    logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 },
                 opcodes::SEC => {
@@ -171,32 +179,32 @@ impl Emulator {
                 },
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 },
                 opcodes::STA_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 },
                 opcodes::STX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.x;
                 },
                 opcodes::STX_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.x;
                 },
                 opcodes::STY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.y;
                 },
                 opcodes::STY_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
-                    args.push(addr);
+                    logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.y;
                 },
                 opcodes::TAX => {
@@ -238,7 +246,7 @@ impl Emulator {
                 _ => panic!("Unkown opcode: 0x{:x}", opcode)
             }
 
-            self.log(opcode, args);
+            self.log(opcode, logdata);
 
             let size: u16 = self.lookup.size(opcode);
             if size == 0 {
@@ -248,13 +256,13 @@ impl Emulator {
         }
     }
 
-    fn log(&self, opcode: u8, args: Vec<u16>) {
+    fn log(&self, opcode: u8, logdata: Vec<u16>) {
         let mut logline = String::with_capacity(80);
 
-        logline.push_str(&format!("0x{:x}: {} (0x{:x})", self.cpu.pc, self.lookup.name(opcode), opcode));
+        logline.push_str(&format!("0x{:x}: {} (0x{:x})", logdata[0], self.lookup.name(opcode), opcode));
 
-        if args.len() > 0 {
-            logline.push_str(&format!(" arg=0x{:x}\t", args.first().unwrap()));
+        if logdata.len() > 1 {
+            logline.push_str(&format!(" arg=0x{:x}\t", logdata[1]));
         } else {
             logline.push_str(" \t\t");
         }
