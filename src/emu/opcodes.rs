@@ -10,7 +10,12 @@ pub const INY: u8 = 0xc8;
 pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
 
-pub const LDA_ABS: u8 = 0xa9;
+pub const LDA_ABS: u8 = 0xad;
+pub const LDA_IMM: u8 = 0xa9;
+pub const LDX_ABS: u8 = 0xae;
+pub const LDX_IMM: u8 = 0xa2;
+pub const LDY_ABS: u8 = 0xac;
+pub const LDY_IMM: u8 = 0xa0;
 
 /*
 MNEMONIC                       HEX
@@ -45,3 +50,118 @@ pub const TYA: u8 = 0x98;
 
 pub const TSX: u8 = 0xba;
 pub const TXS: u8 = 0x9a;
+
+pub struct Opcode {
+    name: &'static str,
+    size: u16
+}
+
+pub struct Lookup {
+    opcodes: [&'static Opcode; 256]
+}
+
+static _SENTINEL: Opcode = Opcode {
+    name: "OPCODE MISSING IN LOOKUP SEE opcodes.rs",
+    size: 0
+};
+
+impl Lookup {
+    pub fn new() -> Lookup {
+        let mut lookup: [&'static Opcode; 256] = [&_SENTINEL; 256];
+        lookup[ADC_IMM as usize] = &Opcode{
+            name: "ADC_IMM",
+            size: 2
+        };
+        lookup[ADC_ZP as usize] = &Opcode{
+            name: "ADC_ZP",
+            size: 2
+        };
+
+        lookup[CLC as usize] = &Opcode{
+            name: "CLC",
+            size: 1
+        };
+
+        lookup[DEX as usize] = &Opcode{
+            name: "DEX",
+            size: 1
+        };
+        lookup[DEY as usize] = &Opcode{
+            name: "DEY",
+            size: 1
+        };
+        lookup[INX as usize] = &Opcode{
+            name: "INX",
+            size: 1
+        };
+        lookup[INY as usize] = &Opcode{
+            name: "INY",
+            size: 1
+        };
+
+        lookup[LDA_ABS as usize] = &Opcode{
+            name: "LDA_ABS",
+            size: 2
+        };
+        lookup[LDA_IMM as usize] = &Opcode{
+            name: "LDA_IMM",
+            size: 2
+        };
+
+        lookup[SBC_IMM as usize] = &Opcode{
+            name: "SBC_IMM",
+            size: 2
+        };
+        lookup[SBC_ZP as usize] = &Opcode{
+            name: "SBC_ZP",
+            size: 2
+        };
+
+        lookup[STA_ABS as usize] = &Opcode{
+            name: "STA_ABS",
+            size: 3
+        };
+        lookup[STA_ZP as usize] = &Opcode{
+            name: "STA_ZP",
+            size: 2
+        };
+
+        lookup[TAX as usize] = &Opcode{
+            name: "TAX",
+            size: 1
+        };
+        lookup[TXA as usize] = &Opcode{
+            name: "TXA",
+            size: 1
+        };
+        lookup[TAY as usize] = &Opcode{
+            name: "TAY",
+            size: 1
+        };
+        lookup[TYA as usize] = &Opcode{
+            name: "TYA",
+            size: 1
+        };
+
+        lookup[TSX as usize] = &Opcode{
+            name: "TSX",
+            size: 1
+        };
+        lookup[TXS as usize] = &Opcode{
+            name: "TXS",
+            size: 1
+        };
+
+        Lookup{
+            opcodes: lookup
+        }
+    }
+
+    pub fn name(&self, opcode: u8) -> &str {
+        self.opcodes[opcode as usize].name
+    }
+
+    pub fn size(&self, opcode: u8) -> u16 {
+        self.opcodes[opcode as usize].size
+    }
+}

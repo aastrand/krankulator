@@ -13,13 +13,16 @@ pub struct Cpu {
     pub y: u8,
 
     pub sp: u8,
-    status: u8
+
+    status: u8,
 }
 
 impl Cpu {
 
     pub fn new() -> Cpu {
-        Cpu{pc: CODE_START_ADDR, a: 0, x: 0, y: 0, sp: 0, status: 0}
+        Cpu{pc: CODE_START_ADDR,
+            a: 0, x: 0, y: 0, sp: 0,
+            status: 0}
     }
 
     pub fn carry_flag(&self) -> bool {
@@ -100,19 +103,20 @@ impl Cpu {
     pub fn check_negative(&mut self, value: u8) {
         // After most instructions that have a value result, this flag will contain bit 7 of that result.
         if (value >> 7) == 1 {
-            self.status |= NEGATIVE_BIT;
+            self.set_status_flag(NEGATIVE_BIT);
         } else {
-            self.status &= !NEGATIVE_BIT;
+            self.clear_status_flag(NEGATIVE_BIT);
         }
     }
 
     pub fn check_zero(&mut self, value: u8) {
         if value == 0 {
-            self.status |= ZERO_BIT;
+            self.set_status_flag(ZERO_BIT);
         } else {
-            self.status &= !ZERO_BIT;
+            self.clear_status_flag(ZERO_BIT);
         }
     }
+
 }
 
 #[cfg(test)]
