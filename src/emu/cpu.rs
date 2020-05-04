@@ -51,10 +51,10 @@ impl Cpu {
 
     pub fn add_to_a_with_carry(&mut self, operand: u8) {
         let cin = if self.carry_flag() { 1 } else { 0 };
-        let value: u32 = self.a as u32 + operand as u32 + cin as u32;
-        let value = if value > u8::max_value() as u32 {
+        let value: i32 = self.a as i32 + operand as i32 + cin as i32;
+        let value = if value > u8::max_value() as i32 {
             self.set_status_flag(CARRY_BIT);
-            value % u8::max_value() as u32 - 1
+            value % u8::max_value() as i32 - 1
         } else {
             self.clear_status_flag(CARRY_BIT);
             value
@@ -76,28 +76,37 @@ impl Cpu {
     }
 
     pub fn sub_from_a_with_carry(&mut self, operand: u8) {
-        let cin = if self.carry_flag() { 1 } else { 0 };
-        let value: u8 =
-        if operand > self.a {
+        let cin = if self.carry_flag() { 0 } else { 1 };
+        let value: i32 = (self.a as i32 - operand as i32) - cin;
+
+        if value < 0 {
             // Set borrow, which is !carry
             self.clear_status_flag(CARRY_BIT);
-            u8::max_value() - (operand - self.a) + 1
         } else {
             self.set_status_flag(CARRY_BIT);
-            self.a - operand
-        } - cin;
+        }
+
+        // Handle overflow
+        let value = if value < -256 as i32 {
+            value + u8::max_value() as i32
+        } else {
+            value
+        };
 
         // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        if ((255-operand)^value)&((self.a)^value)&0x80 != 0 {
+        if ((255-operand)^value as u8)&((self.a)^value as u8)&0x80 != 0 {
             self.set_status_flag(OVERFLOW_BIT);
         } else {
             self.clear_status_flag(OVERFLOW_BIT);
         }
 
-        self.a = value;
+        self.a = value as u8;
 
         self.check_negative(self.a);
-        self.check_zero(self.a)
+        self.check_zero(self.a);
+
+        // TODO: this should be enough, but some testcases fail :|
+        //self.add_to_a_with_carry(u8::max_value() - operand)
     }
 
     pub fn check_negative(&mut self, value: u8) {
@@ -202,6 +211,7 @@ mod tests {
         let mut cpu: Cpu = Cpu::new();
 
         cpu.a = 80;
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(240);
         assert_eq!(96, cpu.a);
         assert_eq!(false, cpu.negative_flag());
@@ -210,6 +220,7 @@ mod tests {
         assert_eq!(false, cpu.carry_flag());
 
         cpu.a = 80;
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(176);
         assert_eq!(160, cpu.a);
         assert_eq!(true, cpu.negative_flag());
@@ -218,6 +229,7 @@ mod tests {
         assert_eq!(false, cpu.carry_flag());
 
         cpu.a = 80;
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(112);
         assert_eq!(224, cpu.a);
         assert_eq!(true, cpu.negative_flag());
@@ -226,6 +238,7 @@ mod tests {
         assert_eq!(false, cpu.carry_flag());
 
         cpu.a = 80;
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(48);
         assert_eq!(32, cpu.a);
         assert_eq!(false, cpu.negative_flag());
@@ -234,7 +247,7 @@ mod tests {
         assert_eq!(true, cpu.carry_flag());
 
         cpu.a = 208;
-        cpu.clear_status_flag(CARRY_BIT);
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(240);
         assert_eq!(224, cpu.a);
         assert_eq!(true, cpu.negative_flag());
@@ -243,6 +256,7 @@ mod tests {
         assert_eq!(false, cpu.carry_flag());
 
         cpu.a = 208;
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(176);
         assert_eq!(32, cpu.a);
         assert_eq!(false, cpu.negative_flag());
@@ -251,7 +265,7 @@ mod tests {
         assert_eq!(true, cpu.carry_flag());
 
         cpu.a = 208;
-        cpu.clear_status_flag(CARRY_BIT);
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(112);
         assert_eq!(96, cpu.a);
         assert_eq!(false, cpu.negative_flag());
@@ -260,7 +274,7 @@ mod tests {
         assert_eq!(true, cpu.carry_flag());
 
         cpu.a = 208;
-        cpu.clear_status_flag(CARRY_BIT);
+        cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(48);
         assert_eq!(160, cpu.a);
         assert_eq!(true, cpu.negative_flag());

@@ -117,6 +117,11 @@ impl Lookup {
             size: 2
         };
 
+        lookup[SEC as usize] = &Opcode{
+            name: "SEC",
+            size: 1
+        };
+
         lookup[STA_ABS as usize] = &Opcode{
             name: "STA_ABS",
             size: 3

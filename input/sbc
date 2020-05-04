@@ -1,0 +1,8 @@
+;LDA #$80 ; a=0x80
+;STA $01  ; store 0x80 at ram[1]
+;SBC $01  ; subtract ram[1] (0x80) with carry from 0x80, a = 0xff
+;SEC      ; set carry=borrow=0
+;SBC #$01 ; subtract 1 with carry from 0x80, a = 0xfe since carry=1=borrow=0
+;CLC      ; clear carry=borrow=1
+;SBC #$01 ; subtract 1 with carry from 0xfd, a = 0xfc since carry=0=borrow=1
+a9 80 85 01 e5 01 38 e9 01 18 e9 01 

@@ -76,4 +76,16 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
         assert_eq!(emu.cpu.negative_flag(), false);
     }
+
+    #[test]
+    fn test_subtract_with_carry() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/sbc")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0xfc);
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), true);
+    }
+
 }
