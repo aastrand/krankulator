@@ -126,6 +126,25 @@ impl Cpu {
         }
     }
 
+    pub fn compare(&mut self, register_value: u8, operand: u8) {
+        // Compare sets flags as if a subtraction had been carried out.
+        // If the value in the accumulator is equal or greater than the compared value, the Carry will be set.
+        // The equal (Z) and negative (N) flags will be set based on equality or lack thereof and the sign (i.e. A>=$80) of the accumulator.
+        if register_value >= operand {
+            self.set_status_flag(CARRY_BIT);
+            if register_value == operand {
+                self.set_status_flag(ZERO_BIT);
+            } else {
+                self.clear_status_flag(ZERO_BIT);
+            }
+            self.clear_status_flag(NEGATIVE_BIT);
+        } else {
+            self.clear_status_flag(CARRY_BIT);
+            self.clear_status_flag(ZERO_BIT);
+            self.set_status_flag(NEGATIVE_BIT);
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -334,5 +353,25 @@ mod tests {
         assert_eq!(true, cpu.carry_flag());
         cpu.clear_status_flag(CARRY_BIT);
         assert_eq!(false, cpu.carry_flag());
+    }
+
+    #[test]
+    fn test_compare() {
+        let mut cpu: Cpu = Cpu::new();
+
+        cpu.compare(0, 1);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        cpu.compare(1, 1);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        cpu.compare(2, 1);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
     }
 }

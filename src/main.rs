@@ -104,4 +104,19 @@ mod tests {
         assert_eq!(emu.mem.ram[0x0200], 2);
         assert_eq!(emu.mem.ram[0x0300], 3);
     }
+
+    #[test]
+    fn test_compares() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/compares")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 1);
+        assert_eq!(emu.cpu.x, 0);
+        assert_eq!(emu.cpu.y, 1);
+        assert_eq!(emu.mem.ram[0x100], 1);
+        assert_eq!(emu.cpu.zero_flag(), true);
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+    }
 }

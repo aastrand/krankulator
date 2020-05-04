@@ -5,6 +5,19 @@ pub const SBC_IMM: u8 = 0xe9;
 pub const SBC_ZP: u8 = 0xe5;
 
 pub const BRK: u8 = 0x0;
+
+pub const CMP_ABS: u8 = 0xcd;
+pub const CMP_IMM: u8 = 0xc9;
+pub const CMP_ZP: u8 = 0xc5;
+
+pub const CPX_ABS: u8 = 0x0ec;
+pub const CPX_IMM: u8 = 0xe0;
+pub const CPX_ZP: u8 = 0xe4;
+
+pub const CPY_ABS: u8 = 0xcc;
+pub const CPY_IMM: u8 = 0xc0;
+pub const CPY_ZP: u8 = 0xc4;
+
 pub const INX: u8 = 0xe8;
 pub const INY: u8 = 0xc8;
 pub const DEX: u8 = 0xca;
@@ -84,6 +97,43 @@ impl Lookup {
         lookup[CLC as usize] = &Opcode{
             name: "CLC",
             size: 1
+        };
+
+        lookup[CMP_ABS as usize] = &Opcode{
+            name: "CMP_ABS",
+            size: 3
+        };
+        lookup[CMP_IMM as usize] = &Opcode{
+            name: "CMP_IMM",
+            size: 2
+        };
+        lookup[CMP_ZP as usize] = &Opcode{
+            name: "CMP_ZP",
+            size: 2
+        };
+        lookup[CPX_ABS as usize] = &Opcode{
+            name: "CPX_ABS",
+            size: 3
+        };
+        lookup[CPX_IMM as usize] = &Opcode{
+            name: "CPX_IMM",
+            size: 2
+        };
+        lookup[CPX_ZP as usize] = &Opcode{
+            name: "CPX_ZP",
+            size: 2
+        };
+        lookup[CPY_ABS as usize] = &Opcode{
+            name: "CPY_ABS",
+            size: 3
+        };
+        lookup[CPY_IMM as usize] = &Opcode{
+            name: "CPY_IMM",
+            size: 2
+        };
+        lookup[CPY_ZP as usize] = &Opcode{
+            name: "CPY_ZP",
+            size: 2
         };
 
         lookup[DEX as usize] = &Opcode{
