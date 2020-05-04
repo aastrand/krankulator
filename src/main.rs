@@ -88,4 +88,20 @@ mod tests {
         assert_eq!(emu.cpu.negative_flag(), true);
     }
 
+    #[test]
+    fn test_stores() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/stores")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 1);
+        assert_eq!(emu.cpu.x, 2);
+        assert_eq!(emu.cpu.y, 3);
+        assert_eq!(emu.mem.ram[1], 1);
+        assert_eq!(emu.mem.ram[2], 2);
+        assert_eq!(emu.mem.ram[3], 3);
+        assert_eq!(emu.mem.ram[0x0100], 1);
+        assert_eq!(emu.mem.ram[0x0200], 2);
+        assert_eq!(emu.mem.ram[0x0300], 3);
+    }
 }

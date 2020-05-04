@@ -122,6 +122,26 @@ impl Emulator {
                     args.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 },
+                opcodes::STX_ABS => {
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    args.push(addr);
+                    self.mem.ram[addr as usize] = self.cpu.x;
+                },
+                opcodes::STX_ZP => {
+                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    args.push(addr);
+                    self.mem.ram[addr as usize] = self.cpu.x;
+                },
+                opcodes::STY_ABS => {
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    args.push(addr);
+                    self.mem.ram[addr as usize] = self.cpu.y;
+                },
+                opcodes::STY_ZP => {
+                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    args.push(addr);
+                    self.mem.ram[addr as usize] = self.cpu.y;
+                },
                 opcodes::TAX => {
                     // Transfer Accumulator to Index X
                     self.cpu.x = self.cpu.a;

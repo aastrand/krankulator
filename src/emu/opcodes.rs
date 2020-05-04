@@ -42,6 +42,10 @@ pub const SED: u8 = 0xf8;
 
 pub const STA_ABS: u8 = 0x8d;
 pub const STA_ZP: u8 = 0x85;
+pub const STX_ABS: u8 = 0x8e;
+pub const STX_ZP: u8 = 0x86;
+pub const STY_ABS: u8 = 0x8c;
+pub const STY_ZP: u8 = 0x84;
 
 pub const TAX: u8 = 0xaa;
 pub const TXA: u8 = 0x8a;
@@ -107,6 +111,22 @@ impl Lookup {
             name: "LDA_IMM",
             size: 2
         };
+        lookup[LDX_ABS as usize] = &Opcode{
+            name: "LDA_ABX",
+            size: 2
+        };
+        lookup[LDX_IMM as usize] = &Opcode{
+            name: "LDX_IMM",
+            size: 2
+        };
+        lookup[LDY_ABS as usize] = &Opcode{
+            name: "LDY_ABS",
+            size: 2
+        };
+        lookup[LDY_IMM as usize] = &Opcode{
+            name: "LDY_IMM",
+            size: 2
+        };
 
         lookup[SBC_IMM as usize] = &Opcode{
             name: "SBC_IMM",
@@ -128,6 +148,22 @@ impl Lookup {
         };
         lookup[STA_ZP as usize] = &Opcode{
             name: "STA_ZP",
+            size: 2
+        };
+        lookup[STX_ABS as usize] = &Opcode{
+            name: "STX_ABS",
+            size: 3
+        };
+        lookup[STX_ZP as usize] = &Opcode{
+            name: "STX_ZP",
+            size: 2
+        };
+        lookup[STY_ABS as usize] = &Opcode{
+            name: "STY_ABS",
+            size: 3
+        };
+        lookup[STY_ZP as usize] = &Opcode{
+            name: "STY_ZP",
             size: 2
         };
 
