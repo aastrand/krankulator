@@ -28,16 +28,19 @@ impl Emulator {
     pub fn run(&mut self) {
         loop {
             let opcode = self.mem.ram[self.cpu.pc as usize];
+            let mut args: Vec<u16> = Vec::<u16>::new();
 
             match opcode {
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    args.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 },
                 opcodes::ADC_ZP => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    args.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 },
                 opcodes::BRK => {
@@ -50,7 +53,6 @@ impl Emulator {
                 opcodes::DEX => {
                     // Decrement Index X by One
                     self.cpu.x -= 1;
-                    println!("0x{:x}: DEX\t x={:x}", self.cpu.pc, self.cpu.x);
                     // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
@@ -81,6 +83,7 @@ impl Emulator {
                 },
                 opcodes::LDX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    args.push(addr);
                     self.cpu.x = self.mem.value_at_addr(addr);
                 },
                 opcodes::LDX_IMM => {
@@ -88,6 +91,7 @@ impl Emulator {
                 },
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    args.push(addr);
                     self.cpu.y = self.mem.value_at_addr(addr);
                 },
                 opcodes::LDY_IMM => {
@@ -96,11 +100,13 @@ impl Emulator {
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    args.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 },
                 opcodes::SBC_ZP => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    args.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 },
                 opcodes::SEC => {
@@ -108,10 +114,12 @@ impl Emulator {
                 },
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
+                    args.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 },
                 opcodes::STA_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    args.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 },
                 opcodes::TAX => {
@@ -153,22 +161,28 @@ impl Emulator {
                 _ => panic!("Unkown opcode: 0x{:x}", opcode)
             }
 
-            self.log(opcode);
+            self.log(opcode, args);
 
             let size: u16 = self.lookup.size(opcode);
             if size == 0 {
-                panic!("Opcode {:x} missing from lookup table, see opcode.rs", opcode);
+                panic!("Opcode 0x{:x} missing from lookup table, see opcode.rs", opcode);
             }
             self.cpu.pc += size;
         }
     }
 
-    fn log(&self, opcode: u8) {
+    fn log(&self, opcode: u8, args: Vec<u16>) {
         let mut logline = String::with_capacity(80);
 
-        logline.push_str(&format!("0x{:x} {}(0x{:x})", self.cpu.pc, self.lookup.name(opcode), opcode));
-        // TODO: optional operands go here
-        logline.push_str(&format!("\t\tta=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}", self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp));
+        logline.push_str(&format!("0x{:x} {} (0x{:x})", self.cpu.pc, self.lookup.name(opcode), opcode));
+
+        if args.len() > 0 {
+            logline.push_str(&format!(" arg=0x{:x}\t", args.first().unwrap()));
+        } else {
+            logline.push_str(" \t\t");
+        }
+
+        logline.push_str(&format!("\ta=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}", self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp));
         logline.push_str(&format!("\tN={} V={} Z={} C={}", self.cpu.negative_flag() as i32, self.cpu.overflow_flag() as i32, self.cpu.zero_flag() as i32, self.cpu.carry_flag() as i32));
 
         println!("{}", logline);
