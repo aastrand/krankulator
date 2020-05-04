@@ -251,7 +251,7 @@ impl Emulator {
     fn log(&self, opcode: u8, args: Vec<u16>) {
         let mut logline = String::with_capacity(80);
 
-        logline.push_str(&format!("0x{:x} {} (0x{:x})", self.cpu.pc, self.lookup.name(opcode), opcode));
+        logline.push_str(&format!("0x{:x}: {} (0x{:x})", self.cpu.pc, self.lookup.name(opcode), opcode));
 
         if args.len() > 0 {
             logline.push_str(&format!(" arg=0x{:x}\t", args.first().unwrap()));
