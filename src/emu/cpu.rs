@@ -1,4 +1,4 @@
-const CODE_START_ADDR: u16 = 0x400;
+pub const CODE_START_ADDR: u16 = 0x400;
 
 pub const NEGATIVE_BIT: u8 = 0b10000000;
 pub const OVERFLOW_BIT: u8 = 0b01000000;

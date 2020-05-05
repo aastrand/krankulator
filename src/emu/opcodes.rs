@@ -44,7 +44,14 @@ pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
 
 pub const LDA_ABS: u8 = 0xad;
+pub const LDA_ABX: u8 = 0xbd;
+pub const LDA_ABY: u8 = 0xb9;
 pub const LDA_IMM: u8 = 0xa9;
+pub const LDA_INX: u8 = 0xa1;
+pub const LDA_INY: u8 = 0xb1;
+pub const LDA_ZP: u8 = 0xa5;
+pub const LDA_ZPX: u8 = 0xb5;
+
 pub const LDX_ABS: u8 = 0xae;
 pub const LDX_IMM: u8 = 0xa2;
 pub const LDY_ABS: u8 = 0xac;
@@ -208,16 +215,37 @@ impl Lookup {
 
         lookup[LDA_ABS as usize] = &Opcode {
             name: "LDA_ABS",
-            size: 2,
+            size: 3,
+        };
+        lookup[LDA_ABX as usize] = &Opcode {
+            name: "LDA_ABX",
+            size: 3,
+        };
+        lookup[LDA_ABY as usize] = &Opcode {
+            name: "LDA_ABY",
+            size: 3,
         };
         lookup[LDA_IMM as usize] = &Opcode {
             name: "LDA_IMM",
             size: 2,
         };
-        lookup[LDX_ABS as usize] = &Opcode {
-            name: "LDA_ABX",
+        lookup[LDA_INX as usize] = &Opcode {
+            name: "LDA_INX",
             size: 2,
         };
+        lookup[LDA_INY as usize] = &Opcode {
+            name: "LDA_INY",
+            size: 3,
+        };
+        lookup[LDA_ZP as usize] = &Opcode {
+            name: "LDA_ZP",
+            size: 2,
+        };
+        lookup[LDA_ZPX as usize] = &Opcode {
+            name: "LDA_ZPX",
+            size: 2,
+        };
+
         lookup[LDX_IMM as usize] = &Opcode {
             name: "LDX_IMM",
             size: 2,

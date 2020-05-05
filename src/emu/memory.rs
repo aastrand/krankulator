@@ -15,7 +15,7 @@ impl Memory {
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
         // little endian, so 2nd first
-        ((self.ram[offset as usize + 2] as u16) << 8) + self.ram[offset as usize + 1] as u16
+        ((self.ram[offset as usize + 1] as u16) << 8) + self.ram[offset as usize] as u16
     }
 
     pub fn value_at_addr(&self, addr: u16) -> u8 {
@@ -37,7 +37,7 @@ mod tests {
         memory.ram[0x2001] = 0x11;
         memory.ram[0x2002] = 0x47;
 
-        let value = memory.get_16b_addr(0x2000);
+        let value = memory.get_16b_addr(0x2001);
 
         assert_eq!(value, 0x4711);
     }
