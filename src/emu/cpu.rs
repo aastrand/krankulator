@@ -1,9 +1,9 @@
-pub const CODE_START_ADDR: u16 = 0x400;
-
 pub const NEGATIVE_BIT: u8 = 0b10000000;
 pub const OVERFLOW_BIT: u8 = 0b01000000;
 pub const ZERO_BIT: u8 = 0b00000010;
 pub const CARRY_BIT: u8 = 0b00000001;
+
+use super::memory;
 
 pub struct Cpu {
     pub pc: u16,
@@ -14,17 +14,19 @@ pub struct Cpu {
 
     pub sp: u8,
 
-    status: u8,
+    pub status: u8,
 }
 
 impl Cpu {
+    // TODO: not sure Cpu should use super::memory
+    // maybe it's better to add these as parameters
     pub fn new() -> Cpu {
         Cpu {
-            pc: CODE_START_ADDR,
+            pc: memory::CODE_START_ADDR,
             a: 0,
             x: 0,
             y: 0,
-            sp: 0,
+            sp: memory::STACK_START_ADDR as u8,
             status: 0,
         }
     }

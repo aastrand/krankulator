@@ -78,10 +78,18 @@ pub const CLV: u8 = 0xb8;
 #[allow(dead_code)]
 pub const CLD: u8 = 0xd8;
 #[allow(dead_code)]
-pub const SED: u8 = 0xf8;
+
+pub const PHA: u8 = 0x48;
+pub const PLA: u8 = 0x68;
+pub const PHP: u8 = 0x08;
+pub const PLP: u8 = 0x28;
+
+//pub const SED: u8 = 0xf8;
 
 pub const STA_ABS: u8 = 0x8d;
 pub const STA_ZP: u8 = 0x85;
+pub const STA_ABY: u8 = 0x99;
+
 pub const STX_ABS: u8 = 0x8e;
 pub const STX_ZP: u8 = 0x86;
 pub const STY_ABS: u8 = 0x8c;
@@ -259,6 +267,23 @@ impl Lookup {
             size: 2,
         };
 
+        lookup[PHA as usize] = &Opcode {
+            name: "PHA",
+            size: 1,
+        };
+        lookup[PLA as usize] = &Opcode {
+            name: "PLA",
+            size: 1,
+        };
+        lookup[PHP as usize] = &Opcode {
+            name: "PHP",
+            size: 1,
+        };
+        lookup[PLP as usize] = &Opcode {
+            name: "PLP",
+            size: 1,
+        };
+
         lookup[SBC_IMM as usize] = &Opcode {
             name: "SBC_IMM",
             size: 2,
@@ -280,6 +305,10 @@ impl Lookup {
         lookup[STA_ZP as usize] = &Opcode {
             name: "STA_ZP",
             size: 2,
+        };
+        lookup[STA_ABY as usize] = &Opcode {
+            name: "STA_ABY",
+            size: 3,
         };
         lookup[STX_ABS as usize] = &Opcode {
             name: "STX_ABS",

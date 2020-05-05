@@ -1,6 +1,10 @@
 use std::boxed::Box;
 
-const MAX_RAM_SIZE: usize = 65536;
+pub const MAX_RAM_SIZE: usize = 65536;
+pub const CODE_START_ADDR: u16 = 0x400;
+pub const STACK_BASE_OFFSET: u16 = 0x100;
+pub const STACK_START_ADDR: u8 = 0xff;
+//pub const STACK_END_ADDR: u16 = 0xff;
 
 pub struct Memory {
     pub ram: [u8; MAX_RAM_SIZE],
@@ -24,6 +28,14 @@ impl Memory {
 
     pub fn indirect_value_at_addr(&self, addr: u16) -> u8 {
         self.ram[self.ram[addr as usize] as usize]
+    }
+
+    pub fn push_to_stack(&mut self, sp: u8, value: u8) {
+        self.ram[(STACK_BASE_OFFSET + (u16::from(sp) & 0xff)) as usize] = value;
+    }
+
+    pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
+        self.ram[(STACK_BASE_OFFSET + (u16::from(sp) & 0xff)) as usize]
     }
 }
 
@@ -61,5 +73,22 @@ mod tests {
         let value = memory.indirect_value_at_addr(0x2001);
 
         assert_eq!(value, 0x47);
+    }
+
+    #[test]
+    fn test_push_to_stack() {
+        let mut memory: Memory = Memory::new();
+        memory.push_to_stack(0xff, 0x42);
+
+        assert_eq!(memory.ram[0x1ff as usize], 0x42);
+    }
+
+    #[test]
+    fn test_pull_from_stack() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x1ff as usize] = 0x42;
+        let value: u8 = memory.pull_from_stack(0xff);
+
+        assert_eq!(value, 0x42);
     }
 }

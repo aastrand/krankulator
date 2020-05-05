@@ -20,7 +20,7 @@ impl Emulator {
     pub fn install_rom(&mut self, rom: Vec<u8>) {
         let mut i = 0;
         for code in rom.iter() {
-            self.mem.ram[cpu::CODE_START_ADDR as usize + i] = *code;
+            self.mem.ram[memory::CODE_START_ADDR as usize + i] = *code;
             i += 1;
         }
     }
@@ -291,6 +291,33 @@ impl Emulator {
                     self.cpu.set_status_flag(cpu::CARRY_BIT);
                 }
 
+                opcodes::PHA => {
+                    // PusH Accumulator
+                    self.mem.push_to_stack(self.cpu.sp, self.cpu.a);
+                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                }
+                opcodes::PLA => {
+                    // PuLl Accumulator
+                    if self.cpu.sp == 0xff {
+                        self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
+                    }
+                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
+                    self.cpu.a = self.mem.pull_from_stack(self.cpu.sp);
+                }
+                opcodes::PHP => {
+                    // PusH Processor status
+                    self.mem.push_to_stack(self.cpu.sp, self.cpu.status);
+                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                }
+                opcodes::PLP => {
+                    // PuLl Processor status
+                    if self.cpu.sp == 0xff {
+                        self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
+                    }
+                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
+                    self.cpu.status = self.mem.pull_from_stack(self.cpu.sp);
+                }
+
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
@@ -300,6 +327,14 @@ impl Emulator {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
                     logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
+                }
+                opcodes::STA_ABY => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.y as u16);
+                    logdata.push(addr);
+                    self.mem.ram[(addr) as usize] = self.cpu.a;
                 }
                 opcodes::STX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
@@ -409,10 +444,13 @@ impl Emulator {
 mod tests {
     use super::*;
 
+    // TODO: add basic unittests for all instructions
+    // could clean up the integration test inputs, then
+
     #[test]
     fn test_install_rom() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
 
         let mut code: Vec<u8> = Vec::<u8>::new();
         code.push(0x47);
@@ -426,7 +464,7 @@ mod tests {
     #[test]
     fn test_lda_abs() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_ABS;
         emu.mem.ram[start + 1] = 0x11;
         emu.mem.ram[start + 2] = 0x47;
@@ -439,7 +477,7 @@ mod tests {
     #[test]
     fn test_lda_abx() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_ABX;
         emu.mem.ram[start + 1] = 0x10;
@@ -453,7 +491,7 @@ mod tests {
     #[test]
     fn test_lda_aby() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_ABY;
         emu.mem.ram[start + 1] = 0x10;
@@ -467,7 +505,7 @@ mod tests {
     #[test]
     fn test_lda_imm() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_IMM;
         emu.mem.ram[start + 1] = 0x42;
         emu.run();
@@ -478,7 +516,7 @@ mod tests {
     #[test]
     fn test_lda_inx() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_INX;
         emu.mem.ram[start + 1] = 0x41;
@@ -492,7 +530,7 @@ mod tests {
     #[test]
     fn test_lda_iny() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_INY;
         emu.mem.ram[start + 1] = 0x41;
@@ -505,7 +543,7 @@ mod tests {
     #[test]
     fn test_lda_zp() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_ZP;
         emu.mem.ram[start + 1] = 0x42;
         emu.mem.ram[0x42] = 0x15;
@@ -517,7 +555,7 @@ mod tests {
     #[test]
     fn test_lda_zpx() {
         let mut emu: Emulator = Emulator::new();
-        let start: usize = cpu::CODE_START_ADDR as usize;
+        let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_ZPX;
         emu.mem.ram[start + 1] = 0x41;
@@ -525,5 +563,69 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
+    }
+
+    #[test]
+    fn test_pha() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.a = 0x42;
+        emu.mem.ram[start] = opcodes::PHA;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x1ff as usize], 0x42);
+        assert_eq!(emu.cpu.sp, 0xfe);
+    }
+
+    #[test]
+    fn test_pla() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.sp -= 1;
+        emu.mem.ram[0x1ff] = 0x42;
+        emu.mem.ram[start] = opcodes::PLA;
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x42);
+        assert_eq!(emu.cpu.sp, 0xff);
+    }
+
+    #[test]
+    fn test_php() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.status = 0x1;
+        emu.mem.ram[start] = opcodes::PHP;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x1ff as usize], 0x1);
+        assert_eq!(emu.cpu.sp, 0xfe);
+    }
+
+    #[test]
+    fn test_plp() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.sp -= 1;
+        emu.mem.ram[0x1ff] = 0x1;
+        emu.mem.ram[start] = opcodes::PLP;
+        emu.run();
+
+        assert_eq!(emu.cpu.status, 0x1);
+        assert_eq!(emu.cpu.sp, 0xff);
+    }
+
+    #[test]
+    fn test_sta_aby() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.a = 0x42;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::STA_ABY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x4711], 0x42);
     }
 }

@@ -163,4 +163,22 @@ mod tests {
 
         assert_eq!(emu.cpu.x, 8);
     }
+
+    #[test]
+    fn test_stackloop() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code_ascii(&String::from("input/stackloop")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0);
+        assert_eq!(emu.cpu.x, 0x10);
+        assert_eq!(emu.cpu.y, 0x20);
+        assert_eq!(emu.cpu.sp, 0xff);
+
+        for sp in 0..15 {
+            assert_eq!(emu.mem.ram[(0x1ff - sp) as usize], sp as u8);
+            assert_eq!(emu.mem.ram[(0x200 + sp) as usize], sp as u8);
+            assert_eq!(emu.mem.ram[(0x21f - sp) as usize], sp as u8);
+        }
+    }
 }
