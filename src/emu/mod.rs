@@ -44,9 +44,59 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 },
+
+                opcodes::BPL => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // Branch on PLus)
+                    if !self.cpu.negative_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
+                opcodes::BMI => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // Branch on MInus
+                    if self.cpu.negative_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
+                opcodes::BVC => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // Branch on oVerflow Clear
+                    if !self.cpu.overflow_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
+                opcodes::BVS => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // ranch on oVerflow Set
+                    if self.cpu.overflow_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
+                opcodes::BCC => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // Branch on Carry Clear
+                    if !self.cpu.carry_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
+                opcodes::BCS => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    // Branch on Carry Set
+                    if self.cpu.carry_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
                 opcodes::BEQ => {
                     let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
+                    // Branch on EQual
                     if self.cpu.zero_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
                     }
@@ -54,10 +104,12 @@ impl Emulator {
                 opcodes::BNE => {
                     let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
+                    // Branch on Not Equal
                     if !self.cpu.zero_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
                     }
                 },
+
                 opcodes::BRK => {
                     println!("BRK");
                     break;
@@ -65,6 +117,7 @@ impl Emulator {
                 opcodes::CLC => {
                     self.cpu.clear_status_flag(cpu::CARRY_BIT);
                 },
+
                 opcodes::CMP_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
                     logdata.push(addr);
@@ -116,34 +169,37 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 },
+
                 opcodes::DEX => {
                     // Decrement Index X by One
-                    self.cpu.x -= 1;
+                    self.cpu.x = self.cpu.x.wrapping_sub(1);
                     // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
                 },
                 opcodes::DEY => {
                     // Decrement Index Y by One
-                    self.cpu.y -= 1;
+                    self.cpu.y = self.cpu.y.wrapping_sub(1);
                     // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.y);
                     self.cpu.check_zero(self.cpu.y);
                 },
+
                 opcodes::INX => {
                     // Increment Index X by One
-                    self.cpu.x += 1;
+                    self.cpu.x = self.cpu.x.wrapping_add(1);
                     // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
                 },
                 opcodes::INY => {
                     // Increment Index Y by One
-                    self.cpu.y += 1;
+                    self.cpu.y = self.cpu.y.wrapping_add(1);
                     // Increment and decrement instructions do not affect the carry flag.
                     self.cpu.check_negative(self.cpu.y);
                     self.cpu.check_zero(self.cpu.y);
                 },
+
                 opcodes::LDA_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(value as u16);
@@ -169,6 +225,7 @@ impl Emulator {
                     logdata.push(value as u16);
                     self.cpu.y = value;
                 },
+                
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
@@ -181,9 +238,11 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 },
+                
                 opcodes::SEC => {
                     self.cpu.set_status_flag(cpu::CARRY_BIT);
                 },
+
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc);
                     logdata.push(addr);

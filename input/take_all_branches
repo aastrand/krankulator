@@ -1,0 +1,41 @@
+; all 8 branch-instructions, all branches should be taken => no DEX => x = 8
+;LDX #$08
+;CPX #$07
+;BNE first
+;DEX
+;first:
+;CPX #$08
+;BEQ second
+;DEX
+;second:
+;LDA #$ff
+;SBC #$01
+;BMI third
+;DEX
+;third:
+;LDA #$01
+;ADC #$01
+;BPL fourth
+;DEX
+;fourth:
+;SEC
+;BCS fifth
+;DEX
+;fifth:
+;CLC
+;BCC sixth
+;DEX
+;sixth:
+;LDA #$00
+;SBC #$7f
+;BVC seventh
+;DEX
+;seventh:
+;SBC #$01
+;BVS eight
+;DEX
+;eight:
+;BRK
+a2 08 e0 07 d0 01 ca e0 08 f0 01 ca a9 ff e9 01 
+30 01 ca a9 01 69 01 10 01 ca 38 b0 01 ca 18 90 
+01 ca a9 00 e9 7f 50 01 ca e9 01 70 01 ca 00 

@@ -1,0 +1,33 @@
+; all 8 branch-instructions, no branch should be taken => y = 8
+;LDX #$01
+;CPX #$01
+;BNE end
+;INY
+;CPX #$02
+;BEQ end
+;INY
+;BMI end
+;INY
+;DEX
+;DEX
+;BPL end
+;INY
+;SEC
+;BCC end
+;INY
+;CLC
+;BCS end
+;INY
+;CLC
+;LDA #$00
+;SBC #$7f
+;BVS end
+;INY
+;SBC #$01
+;BVC end
+;INY
+;end:
+;BRK
+a2 01 e0 01 d0 23 c8 e0 02 f0 1e c8 30 1b c8 ca 
+ca 10 16 c8 38 90 12 c8 18 b0 0e c8 18 a9 00 e9 
+7f 70 06 c8 e9 01 50 01 c8 00 

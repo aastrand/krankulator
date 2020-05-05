@@ -4,8 +4,25 @@ pub const ADC_ZP: u8 = 0x65;
 pub const SBC_IMM: u8 = 0xe9;
 pub const SBC_ZP: u8 = 0xe5;
 
-pub const BEQ: u8 = 0xf0;
+/*
+MNEMONIC                       HEX
+BPL (Branch on PLus)           $10
+BMI (Branch on MInus)          $30
+BVC (Branch on oVerflow Clear) $50
+BVS (Branch on oVerflow Set)   $70
+BCC (Branch on Carry Clear)    $90
+BCS (Branch on Carry Set)      $B0
+BNE (Branch on Not Equal)      $D0
+BEQ (Branch on EQual)          $F0
+*/
+pub const BPL: u8 = 0x10;
+pub const BMI: u8 = 0x30;
+pub const BVC: u8 = 0x50;
+pub const BVS: u8 = 0x70;
+pub const BCC: u8 = 0x90;
+pub const BCS: u8 = 0xb0;
 pub const BNE: u8 = 0xd0;
+pub const BEQ: u8 = 0xf0;
 
 pub const BRK: u8 = 0x0;
 
@@ -96,7 +113,31 @@ impl Lookup {
             name: "ADC_ZP",
             size: 2
         };
-
+      
+        lookup[BPL as usize] = &Opcode{
+            name: "BPL",
+            size: 2
+        };
+        lookup[BMI as usize] = &Opcode{
+            name: "BMI",
+            size: 2
+        };
+        lookup[BVC as usize] = &Opcode{
+            name: "BVC",
+            size: 2
+        };
+        lookup[BVS as usize] = &Opcode{
+            name: "BVS",
+            size: 2
+        };
+        lookup[BCC as usize] = &Opcode{
+            name: "BCC",
+            size: 2
+        };
+        lookup[BCS as usize] = &Opcode{
+            name: "BCS",
+            size: 2
+        };
         lookup[BEQ as usize] = &Opcode{
             name: "BEQ",
             size: 2
