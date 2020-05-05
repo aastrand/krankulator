@@ -90,215 +90,213 @@ pub const TXS: u8 = 0x9a;
 
 pub struct Opcode {
     name: &'static str,
-    size: u16
+    size: u16,
 }
 
 pub struct Lookup {
-    opcodes: [&'static Opcode; 256]
+    opcodes: [&'static Opcode; 256],
 }
 
 static _SENTINEL: Opcode = Opcode {
     name: "OPCODE MISSING IN LOOKUP SEE opcodes.rs",
-    size: 0
+    size: 0,
 };
 
 impl Lookup {
     pub fn new() -> Lookup {
         let mut lookup: [&'static Opcode; 256] = [&_SENTINEL; 256];
-        lookup[ADC_IMM as usize] = &Opcode{
+        lookup[ADC_IMM as usize] = &Opcode {
             name: "ADC_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[ADC_ZP as usize] = &Opcode{
+        lookup[ADC_ZP as usize] = &Opcode {
             name: "ADC_ZP",
-            size: 2
+            size: 2,
         };
-      
-        lookup[BPL as usize] = &Opcode{
+
+        lookup[BPL as usize] = &Opcode {
             name: "BPL",
-            size: 2
+            size: 2,
         };
-        lookup[BMI as usize] = &Opcode{
+        lookup[BMI as usize] = &Opcode {
             name: "BMI",
-            size: 2
+            size: 2,
         };
-        lookup[BVC as usize] = &Opcode{
+        lookup[BVC as usize] = &Opcode {
             name: "BVC",
-            size: 2
+            size: 2,
         };
-        lookup[BVS as usize] = &Opcode{
+        lookup[BVS as usize] = &Opcode {
             name: "BVS",
-            size: 2
+            size: 2,
         };
-        lookup[BCC as usize] = &Opcode{
+        lookup[BCC as usize] = &Opcode {
             name: "BCC",
-            size: 2
+            size: 2,
         };
-        lookup[BCS as usize] = &Opcode{
+        lookup[BCS as usize] = &Opcode {
             name: "BCS",
-            size: 2
+            size: 2,
         };
-        lookup[BEQ as usize] = &Opcode{
+        lookup[BEQ as usize] = &Opcode {
             name: "BEQ",
-            size: 2
+            size: 2,
         };
-        lookup[BNE as usize] = &Opcode{
+        lookup[BNE as usize] = &Opcode {
             name: "BNE",
-            size: 2
+            size: 2,
         };
 
-        lookup[CLC as usize] = &Opcode{
+        lookup[CLC as usize] = &Opcode {
             name: "CLC",
-            size: 1
+            size: 1,
         };
 
-        lookup[CMP_ABS as usize] = &Opcode{
+        lookup[CMP_ABS as usize] = &Opcode {
             name: "CMP_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[CMP_IMM as usize] = &Opcode{
+        lookup[CMP_IMM as usize] = &Opcode {
             name: "CMP_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[CMP_ZP as usize] = &Opcode{
+        lookup[CMP_ZP as usize] = &Opcode {
             name: "CMP_ZP",
-            size: 2
+            size: 2,
         };
-        lookup[CPX_ABS as usize] = &Opcode{
+        lookup[CPX_ABS as usize] = &Opcode {
             name: "CPX_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[CPX_IMM as usize] = &Opcode{
+        lookup[CPX_IMM as usize] = &Opcode {
             name: "CPX_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[CPX_ZP as usize] = &Opcode{
+        lookup[CPX_ZP as usize] = &Opcode {
             name: "CPX_ZP",
-            size: 2
+            size: 2,
         };
-        lookup[CPY_ABS as usize] = &Opcode{
+        lookup[CPY_ABS as usize] = &Opcode {
             name: "CPY_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[CPY_IMM as usize] = &Opcode{
+        lookup[CPY_IMM as usize] = &Opcode {
             name: "CPY_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[CPY_ZP as usize] = &Opcode{
+        lookup[CPY_ZP as usize] = &Opcode {
             name: "CPY_ZP",
-            size: 2
+            size: 2,
         };
 
-        lookup[DEX as usize] = &Opcode{
+        lookup[DEX as usize] = &Opcode {
             name: "DEX",
-            size: 1
+            size: 1,
         };
-        lookup[DEY as usize] = &Opcode{
+        lookup[DEY as usize] = &Opcode {
             name: "DEY",
-            size: 1
+            size: 1,
         };
-        lookup[INX as usize] = &Opcode{
+        lookup[INX as usize] = &Opcode {
             name: "INX",
-            size: 1
+            size: 1,
         };
-        lookup[INY as usize] = &Opcode{
+        lookup[INY as usize] = &Opcode {
             name: "INY",
-            size: 1
+            size: 1,
         };
 
-        lookup[LDA_ABS as usize] = &Opcode{
+        lookup[LDA_ABS as usize] = &Opcode {
             name: "LDA_ABS",
-            size: 2
+            size: 2,
         };
-        lookup[LDA_IMM as usize] = &Opcode{
+        lookup[LDA_IMM as usize] = &Opcode {
             name: "LDA_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[LDX_ABS as usize] = &Opcode{
+        lookup[LDX_ABS as usize] = &Opcode {
             name: "LDA_ABX",
-            size: 2
+            size: 2,
         };
-        lookup[LDX_IMM as usize] = &Opcode{
+        lookup[LDX_IMM as usize] = &Opcode {
             name: "LDX_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[LDY_ABS as usize] = &Opcode{
+        lookup[LDY_ABS as usize] = &Opcode {
             name: "LDY_ABS",
-            size: 2
+            size: 2,
         };
-        lookup[LDY_IMM as usize] = &Opcode{
+        lookup[LDY_IMM as usize] = &Opcode {
             name: "LDY_IMM",
-            size: 2
+            size: 2,
         };
 
-        lookup[SBC_IMM as usize] = &Opcode{
+        lookup[SBC_IMM as usize] = &Opcode {
             name: "SBC_IMM",
-            size: 2
+            size: 2,
         };
-        lookup[SBC_ZP as usize] = &Opcode{
+        lookup[SBC_ZP as usize] = &Opcode {
             name: "SBC_ZP",
-            size: 2
+            size: 2,
         };
 
-        lookup[SEC as usize] = &Opcode{
+        lookup[SEC as usize] = &Opcode {
             name: "SEC",
-            size: 1
+            size: 1,
         };
 
-        lookup[STA_ABS as usize] = &Opcode{
+        lookup[STA_ABS as usize] = &Opcode {
             name: "STA_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[STA_ZP as usize] = &Opcode{
+        lookup[STA_ZP as usize] = &Opcode {
             name: "STA_ZP",
-            size: 2
+            size: 2,
         };
-        lookup[STX_ABS as usize] = &Opcode{
+        lookup[STX_ABS as usize] = &Opcode {
             name: "STX_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[STX_ZP as usize] = &Opcode{
+        lookup[STX_ZP as usize] = &Opcode {
             name: "STX_ZP",
-            size: 2
+            size: 2,
         };
-        lookup[STY_ABS as usize] = &Opcode{
+        lookup[STY_ABS as usize] = &Opcode {
             name: "STY_ABS",
-            size: 3
+            size: 3,
         };
-        lookup[STY_ZP as usize] = &Opcode{
+        lookup[STY_ZP as usize] = &Opcode {
             name: "STY_ZP",
-            size: 2
+            size: 2,
         };
 
-        lookup[TAX as usize] = &Opcode{
+        lookup[TAX as usize] = &Opcode {
             name: "TAX",
-            size: 1
+            size: 1,
         };
-        lookup[TXA as usize] = &Opcode{
+        lookup[TXA as usize] = &Opcode {
             name: "TXA",
-            size: 1
+            size: 1,
         };
-        lookup[TAY as usize] = &Opcode{
+        lookup[TAY as usize] = &Opcode {
             name: "TAY",
-            size: 1
+            size: 1,
         };
-        lookup[TYA as usize] = &Opcode{
+        lookup[TYA as usize] = &Opcode {
             name: "TYA",
-            size: 1
+            size: 1,
         };
 
-        lookup[TSX as usize] = &Opcode{
+        lookup[TSX as usize] = &Opcode {
             name: "TSX",
-            size: 1
+            size: 1,
         };
-        lookup[TXS as usize] = &Opcode{
+        lookup[TXS as usize] = &Opcode {
             name: "TXS",
-            size: 1
+            size: 1,
         };
 
-        Lookup{
-            opcodes: lookup
-        }
+        Lookup { opcodes: lookup }
     }
 
     pub fn name(&self, opcode: u8) -> &str {

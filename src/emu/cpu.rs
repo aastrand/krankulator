@@ -18,11 +18,15 @@ pub struct Cpu {
 }
 
 impl Cpu {
-
     pub fn new() -> Cpu {
-        Cpu{pc: CODE_START_ADDR,
-            a: 0, x: 0, y: 0, sp: 0,
-            status: 0}
+        Cpu {
+            pc: CODE_START_ADDR,
+            a: 0,
+            x: 0,
+            y: 0,
+            sp: 0,
+            status: 0,
+        }
     }
 
     pub fn carry_flag(&self) -> bool {
@@ -63,7 +67,7 @@ impl Cpu {
         let value: u8 = value as u8;
 
         // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        if (operand^value)&(self.a^value)&0x80 != 0 {
+        if (operand ^ value) & (self.a ^ value) & 0x80 != 0 {
             self.set_status_flag(OVERFLOW_BIT);
         } else {
             self.clear_status_flag(OVERFLOW_BIT);
@@ -94,7 +98,7 @@ impl Cpu {
         };
 
         // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        if ((255-operand)^value as u8)&((self.a)^value as u8)&0x80 != 0 {
+        if ((255 - operand) ^ value as u8) & ((self.a) ^ value as u8) & 0x80 != 0 {
             self.set_status_flag(OVERFLOW_BIT);
         } else {
             self.clear_status_flag(OVERFLOW_BIT);
@@ -144,7 +148,6 @@ impl Cpu {
             self.set_status_flag(NEGATIVE_BIT);
         }
     }
-
 }
 
 #[cfg(test)]

@@ -17,8 +17,8 @@ fn main() {
             let mut emu: emu::Emulator = emu::Emulator::new();
             emu.install_rom(util::read_code_ascii(&args[1]));
             emu.run();
-        },
-        _ => help()
+        }
+        _ => help(),
     }
 }
 
@@ -156,7 +156,9 @@ mod tests {
     #[test]
     fn test_take_all_branches() {
         let mut emu: emu::Emulator = emu::Emulator::new();
-        emu.install_rom(util::read_code_ascii(&String::from("input/take_all_branches")));
+        emu.install_rom(util::read_code_ascii(&String::from(
+            "input/take_all_branches",
+        )));
         emu.run();
 
         assert_eq!(emu.cpu.x, 8);
