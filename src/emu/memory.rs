@@ -25,3 +25,40 @@ impl Memory {
         self.ram[self.ram[addr as usize] as usize]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_16b_addr() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x11;
+        memory.ram[0x2002] = 0x47;
+
+        let value = memory.get_16b_addr(0x2000);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_value_at_addr() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x11;
+
+        let value = memory.value_at_addr(0x2001);
+
+        assert_eq!(value, 0x11);
+    }
+
+    #[test]
+    fn test_indirect_value_at_addr() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x11;
+        memory.ram[0x11] = 0x47;
+
+        let value = memory.indirect_value_at_addr(0x2001);
+
+        assert_eq!(value, 0x47);
+    }
+}
