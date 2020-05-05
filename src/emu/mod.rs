@@ -44,6 +44,13 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 },
+                opcodes::BEQ => {
+                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    logdata.push(operand as u16);
+                    if self.cpu.zero_flag() {
+                        self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    }
+                },
                 opcodes::BNE => {
                     let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);

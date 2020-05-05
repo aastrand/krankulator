@@ -119,4 +119,28 @@ mod tests {
         assert_eq!(emu.cpu.carry_flag(), true);
         assert_eq!(emu.cpu.negative_flag(), false);
     }
+
+    #[test]
+    fn test_bne() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/bne")));
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 3);
+        assert_eq!(emu.mem.ram[0x0201], 3);
+        assert_eq!(emu.mem.ram[0x0200], 3);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
+    fn test_beq() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code(&String::from("input/beq")));
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 1);
+        assert_eq!(emu.mem.ram[0x0201], 1);
+        assert_eq!(emu.mem.ram[0x0200], 1);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
 }

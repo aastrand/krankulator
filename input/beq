@@ -1,0 +1,10 @@
+;LDX #$05
+;decrement:
+;DEX
+;DEX
+;STX $0200
+;CPX #$03
+;BEQ decrement
+;STX $0201
+;BRK
+a2 05 ca ca 8e 00 02 e0 03 f0 f7 8e 01 02 00 
