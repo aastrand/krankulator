@@ -46,6 +46,9 @@ pub const DEY: u8 = 0x88;
 pub const JMP_ABS: u8 = 0x4c;
 pub const JMP_IND: u8 = 0x6c;
 
+pub const JSR: u8 = 0x20;
+pub const RTS: u8 = 0x60;
+
 pub const LDA_ABS: u8 = 0xad;
 pub const LDA_ABX: u8 = 0xbd;
 pub const LDA_ABY: u8 = 0xb9;
@@ -233,6 +236,15 @@ impl Lookup {
         lookup[JMP_IND as usize] = &Opcode {
             name: "JMP_IND",
             size: 0, // 3, but we dont want to deal with pc arithmetics
+        };
+
+        lookup[JSR as usize] = &Opcode {
+            name: "JSR",
+            size: 0, // 3, but we dont want to deal with pc arithmetics
+        };
+        lookup[RTS as usize] = &Opcode {
+            name: "RTS",
+            size: 0, // 1, but we dont want to deal with pc arithmetics
         };
 
         lookup[LDA_ABS as usize] = &Opcode {

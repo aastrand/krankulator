@@ -200,6 +200,32 @@ impl Emulator {
                     self.cpu.pc = operand;
                 }
 
+                opcodes::JSR => {
+                    // Jump to SubRoutine
+                    let lb: u8 = ((self.cpu.pc + 2) & 0xff) as u8;
+                    let hb: u8 = ((self.cpu.pc + 2) >> 8) as u8;
+
+                    self.mem.push_to_stack(self.cpu.sp, hb);
+                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                    self.mem.push_to_stack(self.cpu.sp, lb);
+                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    self.cpu.pc = addr;
+                }
+                opcodes::RTS => {
+                    // ReTurn from Subroutine
+                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
+                    let lb: u8 = self.mem.pull_from_stack(self.cpu.sp);
+                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
+                    let hb: u8 = self.mem.pull_from_stack(self.cpu.sp);
+
+                    let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
+                    logdata.push(addr);
+
+                    self.cpu.pc = addr;
+                }
+
                 opcodes::INX => {
                     // Increment Index X by One
                     self.cpu.x = self.cpu.x.wrapping_add(1);
@@ -689,5 +715,35 @@ mod tests {
         assert_eq!(emu.cpu.y, 0x0);
         assert_eq!(emu.cpu.sp, 0xff);
         assert_eq!(emu.cpu.status, 0x0);
+    }
+
+    #[test]
+    fn test_jsr() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::JSR;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, 0x4711);
+        assert_eq!(emu.cpu.sp, 0xfd);
+        assert_eq!(emu.mem.ram[0x1ff], 0x04);
+        assert_eq!(emu.mem.ram[0x1fe], 0x02);
+    }
+
+    #[test]
+    fn test_rts() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::RTS;
+        emu.cpu.sp = 0xfd;
+        emu.mem.ram[0x1ff] = 0x04;
+        emu.mem.ram[0x1fe] = 0x01;
+
+        emu.run();
+        assert_eq!(emu.cpu.pc, 0x0402);
+        assert_eq!(emu.cpu.sp, 0xff);
     }
 }

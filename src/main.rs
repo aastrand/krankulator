@@ -191,4 +191,16 @@ mod tests {
         assert_eq!(emu.cpu.a, 0x03);
         assert_eq!(emu.mem.ram[0x200], 0x03);
     }
+
+    #[test]
+    fn test_jsrrts() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code_ascii(&String::from("input/jsrtrs")));
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 0x15);
+        assert_eq!(emu.cpu.sp, 0xfd);
+        assert_eq!(emu.mem.ram[0x1fe], 0x08);
+        assert_eq!(emu.mem.ram[0x1ff], 0x04);
+    }
 }

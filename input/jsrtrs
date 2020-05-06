@@ -1,0 +1,17 @@
+;  JSR init
+;  JSR loop
+;  JSR end
+;
+;init:
+;  LDX #$10
+;  RTS
+;
+;loop:
+;  INX
+;  CPX #$15
+;  BNE loop
+;  RTS
+;
+;end:
+;  BRK
+20 09 04 20 0c 04 20 12 04 a2 10 60 e8 e0 15 d0 fb 60 00 
