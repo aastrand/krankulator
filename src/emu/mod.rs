@@ -185,6 +185,21 @@ impl Emulator {
                     self.cpu.check_zero(self.cpu.y);
                 }
 
+                opcodes::JMP_ABS => {
+                    // JuMP to address
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    logdata.push(addr);
+                    self.cpu.pc = addr;
+                }
+                opcodes::JMP_IND => {
+                    // JuMP to address stored in arg
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    logdata.push(addr);
+                    let operand: u16 = self.mem.get_16b_addr(addr);
+                    logdata.push(operand);
+                    self.cpu.pc = operand;
+                }
+
                 opcodes::INX => {
                     // Increment Index X by One
                     self.cpu.x = self.cpu.x.wrapping_add(1);
@@ -275,20 +290,9 @@ impl Emulator {
                     logdata.push(value as u16);
                     self.cpu.y = value;
                 }
-                opcodes::SBC_IMM => {
-                    // Subtract Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    logdata.push(operand as u16);
-                    self.cpu.sub_from_a_with_carry(operand);
-                }
-                opcodes::SBC_ZP => {
-                    // Subtract Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    logdata.push(operand as u16);
-                    self.cpu.sub_from_a_with_carry(operand);
-                }
-                opcodes::SEC => {
-                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+
+                opcodes::NOP => {
+                    // No operation
                 }
 
                 opcodes::PHA => {
@@ -316,6 +320,22 @@ impl Emulator {
                     }
                     self.cpu.sp = self.cpu.sp.wrapping_add(1);
                     self.cpu.status = self.mem.pull_from_stack(self.cpu.sp);
+                }
+
+                opcodes::SBC_IMM => {
+                    // Subtract Memory to Accumulator with Carry
+                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SBC_ZP => {
+                    // Subtract Memory to Accumulator with Carry
+                    let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SEC => {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
                 }
 
                 opcodes::STA_ABS => {
@@ -398,7 +418,7 @@ impl Emulator {
             self.log(opcode, logdata);
 
             let size: u16 = self.lookup.size(opcode);
-            if size == 0 {
+            if size > 3 {
                 panic!(
                     "Opcode 0x{:x} missing from lookup table, see opcode.rs",
                     opcode
@@ -627,5 +647,47 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.mem.ram[0x4711], 0x42);
+    }
+
+    #[test]
+    fn test_jmp_abs() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::JMP_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, 0x4711);
+    }
+
+    #[test]
+    fn test_jmp_ind() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::JMP_IND;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0x42;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, 0x42);
+    }
+
+    #[test]
+    fn test_nop() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::NOP;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, start as u16 + 1);
+        assert_eq!(emu.cpu.a, 0x0);
+        assert_eq!(emu.cpu.x, 0x0);
+        assert_eq!(emu.cpu.y, 0x0);
+        assert_eq!(emu.cpu.sp, 0xff);
+        assert_eq!(emu.cpu.status, 0x0);
     }
 }

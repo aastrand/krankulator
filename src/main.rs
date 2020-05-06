@@ -181,4 +181,14 @@ mod tests {
             assert_eq!(emu.mem.ram[(0x21f - sp) as usize], sp as u8);
         }
     }
+
+    #[test]
+    fn test_jmp() {
+        let mut emu: emu::Emulator = emu::Emulator::new();
+        emu.install_rom(util::read_code_ascii(&String::from("input/jmp")));
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x03);
+        assert_eq!(emu.mem.ram[0x200], 0x03);
+    }
 }

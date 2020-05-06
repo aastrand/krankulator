@@ -1,0 +1,8 @@
+;  LDA #$03
+;  JMP there
+;  LDA #$00
+;  NOP
+;  NOP
+;there:
+;  STA $0200
+a9 03 4c 09 04 a9 00 ea ea 8d 00 02 

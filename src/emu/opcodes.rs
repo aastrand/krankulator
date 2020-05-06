@@ -43,6 +43,9 @@ pub const INY: u8 = 0xc8;
 pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
 
+pub const JMP_ABS: u8 = 0x4c;
+pub const JMP_IND: u8 = 0x6c;
+
 pub const LDA_ABS: u8 = 0xad;
 pub const LDA_ABX: u8 = 0xbd;
 pub const LDA_ABY: u8 = 0xb9;
@@ -79,6 +82,8 @@ pub const CLV: u8 = 0xb8;
 pub const CLD: u8 = 0xd8;
 #[allow(dead_code)]
 
+pub const NOP: u8 = 0xea;
+
 pub const PHA: u8 = 0x48;
 pub const PLA: u8 = 0x68;
 pub const PHP: u8 = 0x08;
@@ -114,7 +119,7 @@ pub struct Lookup {
 
 static _SENTINEL: Opcode = Opcode {
     name: "OPCODE MISSING IN LOOKUP SEE opcodes.rs",
-    size: 0,
+    size: 0xffff,
 };
 
 impl Lookup {
@@ -221,6 +226,15 @@ impl Lookup {
             size: 1,
         };
 
+        lookup[JMP_ABS as usize] = &Opcode {
+            name: "JMP_ABS",
+            size: 0, // 3, but we dont want to deal with pc arithmetics
+        };
+        lookup[JMP_IND as usize] = &Opcode {
+            name: "JMP_IND",
+            size: 0, // 3, but we dont want to deal with pc arithmetics
+        };
+
         lookup[LDA_ABS as usize] = &Opcode {
             name: "LDA_ABS",
             size: 3,
@@ -265,6 +279,11 @@ impl Lookup {
         lookup[LDY_IMM as usize] = &Opcode {
             name: "LDY_IMM",
             size: 2,
+        };
+
+        lookup[NOP as usize] = &Opcode {
+            name: "NOP",
+            size: 1,
         };
 
         lookup[PHA as usize] = &Opcode {
