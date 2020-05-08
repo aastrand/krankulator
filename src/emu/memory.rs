@@ -1,7 +1,7 @@
 use std::boxed::Box;
 
 pub const MAX_RAM_SIZE: usize = 65536;
-pub const CODE_START_ADDR: u16 = 0x400;
+pub const CODE_START_ADDR: u16 = 0x600;
 pub const STACK_BASE_OFFSET: u16 = 0x100;
 pub const STACK_START_ADDR: u8 = 0xff;
 //pub const STACK_END_ADDR: u16 = 0xff;

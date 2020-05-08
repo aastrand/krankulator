@@ -201,6 +201,6 @@ mod tests {
         assert_eq!(emu.cpu.x, 0x15);
         assert_eq!(emu.cpu.sp, 0xfd);
         assert_eq!(emu.mem.ram[0x1fe], 0x08);
-        assert_eq!(emu.mem.ram[0x1ff], 0x04);
+        assert_eq!(emu.mem.ram[0x1ff], 0x06);
     }
 }

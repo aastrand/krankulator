@@ -26,12 +26,35 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
+        let mut count: u64 = 0;
+
         loop {
             let opcode = self.mem.ram[self.cpu.pc as usize];
             let mut logdata: Vec<u16> = Vec::<u16>::new();
             logdata.push(self.cpu.pc);
 
             match opcode {
+                opcodes::AND_IMM => {
+                    // Bitwise AND with accumulator
+                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+                    self.cpu.a &= operand;
+
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
+                }
+                opcodes::AND_ZPX => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x) as u16;
+                    logdata.push(addr);
+                    self.cpu.a &= self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
+                }
+
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
@@ -43,6 +66,18 @@ impl Emulator {
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
+                }
+
+                opcodes::BIT_ZP => {
+                    // Test BITs
+                    let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+
+                    // Bits 7 and 6 of operand are transfered to bit 7 and 6 of SR (N,V);
+                    let mask: u8 = 0b1100_0000;
+                    self.cpu.status = (self.cpu.status & !mask) | (operand & mask);
+                    // The zeroflag is set to the result of operand AND accumulator.
+                    self.cpu.check_zero(self.cpu.a & operand);
                 }
 
                 opcodes::BPL => {
@@ -111,7 +146,7 @@ impl Emulator {
                 }
 
                 opcodes::BRK => {
-                    println!("BRK");
+                    println!("BRK after {} instructions", count);
                     break;
                 }
                 opcodes::CLC => {
@@ -226,6 +261,18 @@ impl Emulator {
                     self.cpu.pc = addr;
                 }
 
+                opcodes::INC_ZP => {
+                    // INCrement memory
+                    let addr: u16 = self.cpu.pc + 1;
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    let value: u8 = operand.wrapping_add(1);
+                    self.mem.ram[addr as usize] = value;
+
+                    self.cpu.check_negative(value);
+                    self.cpu.check_zero(value);
+                }
+
                 opcodes::INX => {
                     // Increment Index X by One
                     self.cpu.x = self.cpu.x.wrapping_add(1);
@@ -306,6 +353,11 @@ impl Emulator {
                     logdata.push(value as u16);
                     self.cpu.x = value;
                 }
+                opcodes::LDX_ZP => {
+                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    logdata.push(addr);
+                    self.cpu.x = self.mem.value_at_addr(addr);
+                }
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
@@ -317,8 +369,32 @@ impl Emulator {
                     self.cpu.y = value;
                 }
 
+                opcodes::LSR => {
+                    // Logical Shift Right
+                    // LSR shifts all bits right one position.
+                    // 0 is shifted into bit 7 and the original bit 0 is shifted into the Carry.
+                    let b0: u8 = self.cpu.a & 0b0000_0001;
+                    self.cpu.a = self.cpu.a >> 1;
+
+                    if b0 == 1 {
+                        self.cpu.set_status_flag(cpu::CARRY_BIT);
+                    } else {
+                        self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                    }
+                }
+
                 opcodes::NOP => {
                     // No operation
+                }
+
+                opcodes::ORA_IMM => {
+                    // Bitwise OR with Accumulator
+                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+                    self.cpu.a |= operand;
+
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
 
                 opcodes::PHA => {
@@ -374,6 +450,14 @@ impl Emulator {
                     logdata.push(addr);
                     self.mem.ram[addr as usize] = self.cpu.a;
                 }
+                opcodes::STA_ZPX => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x) as u16;
+                    logdata.push(addr);
+                    self.mem.ram[addr as usize] = self.cpu.a;
+                }
                 opcodes::STA_ABY => {
                     let addr: u16 = self
                         .mem
@@ -382,6 +466,22 @@ impl Emulator {
                     logdata.push(addr);
                     self.mem.ram[(addr) as usize] = self.cpu.a;
                 }
+                opcodes::STA_INX => {
+                    let value: u8 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x);
+                    let addr: u16 = self.mem.get_16b_addr(value as u16);
+                    logdata.push(addr);
+                    self.mem.ram[(addr) as usize] = self.cpu.a;
+                }
+                opcodes::STA_INY => {
+                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
+                    logdata.push(addr);
+                    self.mem.ram[(addr) as usize] = self.cpu.a;
+                }
+
                 opcodes::STX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
@@ -451,6 +551,7 @@ impl Emulator {
                 );
             }
             self.cpu.pc += size;
+            count = count + 1;
         }
     }
 
@@ -729,7 +830,7 @@ mod tests {
 
         assert_eq!(emu.cpu.pc, 0x4711);
         assert_eq!(emu.cpu.sp, 0xfd);
-        assert_eq!(emu.mem.ram[0x1ff], 0x04);
+        assert_eq!(emu.mem.ram[0x1ff], (memory::CODE_START_ADDR >> 8) as u8);
         assert_eq!(emu.mem.ram[0x1fe], 0x02);
     }
 
@@ -739,11 +840,56 @@ mod tests {
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::RTS;
         emu.cpu.sp = 0xfd;
-        emu.mem.ram[0x1ff] = 0x04;
+        emu.mem.ram[0x1ff] = (memory::CODE_START_ADDR >> 8) as u8;
         emu.mem.ram[0x1fe] = 0x01;
 
         emu.run();
-        assert_eq!(emu.cpu.pc, 0x0402);
+        assert_eq!(emu.cpu.pc, 0x0602);
         assert_eq!(emu.cpu.sp, 0xff);
+    }
+
+    #[test]
+    fn test_and() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::AND_IMM;
+        emu.mem.ram[start + 1] = 0b1000_0000;
+        emu.cpu.a = 0b1000_0001;
+        emu.run();
+        assert_eq!(emu.cpu.a, 128);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[start] = opcodes::AND_IMM;
+        emu.mem.ram[start + 1] = 0;
+        emu.run();
+        assert_eq!(emu.cpu.a, 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
+    fn test_bit_zp() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::BIT_ZP;
+        emu.mem.ram[start + 1] = 0x01;
+        emu.mem.ram[0x01] = 0b1100_0000;
+        emu.cpu.a = 0b1000_0001;
+        emu.run();
+
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.overflow_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[0x01] = 0b0100_0000;
+        emu.cpu.a = 0b1000_0001;
+        emu.run();
+
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.overflow_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), true);
     }
 }

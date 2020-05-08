@@ -1,3 +1,18 @@
+pub const AND_IMM: u8 = 0x29;
+#[allow(dead_code)]
+pub const AND_ZP: u8 = 0x25;
+pub const AND_ZPX: u8 = 0x35;
+#[allow(dead_code)]
+pub const AND_ABS: u8 = 0x2d;
+#[allow(dead_code)]
+pub const AND_ABX: u8 = 0x3d;
+#[allow(dead_code)]
+pub const AND_ABY: u8 = 0x39;
+#[allow(dead_code)]
+pub const AND_INX: u8 = 0x21;
+#[allow(dead_code)]
+pub const AND_INY: u8 = 0x31;
+
 pub const ADC_IMM: u8 = 0x69;
 pub const ADC_ZP: u8 = 0x65;
 
@@ -24,6 +39,10 @@ pub const BCS: u8 = 0xb0;
 pub const BNE: u8 = 0xd0;
 pub const BEQ: u8 = 0xf0;
 
+pub const BIT_ZP: u8 = 0x24;
+#[allow(dead_code)]
+pub const BIT_ABS: u8 = 0x2c;
+
 pub const BRK: u8 = 0x0;
 
 pub const CMP_ABS: u8 = 0xcd;
@@ -43,6 +62,14 @@ pub const INY: u8 = 0xc8;
 pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
 
+pub const INC_ZP: u8 = 0xe6;
+#[allow(dead_code)]
+pub const INC_ZPX: u8 = 0xf6;
+#[allow(dead_code)]
+pub const INC_ABS: u8 = 0xee;
+#[allow(dead_code)]
+pub const INC_ABX: u8 = 0xfe;
+
 pub const JMP_ABS: u8 = 0x4c;
 pub const JMP_IND: u8 = 0x6c;
 
@@ -60,8 +87,19 @@ pub const LDA_ZPX: u8 = 0xb5;
 
 pub const LDX_ABS: u8 = 0xae;
 pub const LDX_IMM: u8 = 0xa2;
+pub const LDX_ZP: u8 = 0xa6;
 pub const LDY_ABS: u8 = 0xac;
 pub const LDY_IMM: u8 = 0xa0;
+
+pub const LSR: u8 = 0x4a;
+#[allow(dead_code)]
+pub const LSR_ZP: u8 = 0x46;
+#[allow(dead_code)]
+pub const LSR_ZPX: u8 = 0x56;
+#[allow(dead_code)]
+pub const LSR_ABS: u8 = 0x4e;
+#[allow(dead_code)]
+pub const LSR_ABX: u8 = 0x5e;
 
 /*
 MNEMONIC                       HEX
@@ -83,20 +121,42 @@ pub const SEI: u8 = 0x78;
 pub const CLV: u8 = 0xb8;
 #[allow(dead_code)]
 pub const CLD: u8 = 0xd8;
-#[allow(dead_code)]
 
 pub const NOP: u8 = 0xea;
+
+pub const ORA_IMM: u8 = 0x09;
+#[allow(dead_code)]
+pub const ORA_ZP: u8 = 0x05;
+#[allow(dead_code)]
+pub const ORA_ZPX: u8 = 0x15;
+#[allow(dead_code)]
+pub const ORA_ABS: u8 = 0x0d;
+#[allow(dead_code)]
+pub const ORA_ABX: u8 = 0x1d;
+#[allow(dead_code)]
+pub const ORA_ABY: u8 = 0x19;
+#[allow(dead_code)]
+pub const ORA_INX: u8 = 0x01;
+#[allow(dead_code)]
+pub const ORA_INY: u8 = 0x11;
 
 pub const PHA: u8 = 0x48;
 pub const PLA: u8 = 0x68;
 pub const PHP: u8 = 0x08;
 pub const PLP: u8 = 0x28;
 
-//pub const SED: u8 = 0xf8;
+// Not planning on supporting this if I can get away with it
+#[allow(dead_code)]
+pub const SED: u8 = 0xf8;
 
-pub const STA_ABS: u8 = 0x8d;
 pub const STA_ZP: u8 = 0x85;
+pub const STA_ZPX: u8 = 0x95;
+pub const STA_ABS: u8 = 0x8d;
+#[allow(dead_code)]
+pub const STA_ABX: u8 = 0x9d;
 pub const STA_ABY: u8 = 0x99;
+pub const STA_INX: u8 = 0x81;
+pub const STA_INY: u8 = 0x91;
 
 pub const STX_ABS: u8 = 0x8e;
 pub const STX_ZP: u8 = 0x86;
@@ -128,12 +188,25 @@ static _SENTINEL: Opcode = Opcode {
 impl Lookup {
     pub fn new() -> Lookup {
         let mut lookup: [&'static Opcode; 256] = [&_SENTINEL; 256];
+        lookup[AND_IMM as usize] = &Opcode {
+            name: "AND_IMM",
+            size: 2,
+        };
+        lookup[AND_ZPX as usize] = &Opcode {
+            name: "AND_ZPX",
+            size: 2,
+        };
         lookup[ADC_IMM as usize] = &Opcode {
             name: "ADC_IMM",
             size: 2,
         };
         lookup[ADC_ZP as usize] = &Opcode {
             name: "ADC_ZP",
+            size: 2,
+        };
+
+        lookup[BIT_ZP as usize] = &Opcode {
+            name: "BIT_ZP",
             size: 2,
         };
 
@@ -220,6 +293,7 @@ impl Lookup {
             name: "DEY",
             size: 1,
         };
+
         lookup[INX as usize] = &Opcode {
             name: "INX",
             size: 1,
@@ -227,6 +301,11 @@ impl Lookup {
         lookup[INY as usize] = &Opcode {
             name: "INY",
             size: 1,
+        };
+
+        lookup[INC_ZP as usize] = &Opcode {
+            name: "INC_ZP",
+            size: 2,
         };
 
         lookup[JMP_ABS as usize] = &Opcode {
@@ -284,6 +363,14 @@ impl Lookup {
             name: "LDX_IMM",
             size: 2,
         };
+        lookup[LDX_ABS as usize] = &Opcode {
+            name: "LDX_ABS",
+            size: 2,
+        };
+        lookup[LDX_ZP as usize] = &Opcode {
+            name: "LDX_ZP",
+            size: 2,
+        };
         lookup[LDY_ABS as usize] = &Opcode {
             name: "LDY_ABS",
             size: 2,
@@ -293,9 +380,19 @@ impl Lookup {
             size: 2,
         };
 
+        lookup[LSR as usize] = &Opcode {
+            name: "LSR",
+            size: 1,
+        };
+
         lookup[NOP as usize] = &Opcode {
             name: "NOP",
             size: 1,
+        };
+
+        lookup[ORA_IMM as usize] = &Opcode {
+            name: "ORA_IMM",
+            size: 2,
         };
 
         lookup[PHA as usize] = &Opcode {
@@ -337,10 +434,23 @@ impl Lookup {
             name: "STA_ZP",
             size: 2,
         };
+        lookup[STA_ZPX as usize] = &Opcode {
+            name: "STA_ZPX",
+            size: 2,
+        };
         lookup[STA_ABY as usize] = &Opcode {
             name: "STA_ABY",
             size: 3,
         };
+        lookup[STA_INX as usize] = &Opcode {
+            name: "STA_INX",
+            size: 2,
+        };
+        lookup[STA_INY as usize] = &Opcode {
+            name: "STA_INY",
+            size: 2,
+        };
+
         lookup[STX_ABS as usize] = &Opcode {
             name: "STX_ABS",
             size: 3,

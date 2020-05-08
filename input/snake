@@ -1,0 +1,165 @@
+; snake game
+20 06 06  ;JSR $0606
+20 38 06  ;JSR $0638
+20 0d 06  ;JSR $060d
+20 2a 06  ;JSR $062a
+60        ;RTS 
+a9 02     ;LDA #$02
+85 02     ;STA $02
+a9 04     ;LDA #$04
+85 03     ;STA $03
+a9 11     ;LDA #$11
+85 10     ;STA $10
+a9 10     ;LDA #$10
+85 12     ;STA $12
+a9 0f     ;LDA #$0f
+85 14     ;STA $14
+a9 04     ;LDA #$04
+85 11     ;STA $11
+85 13     ;STA $13
+85 15     ;STA $15
+60        ;RTS 
+a5 fe     ;LDA $fe
+85 00     ;STA $00
+a5 fe     ;LDA $fe
+29 03     ;AND #$03
+18        ;CLC 
+69 02     ;ADC #$02
+85 01     ;STA $01
+60        ;RTS 
+20 4d 06  ;JSR $064d
+20 8d 06  ;JSR $068d
+20 c3 06  ;JSR $06c3
+20 19 07  ;JSR $0719
+20 20 07  ;JSR $0720
+20 2d 07  ;JSR $072d
+4c 38 06  ;JMP $0638
+a5 ff     ;LDA $ff
+c9 77     ;CMP #$77
+f0 0d     ;BEQ $0660
+c9 64     ;CMP #$64
+f0 14     ;BEQ $066b
+c9 73     ;CMP #$73
+f0 1b     ;BEQ $0676
+c9 61     ;CMP #$61
+f0 22     ;BEQ $0681
+60        ;RTS 
+a9 04     ;LDA #$04
+24 02     ;BIT $02
+d0 26     ;BNE $068c
+a9 01     ;LDA #$01
+85 02     ;STA $02
+60        ;RTS 
+a9 08     ;LDA #$08
+24 02     ;BIT $02
+d0 1b     ;BNE $068c
+a9 02     ;LDA #$02
+85 02     ;STA $02
+60        ;RTS 
+a9 01     ;LDA #$01
+24 02     ;BIT $02
+d0 10     ;BNE $068c
+a9 04     ;LDA #$04
+85 02     ;STA $02
+60        ;RTS 
+a9 02     ;LDA #$02
+24 02     ;BIT $02
+d0 05     ;BNE $068c
+a9 08     ;LDA #$08
+85 02     ;STA $02
+60        ;RTS 
+60        ;RTS 
+20 94 06  ;JSR $0694
+20 a8 06  ;JSR $06a8
+60        ;RTS 
+a5 00     ;LDA $00
+c5 10     ;CMP $10
+d0 0d     ;BNE $06a7
+a5 01     ;LDA $01
+c5 11     ;CMP $11
+d0 07     ;BNE $06a7
+e6 03     ;INC $03
+e6 03     ;INC $03
+20 2a 06  ;JSR $062a
+60        ;RTS 
+a2 02     ;LDX #$02
+b5 10     ;LDA $10,X
+c5 10     ;CMP $10
+d0 06     ;BNE $06b6
+b5 11     ;LDA $11,X
+c5 11     ;CMP $11
+f0 09     ;BEQ $06bf
+e8        ;INX 
+e8        ;INX 
+e4 03     ;CPX $03
+f0 06     ;BEQ $06c2
+4c aa 06  ;JMP $06aa
+4c 35 07  ;JMP $0735
+60        ;RTS 
+a6 03     ;LDX $03
+ca        ;DEX 
+8a        ;TXA 
+b5 10     ;LDA $10,X
+95 12     ;STA $12,X
+ca        ;DEX 
+10 f9     ;BPL $06c7
+a5 02     ;LDA $02
+4a        ;LSR A
+b0 09     ;BCS $06dc
+4a        ;LSR A
+b0 19     ;BCS $06ef
+4a        ;LSR A
+b0 1f     ;BCS $06f8
+4a        ;LSR A
+b0 2f     ;BCS $070b
+a5 10     ;LDA $10
+38        ;SEC 
+e9 20     ;SBC #$20
+85 10     ;STA $10
+90 01     ;BCC $06e6
+60        ;RTS 
+c6 11     ;DEC $11
+a9 01     ;LDA #$01
+c5 11     ;CMP $11
+f0 28     ;BEQ $0716
+60        ;RTS 
+e6 10     ;INC $10
+a9 1f     ;LDA #$1f
+24 10     ;BIT $10
+f0 1f     ;BEQ $0716
+60        ;RTS 
+a5 10     ;LDA $10
+18        ;CLC 
+69 20     ;ADC #$20
+85 10     ;STA $10
+b0 01     ;BCS $0702
+60        ;RTS 
+e6 11     ;INC $11
+a9 06    ;LDA #$06
+c5 11     ;CMP $11
+f0 0c     ;BEQ $0716
+60        ;RTS 
+c6 10     ;DEC $10
+a5 10     ;LDA $10
+29 1f     ;AND #$1f
+c9 1f     ;CMP #$1f
+f0 01     ;BEQ $0716
+60        ;RTS 
+4c 35 07  ;JMP $0735
+a0 00     ;LDY #$00
+a5 fe     ;LDA $fe
+91 00     ;STA ($00),Y
+60        ;RTS 
+a6 03     ;LDX $03
+a9 00     ;LDA #$00
+81 10     ;STA ($10,X)
+a2 00     ;LDX #$00
+a9 01     ;LDA #$01
+81 10     ;STA ($10,X)
+60        ;RTS 
+a2 00     ;LDX #$00
+ea        ;NOP 
+ea        ;NOP 
+ca        ;DEX 
+d0 fb     ;BNE $072f
+60        ;RTS 
