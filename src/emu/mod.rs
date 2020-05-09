@@ -2,10 +2,16 @@ pub mod cpu;
 pub mod memory;
 pub mod opcodes;
 
+use pancurses;
+use rand::Rng;
+use std::{thread, time};
+
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: memory::Memory,
-    pub lookup: opcodes::Lookup,
+    lookup: opcodes::Lookup,
+    window: pancurses::Window,
+    rng: rand::rngs::ThreadRng,
 }
 
 impl Emulator {
@@ -14,6 +20,8 @@ impl Emulator {
             cpu: cpu::Cpu::new(),
             mem: memory::Memory::new(),
             lookup: opcodes::Lookup::new(),
+            window: pancurses::initscr(),
+            rng: rand::thread_rng(),
         }
     }
 
@@ -27,8 +35,11 @@ impl Emulator {
 
     pub fn run(&mut self) {
         let mut count: u64 = 0;
+        self.window.timeout(0);
 
         loop {
+            //self.window.erase();
+
             let opcode = self.mem.ram[self.cpu.pc as usize];
             let mut logdata: Vec<u16> = Vec::<u16>::new();
             logdata.push(self.cpu.pc);
@@ -146,7 +157,9 @@ impl Emulator {
                 }
 
                 opcodes::BRK => {
-                    println!("BRK after {} instructions", count);
+                    self.window
+                        .mvaddstr(1, 0, format!("BRK after {} instructions", count));
+                    pancurses::endwin();
                     break;
                 }
                 opcodes::CLC => {
@@ -203,6 +216,18 @@ impl Emulator {
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
+                }
+
+                opcodes::DEC_ZP => {
+                    // DECrement memory
+                    let addr: u16 = self.cpu.pc + 1;
+                    let operand: u8 = self.mem.indirect_value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    let value: u8 = operand.wrapping_sub(1);
+                    self.mem.store_indirect(addr, value);
+
+                    self.cpu.check_negative(value);
+                    self.cpu.check_zero(value);
                 }
 
                 opcodes::DEX => {
@@ -479,7 +504,7 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_INY => {
-                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let value: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
                     let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
@@ -545,9 +570,11 @@ impl Emulator {
             }
 
             self.log(opcode, logdata);
+            self.handle_mappings();
 
             let size: u16 = self.lookup.size(opcode);
             if size > 3 {
+                pancurses::endwin();
                 panic!(
                     "Opcode 0x{:x} missing from lookup table, see opcode.rs",
                     opcode
@@ -555,6 +582,7 @@ impl Emulator {
             }
             self.cpu.pc += size;
             count = count + 1;
+            thread::sleep(time::Duration::from_micros(25));
         }
     }
 
@@ -586,7 +614,56 @@ impl Emulator {
             self.cpu.carry_flag() as i32
         ));
 
-        println!("{}", logline);
+        self.window.mvaddstr(0, 0, logline);
+    }
+
+    fn handle_mappings(&mut self) {
+        self.input();
+        self.rng();
+        self.display();
+    }
+
+    fn input(&mut self) {
+        // TODO: Map more input
+        match self.window.getch() {
+            Some(pancurses::Input::Character(c)) => {
+                self.mem.ram[0xff] = c.to_ascii_lowercase() as u8;
+            }
+            _ => {}
+        }
+        self.window.refresh();
+    }
+
+    fn rng(&mut self) {
+        self.mem.ram[0xfe] = self.rng.gen();
+    }
+
+    fn display(&self) {
+        // Display is stored as a 32x32 screen from 0x200 and onwards
+        let base: u16 = 0x0200;
+        let offset: i32 = 3;
+        self.window.attron(pancurses::A_REVERSE);
+
+        // Apple location is stored at 0x0100
+        let apple_addr: u16 = self.mem.get_16b_addr(0x00);
+        for y in 0..31 {
+            for x in 0..31 {
+                let addr: u16 = base + (y * 32) + x;
+                let chr: char = if addr == apple_addr {
+                    'O'
+                } else {
+                    let value: u8 = self.mem.ram[addr as usize];
+                    if value == 1 {
+                        '#'
+                    } else {
+                        ' '
+                    }
+                };
+                self.window.mvaddch(offset + y as i32, x as i32, chr);
+            }
+            //self.window.mvaddstr(offset + y as i32, 0, line);
+        }
+        self.window.attroff(pancurses::A_REVERSE);
     }
 }
 
@@ -680,6 +757,27 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), true);
     }
 
+    #[test]
+    fn test_dec_zp() {
+        let mut emu: Emulator = Emulator::new();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::DEC_ZP;
+        emu.mem.ram[start + 1] = 0x01;
+        emu.mem.ram[0x01] = 0x00;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x01], 0xff);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[0x01] = 1;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x01], 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
     #[test]
     fn test_inc_zp() {
         let mut emu: Emulator = Emulator::new();
@@ -1025,10 +1123,11 @@ mod tests {
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::STA_INY;
         emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[0x10] = 0x41;
 
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.ram[0x42], 0x42);
     }
 
     #[test]

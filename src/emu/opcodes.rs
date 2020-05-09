@@ -59,6 +59,15 @@ pub const CPY_ZP: u8 = 0xc4;
 
 pub const INX: u8 = 0xe8;
 pub const INY: u8 = 0xc8;
+
+pub const DEC_ZP: u8 = 0xc6;
+#[allow(dead_code)]
+pub const DEC_ZPX: u8 = 0xd6;
+#[allow(dead_code)]
+pub const DEC_ABS: u8 = 0xce;
+#[allow(dead_code)]
+pub const DEC_ABX: u8 = 0xde;
+
 pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
 
@@ -282,6 +291,11 @@ impl Lookup {
         };
         lookup[CPY_ZP as usize] = &Opcode {
             name: "CPY_ZP",
+            size: 2,
+        };
+
+        lookup[DEC_ZP as usize] = &Opcode {
+            name: "DEC_ZP",
             size: 2,
         };
 
