@@ -37,6 +37,13 @@ impl Memory {
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
         self.ram[(STACK_BASE_OFFSET + (u16::from(sp) & 0xff)) as usize]
     }
+
+    pub fn store(&mut self, addr: u16, value: u8) {
+        self.ram[addr as usize] = value;
+    }
+    pub fn store_indirect(&mut self, addr: u16, value: u8) {
+        self.ram[self.ram[addr as usize] as usize] = value;
+    }
 }
 
 #[cfg(test)]
@@ -90,5 +97,21 @@ mod tests {
         let value: u8 = memory.pull_from_stack(0xff);
 
         assert_eq!(value, 0x42);
+    }
+
+    #[test]
+    fn test_store() {
+        let mut memory: Memory = Memory::new();
+        memory.store(0x200, 0xff);
+
+        assert_eq!(memory.ram[0x200], 0xff);
+    }
+    #[test]
+    fn test_store_indirect() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x200 as usize] = 0x42;
+        memory.store_indirect(0x200, 0xff);
+
+        assert_eq!(memory.ram[0x42], 0xff);
     }
 }
