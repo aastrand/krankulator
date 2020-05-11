@@ -4,7 +4,7 @@ use std::path::Path;
 
 extern crate hex;
 
-pub fn read_code_ascii(path: &String) -> Vec<u8> {
+pub fn read_code_ascii(path: &str) -> Vec<u8> {
     if !Path::new(path).exists() {
         panic!("File does not exist: {}", path);
     }

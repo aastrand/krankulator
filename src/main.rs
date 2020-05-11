@@ -3,23 +3,23 @@ mod emu;
 
 use asm::util;
 
-use std::env;
-
-fn help() {
-    println!("Usage: krankulator <path-to-code>");
-}
+use clap::clap_app;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    match args.len() {
-        2 => {
-            let mut emu: emu::Emulator = emu::Emulator::new();
-            emu.install_rom(util::read_code_ascii(&args[1]));
-            emu.run();
-        }
-        _ => help(),
-    }
+    let matches = clap_app!(myapp =>
+        (version: "0.1")
+        (author: "Anders Å. <aastrand@gmail.com>")
+        (@arg DISPLAY: -d --display "Use a mapped display")
+        (@arg INPUT: +required "Sets the input file to use")
+    )
+    .get_matches();
+    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+        emu::Emulator::new()
+    } else {
+        emu::Emulator::new_headless()
+    };
+    emu.install_rom(util::read_code_ascii(matches.value_of("INPUT").unwrap()));
+    emu.run();
 }
 
 #[cfg(test)]
