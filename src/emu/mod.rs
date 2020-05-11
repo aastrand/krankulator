@@ -6,11 +6,107 @@ use pancurses;
 use rand::Rng;
 use std::{thread, time};
 
+trait IOHandler {
+    fn init(&mut self);
+    fn log(&self, logline: &str);
+    fn display(&self, mem: &memory::Memory);
+    fn input(&mut self, mem: &mut memory::Memory);
+    fn exit(&self, s: &str);
+}
+
+pub struct HeadlessIOHandler {}
+
+impl IOHandler for HeadlessIOHandler {
+    fn init(&mut self) {}
+
+    fn log(&self, logline: &str) {
+        println!("{}", logline);
+    }
+
+    #[allow(unused_variables)]
+    fn input(&mut self, mem: &mut memory::Memory) {
+        // TOOO
+    }
+
+    #[allow(unused_variables)]
+    fn display(&self, mem: &memory::Memory) {}
+
+    fn exit(&self, s: &str) {
+        println!("{}", s);
+    }
+}
+
+pub struct CursesIOHandler {
+    window: pancurses::Window,
+}
+
+impl CursesIOHandler {
+    fn new() -> CursesIOHandler {
+        CursesIOHandler {
+            window: pancurses::initscr(),
+        }
+    }
+}
+
+impl IOHandler for CursesIOHandler {
+    fn init(&mut self) {
+        self.window.timeout(0);
+    }
+
+    fn log(&self, logline: &str) {
+        self.window.mvaddstr(0, 0, logline);
+    }
+
+    fn input(&mut self, mem: &mut memory::Memory) {
+        // TODO: Map more input
+        match self.window.getch() {
+            Some(pancurses::Input::Character(c)) => {
+                mem.ram[0xff] = c.to_ascii_lowercase() as u8;
+            }
+            _ => {}
+        }
+        self.window.refresh();
+    }
+
+    fn display(&self, mem: &memory::Memory) {
+        // Display is stored as a 32x32 screen from 0x200 and onwards
+        let base: u16 = 0x0200;
+        let offset: i32 = 3;
+        self.window.attron(pancurses::A_REVERSE);
+
+        // Apple location is stored at 0x0100
+        let apple_addr: u16 = mem.get_16b_addr(0x00);
+        for y in 0..31 {
+            for x in 0..31 {
+                let addr: u16 = base + (y * 32) + x;
+                let chr: char = if addr == apple_addr {
+                    'O'
+                } else {
+                    let value: u8 = mem.ram[addr as usize];
+                    if value == 1 {
+                        '#'
+                    } else {
+                        ' '
+                    }
+                };
+                self.window.mvaddch(offset + y as i32, x as i32, chr);
+            }
+        }
+        self.window.attroff(pancurses::A_REVERSE);
+        thread::sleep(time::Duration::from_micros(10));
+    }
+
+    fn exit(&self, s: &str) {
+        self.window.mvaddstr(1, 0, s);
+        pancurses::endwin();
+    }
+}
+
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: memory::Memory,
     lookup: opcodes::Lookup,
-    window: pancurses::Window,
+    iohandler: Box<dyn IOHandler>,
     rng: rand::rngs::ThreadRng,
 }
 
@@ -20,7 +116,18 @@ impl Emulator {
             cpu: cpu::Cpu::new(),
             mem: memory::Memory::new(),
             lookup: opcodes::Lookup::new(),
-            window: pancurses::initscr(),
+            iohandler: Box::new(CursesIOHandler::new()),
+            rng: rand::thread_rng(),
+        }
+    }
+
+    #[allow(dead_code)] // Only used by tests
+    pub fn new_headless() -> Emulator {
+        Emulator {
+            cpu: cpu::Cpu::new(),
+            mem: memory::Memory::new(),
+            lookup: opcodes::Lookup::new(),
+            iohandler: Box::new(HeadlessIOHandler {}),
             rng: rand::thread_rng(),
         }
     }
@@ -35,11 +142,10 @@ impl Emulator {
 
     pub fn run(&mut self) {
         let mut count: u64 = 0;
-        self.window.timeout(0);
+
+        self.iohandler.init();
 
         loop {
-            //self.window.erase();
-
             let opcode = self.mem.ram[self.cpu.pc as usize];
             let mut logdata: Vec<u16> = Vec::<u16>::new();
             logdata.push(self.cpu.pc);
@@ -157,9 +263,8 @@ impl Emulator {
                 }
 
                 opcodes::BRK => {
-                    self.window
-                        .mvaddstr(1, 0, format!("BRK after {} instructions", count));
-                    pancurses::endwin();
+                    let s = format!("BRK after {} instructions", count);
+                    self.iohandler.exit(&s);
                     break;
                 }
                 opcodes::CLC => {
@@ -570,19 +675,21 @@ impl Emulator {
             }
 
             self.log(opcode, logdata);
-            self.handle_mappings();
+            self.rng();
+            self.iohandler.input(&mut self.mem);
+            self.iohandler.display(&self.mem);
 
             let size: u16 = self.lookup.size(opcode);
             if size > 3 {
-                pancurses::endwin();
-                panic!(
+                let oops = format!(
                     "Opcode 0x{:x} missing from lookup table, see opcode.rs",
                     opcode
                 );
+                self.iohandler.exit(&oops);
+                panic!(oops);
             }
             self.cpu.pc += size;
             count = count + 1;
-            thread::sleep(time::Duration::from_micros(25));
         }
     }
 
@@ -614,56 +721,11 @@ impl Emulator {
             self.cpu.carry_flag() as i32
         ));
 
-        self.window.mvaddstr(0, 0, logline);
-    }
-
-    fn handle_mappings(&mut self) {
-        self.input();
-        self.rng();
-        self.display();
-    }
-
-    fn input(&mut self) {
-        // TODO: Map more input
-        match self.window.getch() {
-            Some(pancurses::Input::Character(c)) => {
-                self.mem.ram[0xff] = c.to_ascii_lowercase() as u8;
-            }
-            _ => {}
-        }
-        self.window.refresh();
+        self.iohandler.log(&logline);
     }
 
     fn rng(&mut self) {
         self.mem.ram[0xfe] = self.rng.gen();
-    }
-
-    fn display(&self) {
-        // Display is stored as a 32x32 screen from 0x200 and onwards
-        let base: u16 = 0x0200;
-        let offset: i32 = 3;
-        self.window.attron(pancurses::A_REVERSE);
-
-        // Apple location is stored at 0x0100
-        let apple_addr: u16 = self.mem.get_16b_addr(0x00);
-        for y in 0..31 {
-            for x in 0..31 {
-                let addr: u16 = base + (y * 32) + x;
-                let chr: char = if addr == apple_addr {
-                    'O'
-                } else {
-                    let value: u8 = self.mem.ram[addr as usize];
-                    if value == 1 {
-                        '#'
-                    } else {
-                        ' '
-                    }
-                };
-                self.window.mvaddch(offset + y as i32, x as i32, chr);
-            }
-            //self.window.mvaddstr(offset + y as i32, 0, line);
-        }
-        self.window.attroff(pancurses::A_REVERSE);
     }
 }
 
@@ -676,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_install_rom() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
 
         let mut code: Vec<u8> = Vec::<u8>::new();
@@ -690,7 +752,7 @@ mod tests {
 
     #[test]
     fn test_and_imm() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::AND_IMM;
         emu.mem.ram[start + 1] = 0b1000_0000;
@@ -711,7 +773,7 @@ mod tests {
 
     #[test]
     fn test_and_zpx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::AND_ZPX;
         emu.mem.ram[start + 1] = 0x01;
@@ -735,7 +797,7 @@ mod tests {
 
     #[test]
     fn test_bit_zp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::BIT_ZP;
         emu.mem.ram[start + 1] = 0x01;
@@ -759,7 +821,7 @@ mod tests {
 
     #[test]
     fn test_dec_zp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::DEC_ZP;
         emu.mem.ram[start + 1] = 0x01;
@@ -780,7 +842,7 @@ mod tests {
     }
     #[test]
     fn test_inc_zp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::INC_ZP;
         emu.mem.ram[start + 1] = 0x01;
@@ -802,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_jmp_abs() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::JMP_ABS;
         emu.mem.ram[start + 1] = 0x11;
@@ -814,7 +876,7 @@ mod tests {
 
     #[test]
     fn test_jmp_ind() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::JMP_IND;
         emu.mem.ram[start + 1] = 0x11;
@@ -828,7 +890,7 @@ mod tests {
 
     #[test]
     fn test_jsr() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::JSR;
         emu.mem.ram[start + 1] = 0x11;
@@ -844,7 +906,7 @@ mod tests {
 
     #[test]
     fn test_lda_abs() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_ABS;
         emu.mem.ram[start + 1] = 0x11;
@@ -857,7 +919,7 @@ mod tests {
 
     #[test]
     fn test_lda_abx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_ABX;
@@ -871,7 +933,7 @@ mod tests {
 
     #[test]
     fn test_lda_aby() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_ABY;
@@ -885,7 +947,7 @@ mod tests {
 
     #[test]
     fn test_lda_imm() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_IMM;
         emu.mem.ram[start + 1] = 0x42;
@@ -896,7 +958,7 @@ mod tests {
 
     #[test]
     fn test_lda_inx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_INX;
@@ -910,7 +972,7 @@ mod tests {
 
     #[test]
     fn test_lda_iny() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_INY;
@@ -923,7 +985,7 @@ mod tests {
 
     #[test]
     fn test_lda_zp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::LDA_ZP;
         emu.mem.ram[start + 1] = 0x42;
@@ -935,7 +997,7 @@ mod tests {
 
     #[test]
     fn test_lda_zpx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDA_ZPX;
@@ -948,7 +1010,7 @@ mod tests {
 
     #[test]
     fn test_ldx_zp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::LDX_ZP;
@@ -961,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_lsr() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 3;
         emu.mem.ram[start] = opcodes::LSR;
@@ -984,7 +1046,7 @@ mod tests {
 
     #[test]
     fn test_nop() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::NOP;
 
@@ -1000,7 +1062,7 @@ mod tests {
 
     #[test]
     fn test_ora_imm() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 0b1000_0000;
         emu.mem.ram[start] = opcodes::ORA_IMM;
@@ -1024,7 +1086,7 @@ mod tests {
 
     #[test]
     fn test_pha() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 0x42;
         emu.mem.ram[start] = opcodes::PHA;
@@ -1036,7 +1098,7 @@ mod tests {
 
     #[test]
     fn test_pla() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.sp -= 1;
         emu.mem.ram[0x1ff] = 0x42;
@@ -1049,7 +1111,7 @@ mod tests {
 
     #[test]
     fn test_php() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.status = 0x1;
         emu.mem.ram[start] = opcodes::PHP;
@@ -1061,7 +1123,7 @@ mod tests {
 
     #[test]
     fn test_plp() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.sp -= 1;
         emu.mem.ram[0x1ff] = 0x1;
@@ -1074,7 +1136,7 @@ mod tests {
 
     #[test]
     fn test_rts() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.mem.ram[start] = opcodes::RTS;
         emu.cpu.sp = 0xfd;
@@ -1088,7 +1150,7 @@ mod tests {
 
     #[test]
     fn test_sta_aby() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
@@ -1102,7 +1164,7 @@ mod tests {
 
     #[test]
     fn test_sta_inx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 0x42;
         emu.cpu.x = 1;
@@ -1117,7 +1179,7 @@ mod tests {
 
     #[test]
     fn test_sta_iny() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
@@ -1132,7 +1194,7 @@ mod tests {
 
     #[test]
     fn test_sta_zpx() {
-        let mut emu: Emulator = Emulator::new();
+        let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 0x01;
         emu.cpu.a = 0x42;

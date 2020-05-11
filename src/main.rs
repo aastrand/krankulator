@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn test_adc_zeropage() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/adc_zeropage")));
         emu.run();
 
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn test_instructions() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/instructions")));
         emu.run();
 
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn test_lda_sta() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/ldasta")));
         emu.run();
 
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_transfers() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/transfers")));
         emu.run();
 
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_subtract_with_carry() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/sbc")));
         emu.run();
 
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_stores() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/stores")));
         emu.run();
 
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_compares() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/compares")));
         emu.run();
 
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_bne() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/bne")));
         emu.run();
 
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_beq() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/beq")));
         emu.run();
 
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_take_no_branch() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/take_no_branch")));
         emu.run();
 
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_take_all_branches() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from(
             "input/take_all_branches",
         )));
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_stackloop() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/stackloop")));
         emu.run();
 
@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_jmp() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/jmp")));
         emu.run();
 
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_jsrrts() {
-        let mut emu: emu::Emulator = emu::Emulator::new();
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
         emu.install_rom(util::read_code_ascii(&String::from("input/jsrtrs")));
         emu.run();
 
