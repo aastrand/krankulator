@@ -29,6 +29,22 @@ pub fn read_code_ascii(path: &str) -> Vec<u8> {
     code
 }
 
+pub fn read_code_bin(path: &str) -> Vec<u8> {
+    if !Path::new(path).exists() {
+        panic!("File does not exist: {}", path);
+    }
+
+    let result = std::fs::read(path);
+    match result {
+        Ok(code) => {
+            return code;
+        }
+        _ => {
+            panic!("Error while parsing binary file {}", path);
+        }
+    }
+}
+
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where
     P: AsRef<Path>,

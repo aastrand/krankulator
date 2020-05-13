@@ -126,9 +126,7 @@ pub const SEC: u8 = 0x38;
 pub const CLI: u8 = 0x58;
 #[allow(dead_code)]
 pub const SEI: u8 = 0x78;
-#[allow(dead_code)]
 pub const CLV: u8 = 0xb8;
-#[allow(dead_code)]
 pub const CLD: u8 = 0xd8;
 
 pub const NOP: u8 = 0xea;
@@ -254,6 +252,14 @@ impl Lookup {
 
         lookup[CLC as usize] = &Opcode {
             name: "CLC",
+            size: 1,
+        };
+        lookup[CLV as usize] = &Opcode {
+            name: "CLV",
+            size: 1,
+        };
+        lookup[CLD as usize] = &Opcode {
+            name: "CLD",
             size: 1,
         };
 

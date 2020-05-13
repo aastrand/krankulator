@@ -35,10 +35,10 @@ impl Emulator {
         }
     }
 
-    pub fn install_rom(&mut self, rom: Vec<u8>) {
-        let mut i = 0;
+    pub fn install_rom(&mut self, rom: Vec<u8>, offset: u16) {
+        let mut i: u32 = 0;
         for code in rom.iter() {
-            self.mem.ram[memory::CODE_START_ADDR as usize + i] = *code;
+            self.mem.ram[(offset + i as u16) as usize] = *code;
             i += 1;
         }
     }
@@ -172,6 +172,12 @@ impl Emulator {
                 }
                 opcodes::CLC => {
                     self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+                opcodes::CLV => {
+                    self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
+                }
+                opcodes::CLD => {
+                    // Noop
                 }
 
                 opcodes::CMP_ABS => {
@@ -647,7 +653,7 @@ mod tests {
         let mut code: Vec<u8> = Vec::<u8>::new();
         code.push(0x47);
         code.push(0x11);
-        emu.install_rom(code);
+        emu.install_rom(code, memory::CODE_START_ADDR);
 
         assert_eq!(emu.mem.ram[start], 0x47);
         assert_eq!(emu.mem.ram[start + 1], 0x11);
@@ -720,6 +726,28 @@ mod tests {
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.overflow_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
+    fn test_clc() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::CLC;
+        emu.cpu.set_status_flag(cpu::CARRY_BIT);
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+    }
+
+    #[test]
+    fn test_clv() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::CLV;
+        emu.cpu.set_status_flag(cpu::OVERFLOW_BIT);
+        emu.run();
+
+        assert_eq!(emu.cpu.overflow_flag(), false);
     }
 
     #[test]

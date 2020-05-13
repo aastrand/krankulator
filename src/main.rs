@@ -10,15 +10,30 @@ fn main() {
         (version: "0.1")
         (author: "Anders Å. <aastrand@gmail.com>")
         (@arg DISPLAY: -d --display "Use a mapped display")
+        (@arg BIN: -b --binary "Read input as binary format")
         (@arg INPUT: +required "Sets the input file to use")
     )
     .get_matches();
+
     let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
         emu::Emulator::new()
     } else {
         emu::Emulator::new_headless()
     };
-    emu.install_rom(util::read_code_ascii(matches.value_of("INPUT").unwrap()));
+
+    let offset: u16 = if matches.is_present("BIN") {
+        0 // Binary loads the complete memory
+    } else {
+        emu::memory::CODE_START_ADDR
+    };
+    let code: Vec<u8> = if matches.is_present("BIN") {
+        emu.cpu.pc = 0x400; // TODO: this needs cleanup
+        util::read_code_bin(matches.value_of("INPUT").unwrap())
+    } else {
+        util::read_code_ascii(matches.value_of("INPUT").unwrap())
+    };
+
+    emu.install_rom(code, offset);
     emu.run();
 }
 
@@ -29,7 +44,10 @@ mod tests {
     #[test]
     fn test_adc_zeropage() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/adc_zeropage")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/adc_zeropage")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x0);
@@ -42,7 +60,10 @@ mod tests {
     #[test]
     fn test_instructions() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/instructions")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/instructions")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x84);
@@ -54,7 +75,10 @@ mod tests {
     #[test]
     fn test_lda_sta() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/ldasta")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/ldasta")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 8);
@@ -66,7 +90,10 @@ mod tests {
     #[test]
     fn test_transfers() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/transfers")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/transfers")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -80,7 +107,10 @@ mod tests {
     #[test]
     fn test_subtract_with_carry() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/sbc")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/sbc")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0xfc);
@@ -91,7 +121,10 @@ mod tests {
     #[test]
     fn test_stores() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/stores")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/stores")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -108,7 +141,10 @@ mod tests {
     #[test]
     fn test_compares() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/compares")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/compares")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -123,7 +159,10 @@ mod tests {
     #[test]
     fn test_bne() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/bne")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/bne")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.x, 3);
@@ -135,7 +174,10 @@ mod tests {
     #[test]
     fn test_beq() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/beq")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/beq")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.x, 1);
@@ -147,7 +189,10 @@ mod tests {
     #[test]
     fn test_take_no_branch() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/take_no_branch")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/take_no_branch")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.y, 8);
@@ -156,9 +201,10 @@ mod tests {
     #[test]
     fn test_take_all_branches() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from(
-            "input/take_all_branches",
-        )));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/take_all_branches")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.x, 8);
@@ -167,7 +213,10 @@ mod tests {
     #[test]
     fn test_stackloop() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/stackloop")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/stackloop")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -185,7 +234,10 @@ mod tests {
     #[test]
     fn test_jmp() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/jmp")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/jmp")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x03);
@@ -195,7 +247,10 @@ mod tests {
     #[test]
     fn test_jsrrts() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_rom(util::read_code_ascii(&String::from("input/jsrtrs")));
+        emu.install_rom(
+            util::read_code_ascii(&String::from("input/jsrtrs")),
+            emu::memory::CODE_START_ADDR,
+        );
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
