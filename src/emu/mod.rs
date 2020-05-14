@@ -263,6 +263,9 @@ impl Emulator {
                     // JuMP to address
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
+                    if self.cpu.pc == addr {
+                        panic!("infite loop detected! JMP_ABS to 0x{:x}", addr);
+                    }
                     self.cpu.pc = addr;
                 }
                 opcodes::JMP_IND => {
@@ -331,6 +334,8 @@ impl Emulator {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_ABX => {
                     let addr: u16 = self
@@ -339,6 +344,8 @@ impl Emulator {
                         .wrapping_add(self.cpu.x as u16);
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_ABY => {
                     let addr: u16 = self
@@ -347,11 +354,15 @@ impl Emulator {
                         .wrapping_add(self.cpu.y as u16);
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(value as u16);
                     self.cpu.a = value;
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_INX => {
                     let value: u8 = self
@@ -361,17 +372,23 @@ impl Emulator {
                     let addr: u16 = self.mem.get_16b_addr(value as u16);
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_INY => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::LDA_ZPX => {
                     let addr: u16 = self
@@ -380,32 +397,44 @@ impl Emulator {
                         .wrapping_add(self.cpu.x) as u16;
                     logdata.push(addr);
                     self.cpu.a = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
 
                 opcodes::LDX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
                     self.cpu.x = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.x);
+                    self.cpu.check_zero(self.cpu.x);
                 }
                 opcodes::LDX_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(value as u16);
                     self.cpu.x = value;
+                    self.cpu.check_negative(self.cpu.x);
+                    self.cpu.check_zero(self.cpu.x);
                 }
                 opcodes::LDX_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
                     logdata.push(addr);
                     self.cpu.x = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.x);
+                    self.cpu.check_zero(self.cpu.x);
                 }
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
                     self.cpu.y = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.y);
+                    self.cpu.check_zero(self.cpu.y);
                 }
                 opcodes::LDY_IMM => {
                     let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(value as u16);
                     self.cpu.y = value;
+                    self.cpu.check_negative(self.cpu.y);
+                    self.cpu.check_zero(self.cpu.y);
                 }
 
                 opcodes::LSR => {
@@ -846,6 +875,31 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_lda_abs_flags() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::LDA_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 255;
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 255);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[0x4711] = 0;
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
     }
 
     #[test]
@@ -951,7 +1005,28 @@ mod tests {
 
         assert_eq!(emu.cpu.x, 0x15);
     }
+    #[test]
+    fn test_ldx_zp_flags() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::LDX_ZP;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x41] = 255;
+        emu.run();
 
+        assert_eq!(emu.cpu.x, 255);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[0x41] = 0;
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
     #[test]
     fn test_lsr() {
         let mut emu: Emulator = Emulator::new_headless();
