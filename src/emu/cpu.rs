@@ -1,5 +1,7 @@
 pub const NEGATIVE_BIT: u8 = 0b10000000;
 pub const OVERFLOW_BIT: u8 = 0b01000000;
+pub const IGNORE_BIT: u8 = 0b00100000;
+pub const BREAK_BIT: u8 = 0b00010000;
 pub const ZERO_BIT: u8 = 0b00000010;
 pub const CARRY_BIT: u8 = 0b00000001;
 
@@ -27,7 +29,7 @@ impl Cpu {
             x: 0,
             y: 0,
             sp: memory::STACK_START_ADDR as u8,
-            status: 0,
+            status: 0b0010_0000, // ignored bits set
         }
     }
 

@@ -1,3 +1,5 @@
+// TODO: Should probably generate this file
+
 pub const AND_IMM: u8 = 0x29;
 #[allow(dead_code)]
 pub const AND_ZP: u8 = 0x25;
@@ -70,6 +72,15 @@ pub const DEC_ABX: u8 = 0xde;
 
 pub const DEX: u8 = 0xca;
 pub const DEY: u8 = 0x88;
+
+pub const EOR_IMM: u8 = 0x49;
+pub const EOR_ZP: u8 = 0x45;
+pub const EOR_ZPX: u8 = 0x55;
+pub const EOR_ABS: u8 = 0x4d;
+pub const EOR_ABX: u8 = 0x5d;
+pub const EOR_ABY: u8 = 0x59;
+pub const EOR_INX: u8 = 0x41;
+pub const EOR_INY: u8 = 0x51;
 
 pub const INC_ZP: u8 = 0xe6;
 #[allow(dead_code)]
@@ -250,6 +261,11 @@ impl Lookup {
             size: 2,
         };
 
+        lookup[BRK as usize] = &Opcode {
+            name: "BRK",
+            size: 0,
+        };
+
         lookup[CLC as usize] = &Opcode {
             name: "CLC",
             size: 1,
@@ -312,6 +328,39 @@ impl Lookup {
         lookup[DEY as usize] = &Opcode {
             name: "DEY",
             size: 1,
+        };
+
+        lookup[EOR_IMM as usize] = &Opcode {
+            name: "EOR_IMM",
+            size: 2,
+        };
+        lookup[EOR_ZP as usize] = &Opcode {
+            name: "EOR_ZP",
+            size: 2,
+        };
+        lookup[EOR_ZPX as usize] = &Opcode {
+            name: "EOR_ZPX",
+            size: 2,
+        };
+        lookup[EOR_ABS as usize] = &Opcode {
+            name: "EOR_ABS",
+            size: 2,
+        };
+        lookup[EOR_ABX as usize] = &Opcode {
+            name: "EOR_ABX",
+            size: 2,
+        };
+        lookup[EOR_ABY as usize] = &Opcode {
+            name: "EOR_ABY",
+            size: 2,
+        };
+        lookup[EOR_INX as usize] = &Opcode {
+            name: "EOR_INX",
+            size: 2,
+        };
+        lookup[EOR_INY as usize] = &Opcode {
+            name: "EOR_INY",
+            size: 2,
         };
 
         lookup[INX as usize] = &Opcode {

@@ -45,10 +45,29 @@ impl Emulator {
 
     pub fn run(&mut self) {
         let mut count: u64 = 0;
+        let mut last: u16 = 0xfff;
 
         self.iohandler.init();
 
         loop {
+            if self.cpu.pc == last {
+                if self.mem.value_at_addr(last) == opcodes::BRK {
+                    let s = format!(
+                        "exited after {} instructions at cpu.pc=0x{:x}",
+                        count, self.cpu.pc
+                    );
+                    self.iohandler.exit(&s);
+                    break;
+                } else {
+                    let s = format!(
+                        "infite loop detected, exited after {} instructions at cpu.pc=0x{:x}",
+                        count, self.cpu.pc
+                    );
+                    self.iohandler.exit(&s);
+                    panic!(s);
+                }
+            }
+            last = self.cpu.pc;
             let opcode = self.mem.ram[self.cpu.pc as usize];
             let mut logdata: Vec<u16> = Vec::<u16>::new();
             logdata.push(self.cpu.pc);
@@ -166,9 +185,34 @@ impl Emulator {
                 }
 
                 opcodes::BRK => {
-                    let s = format!("BRK after {} instructions", count);
-                    self.iohandler.exit(&s);
-                    break;
+                    /*
+                    In the 7 clock cycles it takes BRK to execute, the padding byte is actually
+                    fetched, but the CPU does nothing with it. The diagram below will show the
+                    bus operations that take place during the execution of BRK:
+
+                    cc	addr	data
+                    --	----	----
+                    1	PC	00	;BRK opcode
+                    2	PC+1	??	;the padding byte, ignored by the CPU
+                    3	S	PCH	;high byte of PC
+                    4	S-1	PCL	;low byte of PC
+                    5	S-2	P	;status flags with B flag set
+                    6	FFFE	??	;low byte of target address
+                    7	FFFF	??	;high byte of target address
+                    */
+                    let addr: u16 = self.mem.get_16b_addr(memory::BRK_TARGET_ADDR);
+
+                    // BRK without a target gets ignored
+                    if addr > 0 {
+                        self.push_pc_to_stack(2);
+                        logdata.push(addr);
+                        // software instructions BRK & PHP will push the B flag as being 1.
+                        // hardware interrupts IRQ & NMI will push the B flag as being 0.
+                        self.cpu.set_status_flag(cpu::BREAK_BIT);
+                        self.push_to_stack(self.cpu.status);
+
+                        self.cpu.pc = addr;
+                    }
                 }
                 opcodes::CLC => {
                     self.cpu.clear_status_flag(cpu::CARRY_BIT);
@@ -259,13 +303,28 @@ impl Emulator {
                     self.cpu.check_zero(self.cpu.y);
                 }
 
+                /*
+                TODO:
+                pub const EOR_ZP: u8 = 0x45;
+                pub const EOR_ZPX: u8 = 0x55;
+                pub const EOR_ABS: u8 = 0x4d;
+                pub const EOR_ABX: u8 = 0x5d;
+                pub const EOR_ABY: u8 = 0x59;
+                pub const EOR_INX: u8 = 0x41;
+                pub const EOR_INY: u8 = 0x51;*/
+                opcodes::EOR_IMM => {
+                    // bitwise Exclusive OR
+                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    logdata.push(operand as u16);
+                    self.cpu.a = self.cpu.a ^ operand;
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
+                }
+
                 opcodes::JMP_ABS => {
                     // JuMP to address
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
-                    if self.cpu.pc == addr {
-                        panic!("infite loop detected! JMP_ABS to 0x{:x}", addr);
-                    }
                     self.cpu.pc = addr;
                 }
                 opcodes::JMP_IND => {
@@ -279,23 +338,14 @@ impl Emulator {
 
                 opcodes::JSR => {
                     // Jump to SubRoutine
-                    let lb: u8 = ((self.cpu.pc + 2) & 0xff) as u8;
-                    let hb: u8 = ((self.cpu.pc + 2) >> 8) as u8;
-
-                    self.mem.push_to_stack(self.cpu.sp, hb);
-                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-                    self.mem.push_to_stack(self.cpu.sp, lb);
-                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-
+                    self.push_pc_to_stack(2);
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     self.cpu.pc = addr;
                 }
                 opcodes::RTS => {
                     // ReTurn from Subroutine
-                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
-                    let lb: u8 = self.mem.pull_from_stack(self.cpu.sp);
-                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
-                    let hb: u8 = self.mem.pull_from_stack(self.cpu.sp);
+                    let lb: u8 = self.pull_from_stack();
+                    let hb: u8 = self.pull_from_stack();
 
                     let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
                     logdata.push(addr);
@@ -470,29 +520,37 @@ impl Emulator {
 
                 opcodes::PHA => {
                     // PusH Accumulator
-                    self.mem.push_to_stack(self.cpu.sp, self.cpu.a);
-                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                    self.push_to_stack(self.cpu.a);
                 }
                 opcodes::PLA => {
                     // PuLl Accumulator
                     if self.cpu.sp == 0xff {
                         self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
                     }
-                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
-                    self.cpu.a = self.mem.pull_from_stack(self.cpu.sp);
+                    self.cpu.a = self.pull_from_stack();
+                    self.cpu.check_negative(self.cpu.a);
+                    self.cpu.check_zero(self.cpu.a);
                 }
                 opcodes::PHP => {
                     // PusH Processor status
-                    self.mem.push_to_stack(self.cpu.sp, self.cpu.status);
-                    self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                    // software instructions BRK & PHP will push the B flag as being 1.
+                    // hardware interrupts IRQ & NMI will push the B flag as being 0.
+                    self.cpu.set_status_flag(cpu::BREAK_BIT);
+                    self.push_to_stack(self.cpu.status);
                 }
                 opcodes::PLP => {
                     // PuLl Processor status
-                    if self.cpu.sp == 0xff {
+                    self.cpu.status = self.pull_from_stack();
+
+                    // TODO: should we set ignore?
+                    self.cpu.set_status_flag(cpu::IGNORE_BIT);
+
+                    // when the flags are restored (via PLP or RTI), the B bit is discarded.
+                    self.cpu.clear_status_flag(cpu::BREAK_BIT);
+
+                    if self.cpu.sp == 0 {
                         self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
                     }
-                    self.cpu.sp = self.cpu.sp.wrapping_add(1);
-                    self.cpu.status = self.mem.pull_from_stack(self.cpu.sp);
                 }
 
                 opcodes::SBC_IMM => {
@@ -609,7 +667,11 @@ impl Emulator {
                     self.cpu.check_negative(self.cpu.sp);
                     self.cpu.check_zero(self.cpu.sp);
                 }
-                _ => panic!("Unkown opcode: 0x{:x}", opcode),
+                _ => {
+                    let s = format!("Unkown opcode: 0x{:x}", opcode);
+                    self.iohandler.exit(&s);
+                    panic!(s);
+                }
             }
 
             self.log(opcode, logdata);
@@ -626,9 +688,30 @@ impl Emulator {
                 self.iohandler.exit(&oops);
                 panic!(oops);
             }
+
             self.cpu.pc += size;
             count = count + 1;
         }
+    }
+
+    fn push_pc_to_stack(&mut self, offset: u16) {
+        let lb: u8 = ((self.cpu.pc + offset) & 0xff) as u8;
+        let hb: u8 = ((self.cpu.pc + offset) >> 8) as u8;
+
+        self.mem.push_to_stack(self.cpu.sp, hb);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+        self.mem.push_to_stack(self.cpu.sp, lb);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+    }
+
+    fn pull_from_stack(&mut self) -> u8 {
+        self.cpu.sp = self.cpu.sp.wrapping_add(1);
+        self.mem.pull_from_stack(self.cpu.sp)
+    }
+
+    fn push_to_stack(&mut self, value: u8) {
+        self.mem.push_to_stack(self.cpu.sp, value);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
     }
 
     fn log(&self, opcode: u8, logdata: Vec<u16>) {
@@ -652,11 +735,12 @@ impl Emulator {
             self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp
         ));
         logline.push_str(&format!(
-            "\tN={} V={} Z={} C={}",
+            "\tN={} V={} Z={} C={} st=0b{:b}",
             self.cpu.negative_flag() as i32,
             self.cpu.overflow_flag() as i32,
             self.cpu.zero_flag() as i32,
-            self.cpu.carry_flag() as i32
+            self.cpu.carry_flag() as i32,
+            self.cpu.status
         ));
 
         self.iohandler.log(&logline);
@@ -800,6 +884,21 @@ mod tests {
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
     }
+
+    #[test]
+    fn test_eor_imm() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::EOR_IMM;
+        emu.mem.ram[start + 1] = 0b1000_1000;
+        emu.cpu.a = 0b0000_1000;
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0b1000_0000);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
     #[test]
     fn test_inc_zp() {
         let mut emu: Emulator = Emulator::new_headless();
@@ -1063,7 +1162,7 @@ mod tests {
         assert_eq!(emu.cpu.x, 0x0);
         assert_eq!(emu.cpu.y, 0x0);
         assert_eq!(emu.cpu.sp, 0xff);
-        assert_eq!(emu.cpu.status, 0x0);
+        assert_eq!(emu.cpu.status, 0b0010_0000);
     }
 
     #[test]
@@ -1119,11 +1218,11 @@ mod tests {
     fn test_php() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
-        emu.cpu.status = 0x1;
+        emu.cpu.set_status_flag(cpu::CARRY_BIT);
         emu.mem.ram[start] = opcodes::PHP;
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x1ff as usize], 0x1);
+        assert_eq!(emu.mem.ram[0x1ff as usize], 0b0011_0001);
         assert_eq!(emu.cpu.sp, 0xfe);
     }
 
@@ -1136,7 +1235,7 @@ mod tests {
         emu.mem.ram[start] = opcodes::PLP;
         emu.run();
 
-        assert_eq!(emu.cpu.status, 0x1);
+        assert_eq!(emu.cpu.status, 0b0010_0001);
         assert_eq!(emu.cpu.sp, 0xff);
     }
 
