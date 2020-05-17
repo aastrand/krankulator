@@ -684,8 +684,7 @@ impl Emulator {
                 opcodes::TXS => {
                     // Transfer Index X to Stack Pointer
                     self.cpu.sp = self.cpu.x;
-                    self.cpu.check_negative(self.cpu.sp);
-                    self.cpu.check_zero(self.cpu.sp);
+                    // TSX sets NZ - TXS does not
                 }
                 _ => {
                     self.exit(&format!("unkown opcode: 0x{:x}", opcode), count);
@@ -1469,5 +1468,47 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), true);
+    }
+
+    #[test]
+    fn test_tsx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.sp = 255;
+        emu.mem.ram[start] = opcodes::TSX;
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 255);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.sp = 0;
+        emu.mem.ram[start] = opcodes::TSX;
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
+    fn test_txs() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 255;
+        emu.mem.ram[start] = opcodes::TXS;
+        emu.run();
+
+        assert_eq!(emu.cpu.sp, 255);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+        emu.cpu.x = 0;
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.run();
+
+        assert_eq!(emu.cpu.sp, 0);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
     }
 }
