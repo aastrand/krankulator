@@ -544,10 +544,6 @@ impl Emulator {
                     self.cpu.set_status_flag(cpu::IGNORE_BIT);
                     // when the flags are restored (via PLP or RTI), the B bit is discarded.
                     self.cpu.clear_status_flag(cpu::BREAK_BIT);
-
-                    if self.cpu.sp == 0 {
-                        self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
-                    }
                 }
 
                 opcodes::RTI => {
@@ -1342,6 +1338,20 @@ mod tests {
 
         assert_eq!(emu.cpu.status, 0b0010_0001);
         assert_eq!(emu.cpu.sp, 0xff);
+    }
+
+    #[test]
+    fn test_plp_overflow() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::PLP;
+        emu.mem.ram[0x100] = 0x2;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.status, 0b0010_0010);
+        assert_eq!(emu.cpu.sp, 0x0);
+        assert_eq!(emu.cpu.overflow_flag(), false);
     }
 
     #[test]
