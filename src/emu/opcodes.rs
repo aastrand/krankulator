@@ -108,6 +108,9 @@ pub const LDA_ZPX: u8 = 0xb5;
 pub const LDX_ABS: u8 = 0xae;
 pub const LDX_IMM: u8 = 0xa2;
 pub const LDX_ZP: u8 = 0xa6;
+pub const LDX_ZPY: u8 = 0xb6;
+#[allow(dead_code)]
+pub const LDX_ABY: u8 = 0xbe;
 pub const LDY_ABS: u8 = 0xac;
 pub const LDY_IMM: u8 = 0xa0;
 
@@ -439,6 +442,10 @@ impl Lookup {
         };
         lookup[LDX_ZP as usize] = &Opcode {
             name: "LDX_ZP",
+            size: 2,
+        };
+        lookup[LDX_ZPY as usize] = &Opcode {
+            name: "LDX_ZPY",
             size: 2,
         };
         lookup[LDY_ABS as usize] = &Opcode {

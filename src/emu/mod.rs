@@ -471,6 +471,16 @@ impl Emulator {
                     self.cpu.check_negative(self.cpu.x);
                     self.cpu.check_zero(self.cpu.x);
                 }
+                opcodes::LDX_ZPY => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.y) as u16;
+                    logdata.push(addr);
+                    self.cpu.x = self.mem.value_at_addr(addr);
+                    self.cpu.check_negative(self.cpu.x);
+                    self.cpu.check_zero(self.cpu.x);
+                }
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
@@ -688,23 +698,24 @@ impl Emulator {
                 }
                 _ => {
                     self.exit(&format!("unkown opcode: 0x{:x}", opcode), count);
+                    break;
                 }
+            }
+
+            let size: u16 = self.lookup.size(opcode);
+            if size > 3 {
+                let oops = format!(
+                    "opcode 0x{:x} missing from lookup table, see opcode.rs",
+                    opcode
+                );
+                self.iohandler.exit(&oops);
+                break;
             }
 
             self.log(opcode, logdata);
             self.rng();
             self.iohandler.input(&mut self.mem);
             self.iohandler.display(&self.mem);
-
-            let size: u16 = self.lookup.size(opcode);
-            if size > 3 {
-                let oops = format!(
-                    "Opcode 0x{:x} missing from lookup table, see opcode.rs",
-                    opcode
-                );
-                self.iohandler.exit(&oops);
-                panic!(oops);
-            }
 
             self.cpu.pc += size;
             count = count + 1;
@@ -1204,6 +1215,7 @@ mod tests {
 
         assert_eq!(emu.cpu.x, 0x15);
     }
+
     #[test]
     fn test_ldx_zp_flags() {
         let mut emu: Emulator = Emulator::new_headless();
@@ -1226,6 +1238,21 @@ mod tests {
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
     }
+
+    #[test]
+    fn test_ldx_zpy() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 1;
+        emu.cpu.y = 8;
+        emu.mem.ram[start] = opcodes::LDX_ZPY;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x41 + 8] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 0x15);
+    }
+
     #[test]
     fn test_lsr() {
         let mut emu: Emulator = Emulator::new_headless();
