@@ -217,7 +217,10 @@ impl Emulator {
                     self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
                 }
                 opcodes::CLD => {
-                    // Noop
+                    self.cpu.clear_status_flag(cpu::DECIMAL_BIT);
+                }
+                opcodes::CLI => {
+                    self.cpu.clear_status_flag(cpu::INTERRUPT_BIT);
                 }
 
                 opcodes::CMP_ABS => {
@@ -586,6 +589,9 @@ impl Emulator {
                 opcodes::SEC => {
                     self.cpu.set_status_flag(cpu::CARRY_BIT);
                 }
+                opcodes::SEI => {
+                    self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+                }
 
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
@@ -927,6 +933,28 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), false);
+    }
+
+    #[test]
+    fn test_cld() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::CLD;
+        emu.cpu.set_status_flag(cpu::DECIMAL_BIT);
+        emu.run();
+
+        assert_eq!(emu.cpu.status, 0b0010_0000);
+    }
+
+    #[test]
+    fn test_cli() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::CLI;
+        emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+        emu.run();
+
+        assert_eq!(emu.cpu.interrupt_flag(), false);
     }
 
     #[test]
@@ -1328,7 +1356,6 @@ mod tests {
         emu.cpu.sp = 0xfc;
         emu.run();
 
-        assert_eq!(emu.cpu.interrupt_flag(), true);
         assert_eq!(emu.cpu.status, 0b1010_0000);
         assert_eq!(emu.cpu.pc, 0x608);
     }
@@ -1402,5 +1429,15 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_sei() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::SEI;
+        emu.run();
+
+        assert_eq!(emu.cpu.interrupt_flag(), true);
     }
 }

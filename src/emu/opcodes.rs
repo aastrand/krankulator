@@ -133,9 +133,7 @@ SED (SEt Decimal)              $F8
 */
 pub const CLC: u8 = 0x18;
 pub const SEC: u8 = 0x38;
-#[allow(dead_code)]
 pub const CLI: u8 = 0x58;
-#[allow(dead_code)]
 pub const SEI: u8 = 0x78;
 pub const CLV: u8 = 0xb8;
 pub const CLD: u8 = 0xd8;
@@ -278,6 +276,10 @@ impl Lookup {
         };
         lookup[CLD as usize] = &Opcode {
             name: "CLD",
+            size: 1,
+        };
+        lookup[CLI as usize] = &Opcode {
+            name: "CLI",
             size: 1,
         };
 
@@ -499,6 +501,10 @@ impl Lookup {
 
         lookup[SEC as usize] = &Opcode {
             name: "SEC",
+            size: 1,
+        };
+        lookup[SEI as usize] = &Opcode {
+            name: "SEI",
             size: 1,
         };
 
