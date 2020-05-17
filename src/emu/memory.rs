@@ -30,12 +30,16 @@ impl Memory {
         self.ram[self.ram[addr as usize] as usize]
     }
 
+    pub fn stack_addr(&self, sp: u8) -> u16 {
+        STACK_BASE_OFFSET + (u16::from(sp) & 0xff)
+    }
+
     pub fn push_to_stack(&mut self, sp: u8, value: u8) {
-        self.ram[(STACK_BASE_OFFSET + (u16::from(sp) & 0xff)) as usize] = value;
+        self.ram[self.stack_addr(sp) as usize] = value;
     }
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
-        self.ram[(STACK_BASE_OFFSET + (u16::from(sp) & 0xff)) as usize]
+        self.ram[self.stack_addr(sp) as usize]
     }
 
     pub fn store(&mut self, addr: u16, value: u8) {
@@ -97,6 +101,13 @@ mod tests {
         let value: u8 = memory.pull_from_stack(0xff);
 
         assert_eq!(value, 0x42);
+    }
+
+    #[test]
+    fn test_stack_addr() {
+        let memory: Memory = Memory::new();
+
+        assert_eq!(memory.stack_addr(0xfd), 0x1fd);
     }
 
     #[test]

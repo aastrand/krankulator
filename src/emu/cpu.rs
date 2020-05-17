@@ -2,6 +2,7 @@ pub const NEGATIVE_BIT: u8 = 0b10000000;
 pub const OVERFLOW_BIT: u8 = 0b01000000;
 pub const IGNORE_BIT: u8 = 0b00100000;
 pub const BREAK_BIT: u8 = 0b00010000;
+pub const INTERRUPT_BIT: u8 = 0b00000100;
 pub const ZERO_BIT: u8 = 0b00000010;
 pub const CARRY_BIT: u8 = 0b00000001;
 
@@ -35,6 +36,11 @@ impl Cpu {
 
     pub fn carry_flag(&self) -> bool {
         (self.status & CARRY_BIT) == 1
+    }
+
+    #[allow(dead_code)] // only used in tests
+    pub fn interrupt_flag(&self) -> bool {
+        (self.status & INTERRUPT_BIT) == 4
     }
 
     pub fn negative_flag(&self) -> bool {

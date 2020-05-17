@@ -163,6 +163,8 @@ pub const PLA: u8 = 0x68;
 pub const PHP: u8 = 0x08;
 pub const PLP: u8 = 0x28;
 
+pub const RTI: u8 = 0x40;
+
 // Not planning on supporting this if I can get away with it
 #[allow(dead_code)]
 pub const SED: u8 = 0xf8;
@@ -479,6 +481,11 @@ impl Lookup {
         lookup[PLP as usize] = &Opcode {
             name: "PLP",
             size: 1,
+        };
+
+        lookup[RTI as usize] = &Opcode {
+            name: "RTI",
+            size: 0, // 1, but we dont want to deal with pc arithmetics
         };
 
         lookup[SBC_IMM as usize] = &Opcode {

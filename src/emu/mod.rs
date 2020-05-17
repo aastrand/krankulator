@@ -51,22 +51,16 @@ impl Emulator {
 
         loop {
             if self.cpu.pc == last {
-                if self.mem.value_at_addr(last) == opcodes::BRK {
-                    let s = format!(
-                        "exited after {} instructions at cpu.pc=0x{:x}",
-                        count, self.cpu.pc
-                    );
-                    self.iohandler.exit(&s);
-                    break;
+                if self.mem.value_at_addr(last) != opcodes::BRK {
+                    self.exit(&format!("infite loop detected!"), count);
+                    self.log_stack();
                 } else {
-                    let s = format!(
-                        "infite loop detected, exited after {} instructions at cpu.pc=0x{:x}",
-                        count, self.cpu.pc
-                    );
-                    self.iohandler.exit(&s);
-                    panic!(s);
+                    self.exit("reached probable end of code", count);
                 }
+
+                break;
             }
+
             last = self.cpu.pc;
             let opcode = self.mem.ram[self.cpu.pc as usize];
             let mut logdata: Vec<u16> = Vec::<u16>::new();
@@ -208,8 +202,10 @@ impl Emulator {
                         logdata.push(addr);
                         // software instructions BRK & PHP will push the B flag as being 1.
                         // hardware interrupts IRQ & NMI will push the B flag as being 0.
-                        self.cpu.set_status_flag(cpu::BREAK_BIT);
-                        self.push_to_stack(self.cpu.status);
+                        self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
+
+                        // we set the I flag
+                        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
 
                         self.cpu.pc = addr;
                     }
@@ -535,8 +531,7 @@ impl Emulator {
                     // PusH Processor status
                     // software instructions BRK & PHP will push the B flag as being 1.
                     // hardware interrupts IRQ & NMI will push the B flag as being 0.
-                    self.cpu.set_status_flag(cpu::BREAK_BIT);
-                    self.push_to_stack(self.cpu.status);
+                    self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
                 }
                 opcodes::PLP => {
                     // PuLl Processor status
@@ -544,13 +539,36 @@ impl Emulator {
 
                     // TODO: should we set ignore?
                     self.cpu.set_status_flag(cpu::IGNORE_BIT);
-
                     // when the flags are restored (via PLP or RTI), the B bit is discarded.
                     self.cpu.clear_status_flag(cpu::BREAK_BIT);
 
                     if self.cpu.sp == 0 {
                         self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
                     }
+                }
+
+                opcodes::RTI => {
+                    // RTI retrieves the Processor Status Word (flags)
+                    // and the Program Counter from the stack in that order
+                    // (interrupts push the PC first and then the PSW).
+                    self.cpu.status = self.pull_from_stack();
+                    // TODO: should we set ignore?
+                    self.cpu.set_status_flag(cpu::IGNORE_BIT);
+                    // when the flags are restored (via PLP or RTI), the B bit is discarded.
+                    self.cpu.clear_status_flag(cpu::BREAK_BIT);
+
+                    // This should be cleared by the interrupt vector itself
+                    //self.cpu.clear_status_flag(cpu::INTERRUPT_BIT);
+
+                    // Note that unlike RTS, the return address on the stack
+                    // is the actual address rather than the address-1.
+                    let lb: u8 = self.pull_from_stack();
+                    let hb: u8 = self.pull_from_stack();
+
+                    let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff);
+                    logdata.push(addr);
+
+                    self.cpu.pc = addr;
                 }
 
                 opcodes::SBC_IMM => {
@@ -668,9 +686,7 @@ impl Emulator {
                     self.cpu.check_zero(self.cpu.sp);
                 }
                 _ => {
-                    let s = format!("Unkown opcode: 0x{:x}", opcode);
-                    self.iohandler.exit(&s);
-                    panic!(s);
+                    self.exit(&format!("unkown opcode: 0x{:x}", opcode), count);
                 }
             }
 
@@ -691,6 +707,44 @@ impl Emulator {
 
             self.cpu.pc += size;
             count = count + 1;
+        }
+    }
+
+    fn exit(&mut self, reason: &str, count: u64) {
+        self.iohandler.log(&"");
+        self.iohandler.log(reason);
+
+        let s = format!(
+            "\nexited after {} instructions at cpu.pc=0x{:x}",
+            count, self.cpu.pc
+        );
+        self.iohandler.exit(&s);
+    }
+
+    fn log_stack(&self) {
+        let mut addr: u16 = 0x1ff;
+        self.iohandler.log(&format!("stack contents:"));
+        let mut buf = String::with_capacity(100);
+        let mut cols = 0;
+
+        loop {
+            if addr == self.mem.stack_addr(self.cpu.sp) {
+                self.iohandler.log(&buf);
+                break;
+            }
+            buf.push_str(&format!(
+                "0x{:x} = 0x{:x} \t",
+                addr,
+                self.mem.value_at_addr(addr)
+            ));
+            cols += 1;
+            addr = addr.wrapping_sub(1);
+
+            if cols > 8 {
+                self.iohandler.log(&buf);
+                buf = String::with_capacity(100);
+                cols = 0;
+            }
         }
     }
 
@@ -735,11 +789,12 @@ impl Emulator {
             self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp
         ));
         logline.push_str(&format!(
-            "\tN={} V={} Z={} C={} st=0b{:b}",
+            "\tN={} V={} Z={} C={} st={:#010b} (0x{:x})",
             self.cpu.negative_flag() as i32,
             self.cpu.overflow_flag() as i32,
             self.cpu.zero_flag() as i32,
             self.cpu.carry_flag() as i32,
+            self.cpu.status,
             self.cpu.status
         ));
 
@@ -839,6 +894,28 @@ mod tests {
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.overflow_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
+    fn test_brk() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::BRK;
+        emu.run();
+
+        assert_eq!(emu.cpu.interrupt_flag(), false);
+        assert_eq!(emu.cpu.pc, 0x600);
+
+        emu.mem.ram[0xffff] = 0x47;
+        emu.mem.ram[0xfffe] = 0x11;
+        emu.cpu.set_status_flag(cpu::NEGATIVE_BIT);
+        emu.run();
+
+        assert_eq!(emu.cpu.interrupt_flag(), true);
+        assert_eq!(emu.cpu.pc, 0x4711);
+        assert_eq!(emu.mem.ram[0x1ff], 0x6);
+        assert_eq!(emu.mem.ram[0x1fe], 0x2);
+        assert_eq!(emu.mem.ram[0x1fd], 0b1011_0000);
     }
 
     #[test]
@@ -1237,6 +1314,23 @@ mod tests {
 
         assert_eq!(emu.cpu.status, 0b0010_0001);
         assert_eq!(emu.cpu.sp, 0xff);
+    }
+
+    #[test]
+    fn test_rti() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::RTI;
+        emu.mem.ram[0x1ff] = 0x6;
+        emu.mem.ram[0x1fe] = 0x8;
+        emu.mem.ram[0x1fd] = 0b1011_0000;
+        emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+        emu.cpu.sp = 0xfc;
+        emu.run();
+
+        assert_eq!(emu.cpu.interrupt_flag(), true);
+        assert_eq!(emu.cpu.status, 0b1010_0000);
+        assert_eq!(emu.cpu.pc, 0x608);
     }
 
     #[test]
