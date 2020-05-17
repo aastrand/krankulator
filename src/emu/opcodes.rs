@@ -137,6 +137,7 @@ pub const CLI: u8 = 0x58;
 pub const SEI: u8 = 0x78;
 pub const CLV: u8 = 0xb8;
 pub const CLD: u8 = 0xd8;
+pub const SED: u8 = 0xf8;
 
 pub const NOP: u8 = 0xea;
 
@@ -162,10 +163,6 @@ pub const PHP: u8 = 0x08;
 pub const PLP: u8 = 0x28;
 
 pub const RTI: u8 = 0x40;
-
-// Not planning on supporting this if I can get away with it
-#[allow(dead_code)]
-pub const SED: u8 = 0xf8;
 
 pub const STA_ZP: u8 = 0x85;
 pub const STA_ZPX: u8 = 0x95;
@@ -501,6 +498,10 @@ impl Lookup {
 
         lookup[SEC as usize] = &Opcode {
             name: "SEC",
+            size: 1,
+        };
+        lookup[SED as usize] = &Opcode {
+            name: "SED",
             size: 1,
         };
         lookup[SEI as usize] = &Opcode {

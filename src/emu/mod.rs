@@ -560,9 +560,6 @@ impl Emulator {
                     // when the flags are restored (via PLP or RTI), the B bit is discarded.
                     self.cpu.clear_status_flag(cpu::BREAK_BIT);
 
-                    // This should be cleared by the interrupt vector itself
-                    //self.cpu.clear_status_flag(cpu::INTERRUPT_BIT);
-
                     // Note that unlike RTS, the return address on the stack
                     // is the actual address rather than the address-1.
                     let lb: u8 = self.pull_from_stack();
@@ -588,6 +585,9 @@ impl Emulator {
                 }
                 opcodes::SEC => {
                     self.cpu.set_status_flag(cpu::CARRY_BIT);
+                }
+                opcodes::SED => {
+                    self.cpu.set_status_flag(cpu::DECIMAL_BIT);
                 }
                 opcodes::SEI => {
                     self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
@@ -943,7 +943,7 @@ mod tests {
         emu.cpu.set_status_flag(cpu::DECIMAL_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.status, 0b0010_0000);
+        assert_eq!(emu.cpu.decimal_flag(), false);
     }
 
     #[test]
@@ -1429,6 +1429,26 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_sec() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::SEC;
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+    }
+
+    #[test]
+    fn test_sed() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::SED;
+        emu.run();
+
+        assert_eq!(emu.cpu.decimal_flag(), true);
     }
 
     #[test]

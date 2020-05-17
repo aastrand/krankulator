@@ -40,6 +40,11 @@ impl Cpu {
     }
 
     #[allow(dead_code)] // only used in tests
+    pub fn decimal_flag(&self) -> bool {
+        (self.status & DECIMAL_BIT) == 8
+    }
+
+    #[allow(dead_code)] // only used in tests
     pub fn interrupt_flag(&self) -> bool {
         (self.status & INTERRUPT_BIT) == 4
     }
