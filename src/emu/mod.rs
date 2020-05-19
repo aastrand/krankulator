@@ -140,7 +140,7 @@ impl Emulator {
                 opcodes::BVS => {
                     let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
-                    // ranch on oVerflow Set
+                    // Branch on oVerflow Set
                     if self.cpu.overflow_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
                     }
@@ -209,6 +209,8 @@ impl Emulator {
 
                         self.cpu.pc = addr;
                     }
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
                 opcodes::CLC => {
                     self.cpu.clear_status_flag(cpu::CARRY_BIT);
@@ -325,6 +327,8 @@ impl Emulator {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
                     self.cpu.pc = addr;
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
                 opcodes::JMP_IND => {
                     // JuMP to address stored in arg
@@ -333,13 +337,17 @@ impl Emulator {
                     let operand: u16 = self.mem.get_16b_addr(addr);
                     logdata.push(operand);
                     self.cpu.pc = operand;
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
 
-                opcodes::JSR => {
+                opcodes::JSR_ABS => {
                     // Jump to SubRoutine
                     self.push_pc_to_stack(2);
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     self.cpu.pc = addr;
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
                 opcodes::RTS => {
                     // ReTurn from Subroutine
@@ -350,6 +358,8 @@ impl Emulator {
                     logdata.push(addr);
 
                     self.cpu.pc = addr;
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
 
                 opcodes::INC_ZP => {
@@ -575,6 +585,8 @@ impl Emulator {
                     logdata.push(addr);
 
                     self.cpu.pc = addr;
+                    // Compensate for length addition
+                    self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
 
                 opcodes::SBC_IMM => {
@@ -697,7 +709,14 @@ impl Emulator {
                     // TSX sets NZ - TXS does not
                 }
                 _ => {
-                    self.exit(&format!("unkown opcode: 0x{:x}", opcode), count);
+                    self.exit(
+                        &format!(
+                            "{} (0x{:X}) not implemented!",
+                            self.lookup.name(opcode),
+                            opcode
+                        ),
+                        count,
+                    );
                     break;
                 }
             }
@@ -1062,7 +1081,7 @@ mod tests {
     fn test_jsr() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::JSR;
+        emu.mem.ram[start] = opcodes::JSR_ABS;
         emu.mem.ram[start + 1] = 0x11;
         emu.mem.ram[start + 2] = 0x47;
 
