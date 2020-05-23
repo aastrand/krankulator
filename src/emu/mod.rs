@@ -3,7 +3,10 @@ pub mod io;
 pub mod memory;
 pub mod opcodes;
 
+extern crate shrust;
 use rand::Rng;
+use shrust::{Shell, ShellIO};
+use std::io::prelude::*;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
@@ -52,8 +55,10 @@ impl Emulator {
         loop {
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
-                    self.exit(&format!("infite loop detected!"), count);
+                    self.iohandler.log(&format!("infite loop detected!"));
                     self.log_stack();
+
+                    self.shell().run_loop(&mut ShellIO::default());
                 } else {
                     self.exit("reached probable end of code", count);
                 }
@@ -232,6 +237,26 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
+                opcodes::CMP_ABX => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x as u16);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.compare(self.cpu.a, operand);
+                }
+                opcodes::CMP_ABY => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.y as u16 & 0xff);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.compare(self.cpu.a, operand);
+                }
                 opcodes::CMP_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
@@ -242,10 +267,20 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
+                opcodes::CMP_ZPX => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x) as u16;
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.compare(self.cpu.a, operand);
+                }
                 opcodes::CPX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc);
+                    let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 }
@@ -304,15 +339,6 @@ impl Emulator {
                     self.cpu.check_zero(self.cpu.y);
                 }
 
-                /*
-                TODO:
-                pub const EOR_ZP: u8 = 0x45;
-                pub const EOR_ZPX: u8 = 0x55;
-                pub const EOR_ABS: u8 = 0x4d;
-                pub const EOR_ABX: u8 = 0x5d;
-                pub const EOR_ABY: u8 = 0x59;
-                pub const EOR_INX: u8 = 0x41;
-                pub const EOR_INY: u8 = 0x51;*/
                 opcodes::EOR_IMM => {
                     // bitwise Exclusive OR
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
@@ -392,9 +418,7 @@ impl Emulator {
                 opcodes::LDA_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_ABX => {
                     let addr: u16 = self
@@ -402,9 +426,7 @@ impl Emulator {
                         .get_16b_addr(self.cpu.pc + 1)
                         .wrapping_add(self.cpu.x as u16);
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_ABY => {
                     let addr: u16 = self
@@ -412,16 +434,11 @@ impl Emulator {
                         .get_16b_addr(self.cpu.pc + 1)
                         .wrapping_add(self.cpu.y as u16);
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_IMM => {
-                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    logdata.push(value as u16);
-                    self.cpu.a = value;
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(self.cpu.pc + 1);
+                    logdata.push(self.cpu.a as u16);
                 }
                 opcodes::LDA_INX => {
                     let value: u8 = self
@@ -430,24 +447,19 @@ impl Emulator {
                         .wrapping_add(self.cpu.x);
                     let addr: u16 = self.mem.get_16b_addr(value as u16);
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_INY => {
-                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let value: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    logdata.push(value as u16);
                     let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_ZPX => {
                     let addr: u16 = self
@@ -455,31 +467,30 @@ impl Emulator {
                         .value_at_addr(self.cpu.pc + 1)
                         .wrapping_add(self.cpu.x) as u16;
                     logdata.push(addr);
-                    self.cpu.a = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.a = self.load(addr);
                 }
 
                 opcodes::LDX_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
-                    self.cpu.x = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.x);
-                    self.cpu.check_zero(self.cpu.x);
+                    self.cpu.x = self.load(addr);
+                }
+                opcodes::LDX_ABY => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.y as u16 & 0xff);
+                    logdata.push(addr);
+                    self.cpu.x = self.load(addr);
                 }
                 opcodes::LDX_IMM => {
-                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    logdata.push(value as u16);
-                    self.cpu.x = value;
-                    self.cpu.check_negative(self.cpu.x);
-                    self.cpu.check_zero(self.cpu.x);
+                    self.cpu.x = self.load(self.cpu.pc + 1);
+                    logdata.push(self.cpu.x as u16);
                 }
                 opcodes::LDX_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
                     logdata.push(addr);
-                    self.cpu.x = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.x);
-                    self.cpu.check_zero(self.cpu.x);
+                    self.cpu.x = self.load(addr);
                 }
                 opcodes::LDX_ZPY => {
                     let addr: u16 = self
@@ -487,23 +498,37 @@ impl Emulator {
                         .value_at_addr(self.cpu.pc + 1)
                         .wrapping_add(self.cpu.y) as u16;
                     logdata.push(addr);
-                    self.cpu.x = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.x);
-                    self.cpu.check_zero(self.cpu.x);
+                    self.cpu.x = self.load(addr);
                 }
                 opcodes::LDY_ABS => {
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
                     logdata.push(addr);
-                    self.cpu.y = self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.y);
-                    self.cpu.check_zero(self.cpu.y);
+                    self.cpu.y = self.load(addr);
+                }
+                opcodes::LDY_ABX => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x as u16 & 0xff);
+                    logdata.push(addr);
+                    self.cpu.y = self.load(addr);
                 }
                 opcodes::LDY_IMM => {
-                    let value: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
-                    logdata.push(value as u16);
-                    self.cpu.y = value;
-                    self.cpu.check_negative(self.cpu.y);
-                    self.cpu.check_zero(self.cpu.y);
+                    self.cpu.y = self.load(self.cpu.pc + 1);
+                    logdata.push(self.cpu.y as u16);
+                }
+                opcodes::LDY_ZP => {
+                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    logdata.push(addr);
+                    self.cpu.y = self.load(addr);
+                }
+                opcodes::LDY_ZPX => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x) as u16;
+                    logdata.push(addr);
+                    self.cpu.y = self.load(addr);
                 }
 
                 opcodes::LSR => {
@@ -616,6 +641,14 @@ impl Emulator {
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
+                opcodes::STA_ABX => {
+                    let addr: u16 = self
+                        .mem
+                        .get_16b_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x as u16);
+                    logdata.push(addr);
+                    self.mem.store(addr, self.cpu.a);
+                }
                 opcodes::STA_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
                     logdata.push(addr);
@@ -659,7 +692,15 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.x);
                 }
                 opcodes::STX_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    logdata.push(addr);
+                    self.mem.store(addr, self.cpu.x);
+                }
+                opcodes::STX_ZPY => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.y) as u16;
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.x);
                 }
@@ -670,6 +711,14 @@ impl Emulator {
                 }
                 opcodes::STY_ZP => {
                     let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    logdata.push(addr);
+                    self.mem.store(addr, self.cpu.y);
+                }
+                opcodes::STY_ZPX => {
+                    let addr: u16 = self
+                        .mem
+                        .value_at_addr(self.cpu.pc + 1)
+                        .wrapping_add(self.cpu.x) as u16;
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.y);
                 }
@@ -711,7 +760,7 @@ impl Emulator {
                 _ => {
                     self.exit(
                         &format!(
-                            "{} (0x{:X}) not implemented!",
+                            "{} (0x{:x}) not implemented!",
                             self.lookup.name(opcode),
                             opcode
                         ),
@@ -741,6 +790,33 @@ impl Emulator {
         }
     }
 
+    fn push_pc_to_stack(&mut self, offset: u16) {
+        let lb: u8 = ((self.cpu.pc + offset) & 0xff) as u8;
+        let hb: u8 = ((self.cpu.pc + offset) >> 8) as u8;
+
+        self.mem.push_to_stack(self.cpu.sp, hb);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+        self.mem.push_to_stack(self.cpu.sp, lb);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+    }
+
+    fn pull_from_stack(&mut self) -> u8 {
+        self.cpu.sp = self.cpu.sp.wrapping_add(1);
+        self.mem.pull_from_stack(self.cpu.sp)
+    }
+
+    fn push_to_stack(&mut self, value: u8) {
+        self.mem.push_to_stack(self.cpu.sp, value);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+    }
+
+    fn load(&mut self, addr: u16) -> u8 {
+        let val: u8 = self.mem.value_at_addr(addr);
+        self.cpu.check_negative(val);
+        self.cpu.check_zero(val);
+        val
+    }
+
     fn exit(&mut self, reason: &str, count: u64) {
         self.iohandler.log(&"");
         self.iohandler.log(reason);
@@ -750,6 +826,50 @@ impl Emulator {
             count, self.cpu.pc
         );
         self.iohandler.exit(&s);
+    }
+
+    // TODO: make shell module
+    fn shell(&self) -> Shell<&Emulator> {
+        let mut shell = Shell::new(self);
+        shell.new_command("m", "mem.ram[addr]", 1, |io, emu, w| {
+            let input = if w[0].len() > 1 {
+                // TODO: make strip_hex() fn
+                match &w[0][..2] {
+                    "0x" => &w[0][2..],
+                    _ => w[0],
+                }
+            } else {
+                w[0]
+            };
+            match u16::from_str_radix(input, 16) {
+                Ok(addr) => {
+                    writeln!(
+                        io,
+                        "self.mem.ram[0x{:x}] = 0x{:x}",
+                        addr, emu.mem.ram[addr as usize]
+                    )?;
+                }
+                _ => {
+                    writeln!(io, "invalid address: {}", w[0])?;
+                }
+            }
+            Ok(())
+        });
+
+        shell.new_command("o", "opcode", 1, |io, emu, w| {
+            // TODO: strip input
+            match u8::from_str_radix(w[0], 16) {
+                Ok(o) => {
+                    writeln!(io, "opcode 0x{:x} => {}", o, emu.lookup.name(o))?;
+                }
+                _ => {
+                    writeln!(io, "invalid opcode: {}", w[0])?;
+                }
+            };
+            Ok(())
+        });
+
+        shell
     }
 
     fn log_stack(&self) {
@@ -779,26 +899,6 @@ impl Emulator {
         }
     }
 
-    fn push_pc_to_stack(&mut self, offset: u16) {
-        let lb: u8 = ((self.cpu.pc + offset) & 0xff) as u8;
-        let hb: u8 = ((self.cpu.pc + offset) >> 8) as u8;
-
-        self.mem.push_to_stack(self.cpu.sp, hb);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-        self.mem.push_to_stack(self.cpu.sp, lb);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-    }
-
-    fn pull_from_stack(&mut self) -> u8 {
-        self.cpu.sp = self.cpu.sp.wrapping_add(1);
-        self.mem.pull_from_stack(self.cpu.sp)
-    }
-
-    fn push_to_stack(&mut self, value: u8) {
-        self.mem.push_to_stack(self.cpu.sp, value);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-    }
-
     fn log(&self, opcode: u8, logdata: Vec<u16>) {
         let mut logline = String::with_capacity(80);
 
@@ -810,7 +910,12 @@ impl Emulator {
         ));
 
         if logdata.len() > 1 {
-            logline.push_str(&format!(" arg=0x{:x}\t", logdata[1]));
+            logline.push_str(&format!(" arg=0x{:x}", logdata[1]));
+            if logdata.len() > 2 {
+                logline.push_str(&format!("=>0x{:x}\t", logdata[2]));
+            } else {
+                logline.push_str("\t");
+            }
         } else {
             logline.push_str(" \t\t");
         }
@@ -1191,10 +1296,11 @@ mod tests {
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_INY;
         emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x15;
+        emu.mem.ram[0x41] = 0x15;
+        emu.mem.ram[0x16] = 0x47;
         emu.run();
 
-        assert_eq!(emu.cpu.a, 0x15);
+        assert_eq!(emu.cpu.a, 0x47);
     }
 
     #[test]
