@@ -1,12 +1,11 @@
 pub mod cpu;
+pub mod dbg;
 pub mod io;
 pub mod memory;
 pub mod opcodes;
 
 extern crate shrust;
 use rand::Rng;
-use shrust::{Shell, ShellIO};
-use std::io::prelude::*;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
@@ -58,7 +57,7 @@ impl Emulator {
                     self.iohandler.log(&format!("infite loop detected!"));
                     self.log_stack();
 
-                    self.shell().run_loop(&mut ShellIO::default());
+                    dbg::debug(&self);
                 } else {
                     self.exit("reached probable end of code", count);
                 }
@@ -826,50 +825,6 @@ impl Emulator {
             count, self.cpu.pc
         );
         self.iohandler.exit(&s);
-    }
-
-    // TODO: make shell module
-    fn shell(&self) -> Shell<&Emulator> {
-        let mut shell = Shell::new(self);
-        shell.new_command("m", "mem.ram[addr]", 1, |io, emu, w| {
-            let input = if w[0].len() > 1 {
-                // TODO: make strip_hex() fn
-                match &w[0][..2] {
-                    "0x" => &w[0][2..],
-                    _ => w[0],
-                }
-            } else {
-                w[0]
-            };
-            match u16::from_str_radix(input, 16) {
-                Ok(addr) => {
-                    writeln!(
-                        io,
-                        "self.mem.ram[0x{:x}] = 0x{:x}",
-                        addr, emu.mem.ram[addr as usize]
-                    )?;
-                }
-                _ => {
-                    writeln!(io, "invalid address: {}", w[0])?;
-                }
-            }
-            Ok(())
-        });
-
-        shell.new_command("o", "opcode", 1, |io, emu, w| {
-            // TODO: strip input
-            match u8::from_str_radix(w[0], 16) {
-                Ok(o) => {
-                    writeln!(io, "opcode 0x{:x} => {}", o, emu.lookup.name(o))?;
-                }
-                _ => {
-                    writeln!(io, "invalid opcode: {}", w[0])?;
-                }
-            };
-            Ok(())
-        });
-
-        shell
     }
 
     fn log_stack(&self) {
