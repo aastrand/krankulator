@@ -1,6 +1,6 @@
 use super::Emulator;
 
-use shrust::{Shell, ShellIO};
+use shrust::{ExecError, Shell, ShellIO};
 use std::io::prelude::*;
 
 fn strip_hex_input(s: &str) -> &str {
@@ -14,7 +14,7 @@ fn strip_hex_input(s: &str) -> &str {
     }
 }
 
-pub fn debug(emu: &Emulator) {
+pub fn debug(emu: &mut Emulator) {
     let mut shell = Shell::new(emu);
     shell.new_command("m", "mem.ram[addr]", 1, |io, emu, w| {
         let input = strip_hex_input(w[0]);
@@ -22,9 +22,22 @@ pub fn debug(emu: &Emulator) {
             Ok(addr) => {
                 writeln!(
                     io,
-                    "self.mem.ram[0x{:x}] = 0x{:x}",
+                    "was self.mem.ram[0x{:x}] == 0x{:x}",
                     addr, emu.mem.ram[addr as usize]
                 )?;
+
+                if w.len() > 1 {
+                    let value = strip_hex_input(w[1]);
+                    match u8::from_str_radix(value, 16) {
+                        Ok(v) => {
+                            emu.mem.ram[addr as usize] = v;
+                            writeln!(io, "wrote self.mem.ram[0x{:x}] = 0x{:x}", addr, v)?;
+                        }
+                        _ => {
+                            writeln!(io, "invalid value: {}", w[1])?;
+                        }
+                    }
+                }
             }
             _ => {
                 writeln!(io, "invalid address: {}", w[0])?;
@@ -45,6 +58,57 @@ pub fn debug(emu: &Emulator) {
         };
         Ok(())
     });
+
+    shell.new_command(
+        "cpu",
+        "edit cpu.<member> (a, x, y, sp, status, pc), e.g 'cpu a 0xff'",
+        2,
+        |io, emu, w| {
+            let value = strip_hex_input(w[1]);
+            match u16::from_str_radix(value, 16) {
+                Ok(v) => match w[0] {
+                    "a" => {
+                        let value: u8 = (v & 0xff) as u8;
+                        emu.cpu.a = value;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                    }
+                    "x" => {
+                        let value: u8 = (v & 0xff) as u8;
+                        emu.cpu.x = value;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                    }
+                    "y" => {
+                        let value: u8 = (v & 0xff) as u8;
+                        emu.cpu.y = value;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                    }
+                    "sp" => {
+                        let value: u8 = (v & 0xff) as u8;
+                        emu.cpu.sp = value;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                    }
+                    "status" => {
+                        let value: u8 = (v & 0xff) as u8;
+                        emu.cpu.status = value;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                    }
+                    "pc" => {
+                        emu.cpu.pc = v;
+                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], v)?;
+                    }
+                    _ => {
+                        writeln!(io, "invalid cpu member: {}", w[0])?;
+                    }
+                },
+                _ => {
+                    writeln!(io, "invalid value: {}", w[1])?;
+                }
+            };
+            Ok(())
+        },
+    );
+
+    shell.new_command_noargs("c", "continue", |_, _| Err(ExecError::Quit));
 
     shell.run_loop(&mut ShellIO::default());
 }

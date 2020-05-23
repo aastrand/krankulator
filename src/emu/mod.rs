@@ -57,12 +57,11 @@ impl Emulator {
                     self.iohandler.log(&format!("infite loop detected!"));
                     self.log_stack();
 
-                    dbg::debug(&self);
+                    dbg::debug(self);
                 } else {
                     self.exit("reached probable end of code", count);
+                    break;
                 }
-
-                break;
             }
 
             last = self.cpu.pc;
