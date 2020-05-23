@@ -866,18 +866,19 @@ impl Emulator {
         if logdata.len() > 1 {
             logline.push_str(&format!(" arg=0x{:x}", logdata[1]));
             if logdata.len() > 2 {
-                logline.push_str(&format!("=>0x{:x}\t", logdata[2]));
-            } else {
-                logline.push_str("\t");
+                logline.push_str(&format!("=>0x{:x}", logdata[2]));
             }
-        } else {
-            logline.push_str(" \t\t");
         }
 
+        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
+
         logline.push_str(&format!(
-            "\ta=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}",
+            "a=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}",
             self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp
         ));
+
+        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
+
         logline.push_str(&format!(
             "\tN={} V={} Z={} C={} st={:#010b} (0x{:x})",
             self.cpu.negative_flag() as i32,

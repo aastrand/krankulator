@@ -109,6 +109,9 @@ pub fn debug(emu: &mut Emulator) {
     );
 
     shell.new_command_noargs("c", "continue", |_, _| Err(ExecError::Quit));
+    shell.new_command_noargs("q", "quit", |_, _| {
+        std::process::exit(0);
+    });
 
     shell.run_loop(&mut ShellIO::default());
 }
