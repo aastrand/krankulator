@@ -70,31 +70,31 @@ pub fn debug(emu: &mut Emulator) {
                     "a" => {
                         let value: u8 = (v & 0xff) as u8;
                         emu.cpu.a = value;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], value)?;
                     }
                     "x" => {
                         let value: u8 = (v & 0xff) as u8;
                         emu.cpu.x = value;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], value)?;
                     }
                     "y" => {
                         let value: u8 = (v & 0xff) as u8;
                         emu.cpu.y = value;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], value)?;
                     }
                     "sp" => {
                         let value: u8 = (v & 0xff) as u8;
                         emu.cpu.sp = value;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], value)?;
                     }
                     "status" => {
                         let value: u8 = (v & 0xff) as u8;
                         emu.cpu.status = value;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], value)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], value)?;
                     }
                     "pc" => {
                         emu.cpu.pc = v;
-                        writeln!(io, "wrote cpu.{}=0x{:x}", w[0], v)?;
+                        writeln!(io, "wrote cpu.{} = 0x{:x}", w[0], v)?;
                     }
                     _ => {
                         writeln!(io, "invalid cpu member: {}", w[0])?;
