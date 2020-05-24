@@ -448,9 +448,12 @@ impl Emulator {
                     self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_INY => {
-                    let value: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    logdata.push(value as u16);
-                    let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
+                    let base = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let lb = self.mem.value_at_addr(base as u16).wrapping_add(self.cpu.y);
+                    let hb = self.mem.value_at_addr((base + 1) as u16);
+
+                    let addr: u16 = memory::Memory::to_16b_addr(hb, lb);
+
                     logdata.push(addr);
                     self.cpu.a = self.load(addr);
                 }
@@ -1250,9 +1253,25 @@ mod tests {
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.y = 1;
         emu.mem.ram[start] = opcodes::LDA_INY;
+        emu.mem.ram[start + 1] = 0x16;
+        emu.mem.ram[0x16] = 0x10;
+        emu.mem.ram[0x17] = 0x42;
+        emu.mem.ram[0x4211] = 0x11;
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x11);
+    }
+
+    #[test]
+    fn test_lda_iny_wrap() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::LDA_INY;
         emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x41] = 0x15;
-        emu.mem.ram[0x16] = 0x47;
+        emu.mem.ram[0x41] = 0xff;
+        emu.mem.ram[0x42] = 0x42;
+        emu.mem.ram[0x4200] = 0x47;
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x47);

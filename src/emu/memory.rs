@@ -48,6 +48,10 @@ impl Memory {
     pub fn store_indirect(&mut self, addr: u16, value: u8) {
         self.ram[self.ram[addr as usize] as usize] = value;
     }
+
+    pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
+        ((hb as u16) << 8) + ((lb as u16) & 0xff)
+    }
 }
 
 #[cfg(test)]
@@ -117,6 +121,7 @@ mod tests {
 
         assert_eq!(memory.ram[0x200], 0xff);
     }
+
     #[test]
     fn test_store_indirect() {
         let mut memory: Memory = Memory::new();
@@ -124,5 +129,10 @@ mod tests {
         memory.store_indirect(0x200, 0xff);
 
         assert_eq!(memory.ram[0x42], 0xff);
+    }
+
+    #[test]
+    fn test_to_16b_addr() {
+        assert_eq!(Memory::to_16b_addr(0x47, 0x11), 0x4711);
     }
 }
