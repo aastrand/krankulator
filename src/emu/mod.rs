@@ -249,7 +249,7 @@ impl Emulator {
                     let addr: u16 = self
                         .mem
                         .get_16b_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.y as u16 & 0xff);
+                        .wrapping_add(self.cpu.y as u16);
                     logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
@@ -480,7 +480,7 @@ impl Emulator {
                     let addr: u16 = self
                         .mem
                         .get_16b_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.y as u16 & 0xff);
+                        .wrapping_add(self.cpu.y as u16);
                     logdata.push(addr);
                     self.cpu.x = self.load(addr);
                 }
@@ -510,7 +510,7 @@ impl Emulator {
                     let addr: u16 = self
                         .mem
                         .get_16b_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.x as u16 & 0xff);
+                        .wrapping_add(self.cpu.x as u16);
                     logdata.push(addr);
                     self.cpu.y = self.load(addr);
                 }
@@ -643,10 +643,9 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_ABX => {
-                    let addr: u16 = self
-                        .mem
-                        .get_16b_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.x as u16);
+                    let value: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    logdata.push(value);
+                    let addr: u16 = value.wrapping_add(self.cpu.x as u16);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -664,10 +663,9 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_ABY => {
-                    let addr: u16 = self
-                        .mem
-                        .get_16b_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.y as u16);
+                    let value: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    logdata.push(value);
+                    let addr: u16 = value.wrapping_add(self.cpu.y as u16);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -1057,6 +1055,224 @@ mod tests {
     }
 
     #[test]
+    fn test_cmp_abs() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.mem.ram[start] = opcodes::CMP_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.mem.ram[start] = opcodes::CMP_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_abx() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_aby() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_ABY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_imm() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_IMM;
+        emu.mem.ram[start + 1] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_IMM;
+        emu.mem.ram[start + 1] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_IMM;
+        emu.mem.ram[start + 1] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_zpx() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ZPX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ZPX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_ZPX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
     fn test_dec_zp() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
@@ -1303,6 +1519,20 @@ mod tests {
     }
 
     #[test]
+    fn test_ldx_aby() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::LDX_ABY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.x, 0x15);
+    }
+
+    #[test]
     fn test_ldx_zp() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
@@ -1350,6 +1580,69 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
+    }
+
+    #[test]
+    fn test_ldy_abs() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::LDY_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.y, 0x15);
+    }
+
+    #[test]
+    fn test_ldy_abx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::LDY_ABX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.ram[0x4711] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.y, 0x15);
+    }
+
+    #[test]
+    fn test_ldy_zp() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::LDY_ZP;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[0x10] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.y, 0x15);
+    }
+
+    #[test]
+    fn test_ldy_zpx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 8;
+        emu.mem.ram[start] = opcodes::LDY_ZPX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[0x18] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.y, 0x15);
+    }
+
+    #[test]
+    fn test_ldy_imm() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::LDY_IMM;
+        emu.mem.ram[start + 1] = 0x15;
+        emu.run();
+
+        assert_eq!(emu.cpu.y, 0x15);
     }
 
     #[test]
@@ -1510,6 +1803,20 @@ mod tests {
     }
 
     #[test]
+    fn test_sta_abx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.a = 0x42;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::STA_ABX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[start + 2] = 0x47;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x4711], 0x42);
+    }
+
+    #[test]
     fn test_sta_aby() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
@@ -1554,12 +1861,79 @@ mod tests {
     }
 
     #[test]
+    fn test_sta_iny_wrap() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.a = 0x42;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::STA_INY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.ram[0x10] = 0xff;
+
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0], 0x42);
+    }
+
+    #[test]
     fn test_sta_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
         emu.cpu.x = 0x01;
         emu.cpu.a = 0x42;
         emu.mem.ram[start] = opcodes::STA_ZPX;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_stx_zp() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 0x42;
+        emu.mem.ram[start] = opcodes::STX_ZP;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_stx_zpy() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.x = 0x42;
+        emu.cpu.y = 0x1;
+
+        emu.mem.ram[start] = opcodes::STX_ZPY;
+        emu.mem.ram[start + 1] = 0x10;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_sty_zp() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.y = 0x42;
+        emu.mem.ram[start] = opcodes::STY_ZP;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.run();
+
+        assert_eq!(emu.mem.ram[0x11], 0x42);
+    }
+
+    #[test]
+    fn test_sty_zpx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.cpu.y = 0x42;
+        emu.cpu.x = 0x1;
+
+        emu.mem.ram[start] = opcodes::STY_ZPX;
         emu.mem.ram[start + 1] = 0x10;
         emu.run();
 
