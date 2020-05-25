@@ -35,6 +35,10 @@ impl Cpu {
         }
     }
 
+    pub fn carry(&self) -> u8 {
+        self.status & CARRY_BIT
+    }
+
     pub fn carry_flag(&self) -> bool {
         (self.status & CARRY_BIT) == 1
     }
@@ -319,6 +323,14 @@ mod tests {
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
+    }
+
+    #[test]
+    fn test_carry() {
+        let mut cpu: Cpu = Cpu::new();
+        assert_eq!(0, cpu.carry());
+        cpu.set_status_flag(CARRY_BIT);
+        assert_eq!(1, cpu.carry());
     }
 
     #[test]

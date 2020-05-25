@@ -17,6 +17,12 @@ impl Memory {
         }
     }
 
+    pub fn addr_absolute_idx(&self, pc: u16, idx: u8, carry: u8) -> u16 {
+        self.get_16b_addr(pc + 1)
+            .wrapping_add(idx as u16)
+            .wrapping_add(carry as u16)
+    }
+
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
         // little endian, so 2nd first
         ((self.ram[offset as usize + 1] as u16) << 8) + self.ram[offset as usize] as u16
