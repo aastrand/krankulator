@@ -54,7 +54,10 @@ impl Emulator {
         loop {
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
-                    self.iohandler.log(&format!("infite loop detected!"));
+                    self.iohandler.log(&format!(
+                        "infite loop detected after {} instructions!",
+                        count
+                    ));
                     self.log_stack();
 
                     dbg::debug(self);
@@ -122,6 +125,7 @@ impl Emulator {
                     // Branch on PLus)
                     if !self.cpu.negative_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BMI => {
@@ -130,6 +134,7 @@ impl Emulator {
                     // Branch on MInus
                     if self.cpu.negative_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BVC => {
@@ -138,6 +143,7 @@ impl Emulator {
                     // Branch on oVerflow Clear
                     if !self.cpu.overflow_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BVS => {
@@ -146,6 +152,7 @@ impl Emulator {
                     // Branch on oVerflow Set
                     if self.cpu.overflow_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BCC => {
@@ -154,6 +161,7 @@ impl Emulator {
                     // Branch on Carry Clear
                     if !self.cpu.carry_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BCS => {
@@ -162,6 +170,7 @@ impl Emulator {
                     // Branch on Carry Set
                     if self.cpu.carry_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BEQ => {
@@ -170,6 +179,7 @@ impl Emulator {
                     // Branch on EQual
                     if self.cpu.zero_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
                 opcodes::BNE => {
@@ -178,6 +188,7 @@ impl Emulator {
                     // Branch on Not Equal
                     if !self.cpu.zero_flag() {
                         self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                        logdata.push(self.cpu.pc + 2 as u16);
                     }
                 }
 
@@ -258,6 +269,19 @@ impl Emulator {
                 opcodes::CMP_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
+                    self.cpu.compare(self.cpu.a, operand);
+                }
+                opcodes::CMP_INY => {
+                    let base = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let lb = self.mem.value_at_addr(base as u16).wrapping_add(self.cpu.y);
+                    let hb = self.mem.value_at_addr((base + 1) as u16);
+
+                    let addr: u16 = memory::Memory::to_16b_addr(hb, lb);
+                    logdata.push(addr);
+
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_ZP => {
@@ -679,8 +703,11 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_INY => {
-                    let value: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
-                    let addr: u16 = value.wrapping_add(self.cpu.y) as u16;
+                    let base = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let lb = self.mem.value_at_addr(base as u16).wrapping_add(self.cpu.y);
+                    let hb = self.mem.value_at_addr((base + 1) as u16);
+
+                    let addr: u16 = memory::Memory::to_16b_addr(hb, lb);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -1221,6 +1248,54 @@ mod tests {
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::CMP_IMM;
         emu.mem.ram[start + 1] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_iny() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_INY;
+        emu.mem.ram[start + 1] = 0x42;
+        emu.mem.ram[0x42] = 0x10;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_INY;
+        emu.mem.ram[start + 1] = 0x42;
+        emu.mem.ram[0x42] = 0x10;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.y = 1;
+        emu.mem.ram[start] = opcodes::CMP_INY;
+        emu.mem.ram[start + 1] = 0x42;
+        emu.mem.ram[0x42] = 0x10;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 1;
 
         emu.run();
 
