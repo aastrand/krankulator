@@ -17,10 +17,23 @@ impl Memory {
         }
     }
 
-    pub fn addr_absolute_idx(&self, pc: u16, idx: u8, carry: u8) -> u16 {
-        self.get_16b_addr(pc + 1)
-            .wrapping_add(idx as u16)
-            .wrapping_add(carry as u16)
+    pub fn addr_absolute_idx(&self, pc: u16, idx: u8) -> u16 {
+        self.get_16b_addr(pc + 1).wrapping_add(idx as u16)
+    }
+
+    pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
+        let base = self.value_at_addr(pc + 1);
+
+        let lb = self.value_at_addr(base as u16);
+        let lbidx = lb.wrapping_add(idx);
+        let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
+        let hb = self.value_at_addr((base + 1) as u16).wrapping_add(carry);
+
+        Memory::to_16b_addr(hb, lbidx)
+    }
+
+    pub fn addr_zeropage_idx(&self, pc: u16, idx: u8) -> u16 {
+        self.value_at_addr(pc + 1).wrapping_add(idx) as u16
     }
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
@@ -63,6 +76,61 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_addr_absolute_idx() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x10;
+        memory.ram[0x2002] = 0x47;
+
+        let value = memory.addr_absolute_idx(0x2000, 1);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_indirect_idx() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x42;
+        memory.ram[0x42] = 0x10;
+        memory.ram[0x43] = 0x47;
+
+        let value = memory.addr_indirect_idx(0x2000, 0x1);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_indirect_idx_wrap_with_carry() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x42;
+        memory.ram[0x42] = 0x12;
+        memory.ram[0x43] = 0x46;
+
+        let value = memory.addr_indirect_idx(0x2000, 0xff);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_zeropage_idx() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x10;
+
+        let value = memory.addr_zeropage_idx(0x2000, 0x1);
+
+        assert_eq!(value, 0x11);
+    }
+
+    #[test]
+    fn test_addr_zeropage_idx_wrap() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x43;
+
+        let value = memory.addr_zeropage_idx(0x2000, 0xff);
+
+        assert_eq!(value, 0x42);
+    }
 
     #[test]
     fn test_get_16b_addr() {
