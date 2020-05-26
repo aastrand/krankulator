@@ -35,6 +35,14 @@ impl Cpu {
         }
     }
 
+    pub fn bit(&mut self, operand: u8) {
+        // Bits 7 and 6 of operand are transfered to bit 7 and 6 of SR (N,V);
+        let mask: u8 = 0b1100_0000;
+        self.status = (self.status & !mask) | (operand & mask);
+        // The zeroflag is set to the result of operand AND accumulator.
+        self.check_zero(self.a & operand);
+    }
+
     pub fn carry_flag(&self) -> bool {
         (self.status & CARRY_BIT) == 1
     }
@@ -319,6 +327,22 @@ mod tests {
         assert_eq!(false, cpu.overflow_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(true, cpu.carry_flag());
+    }
+
+    #[test]
+    fn test_bit() {
+        let mut cpu: Cpu = Cpu::new();
+        cpu.a = 0b1000_0001;
+        cpu.bit(0b1100_0000);
+        assert_eq!(cpu.negative_flag(), true);
+        assert_eq!(cpu.overflow_flag(), true);
+        assert_eq!(cpu.zero_flag(), false);
+
+        cpu.a = 0b1000_0001;
+        cpu.bit(0b0100_0000);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.overflow_flag(), true);
+        assert_eq!(cpu.zero_flag(), true);
     }
 
     #[test]

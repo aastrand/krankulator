@@ -21,6 +21,11 @@ impl Memory {
         self.get_16b_addr(pc + 1).wrapping_add(idx as u16)
     }
 
+    pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
+        let value: u8 = self.value_at_addr(pc + 1).wrapping_add(idx);
+        self.get_16b_addr(value as u16)
+    }
+
     pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
         let base = self.value_at_addr(pc + 1);
 
@@ -84,6 +89,30 @@ mod tests {
         memory.ram[0x2002] = 0x47;
 
         let value = memory.addr_absolute_idx(0x2000, 1);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_idx_indirect() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x41;
+        memory.ram[0x42] = 0x11;
+        memory.ram[0x43] = 0x47;
+
+        let value = memory.addr_idx_indirect(0x2000, 0x1);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_idx_indirect_wrap() {
+        let mut memory: Memory = Memory::new();
+        memory.ram[0x2001] = 0x43;
+        memory.ram[0x42] = 0x11;
+        memory.ram[0x43] = 0x47;
+
+        let value = memory.addr_idx_indirect(0x2000, 0xff);
 
         assert_eq!(value, 0x4711);
     }

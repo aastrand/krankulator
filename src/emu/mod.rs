@@ -103,17 +103,19 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
-
+                opcodes::BIT_ABS => {
+                    // Test BITs
+                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.bit(operand);
+                }
                 opcodes::BIT_ZP => {
                     // Test BITs
                     let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
-
-                    // Bits 7 and 6 of operand are transfered to bit 7 and 6 of SR (N,V);
-                    let mask: u8 = 0b1100_0000;
-                    self.cpu.status = (self.cpu.status & !mask) | (operand & mask);
-                    // The zeroflag is set to the result of operand AND accumulator.
-                    self.cpu.check_zero(self.cpu.a & operand);
+                    self.cpu.bit(operand);
                 }
 
                 opcodes::BPL => {
@@ -260,6 +262,14 @@ impl Emulator {
                 opcodes::CMP_IMM => {
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
+                    self.cpu.compare(self.cpu.a, operand);
+                }
+                opcodes::CMP_INX => {
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_INY => {
@@ -440,12 +450,7 @@ impl Emulator {
                     logdata.push(self.cpu.a as u16);
                 }
                 opcodes::LDA_INX => {
-                    let value: u8 = self
-                        .mem
-                        .value_at_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.x);
-                    logdata.push(value as u16);
-                    let addr: u16 = self.mem.get_16b_addr(value as u16);
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
                     self.cpu.a = self.load(addr);
                 }
@@ -645,11 +650,7 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_INX => {
-                    let value: u8 = self
-                        .mem
-                        .value_at_addr(self.cpu.pc + 1)
-                        .wrapping_add(self.cpu.x);
-                    let addr: u16 = self.mem.get_16b_addr(value as u16);
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -933,6 +934,32 @@ mod tests {
     }
 
     #[test]
+    fn test_bit_abs() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: usize = memory::CODE_START_ADDR as usize;
+        emu.mem.ram[start] = opcodes::BIT_ABS;
+        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.ram[start + 2] = 0x47;
+
+        emu.mem.ram[0x4711] = 0b1100_0000;
+        emu.cpu.a = 0b1000_0001;
+        emu.run();
+
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.overflow_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        emu.cpu.pc = memory::CODE_START_ADDR;
+        emu.mem.ram[0x4711] = 0b0100_0000;
+        emu.cpu.a = 0b1000_0001;
+        emu.run();
+
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.overflow_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), true);
+    }
+
+    #[test]
     fn test_bit_zp() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: usize = memory::CODE_START_ADDR as usize;
@@ -1189,6 +1216,54 @@ mod tests {
         emu.cpu.x = 1;
         emu.mem.ram[start] = opcodes::CMP_IMM;
         emu.mem.ram[start + 1] = 1;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), false);
+        assert_eq!(emu.cpu.negative_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_cmp_inx() {
+        let start: usize = memory::CODE_START_ADDR as usize;
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_INX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 0x11;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), true);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 1;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_INX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 0x11;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 0;
+
+        emu.run();
+
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+
+        let mut emu: Emulator = Emulator::new_headless();
+        emu.cpu.a = 0;
+        emu.cpu.x = 1;
+        emu.mem.ram[start] = opcodes::CMP_INX;
+        emu.mem.ram[start + 1] = 0x41;
+        emu.mem.ram[0x42] = 0x11;
+        emu.mem.ram[0x43] = 0x47;
+        emu.mem.ram[0x4711] = 1;
 
         emu.run();
 
