@@ -103,9 +103,48 @@ impl Emulator {
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
+
+                opcodes::ASL => {
+                    logdata.push(self.cpu.a as u16);
+                    self.cpu.a = self.cpu.asl(self.cpu.a);
+                    logdata.push(self.cpu.a as u16);
+                }
+                opcodes::ASL_ZP => {
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.asl(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ASL_ZPX => {
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.asl(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ASL_ABS => {
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.asl(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ASL_ABX => {
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.asl(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+
                 opcodes::BIT_ABS => {
                     // Test BITs
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
@@ -239,7 +278,7 @@ impl Emulator {
                 }
 
                 opcodes::CMP_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
@@ -293,7 +332,7 @@ impl Emulator {
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CPX_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
@@ -310,7 +349,7 @@ impl Emulator {
                     self.cpu.compare(self.cpu.x, operand);
                 }
                 opcodes::CPY_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
@@ -365,7 +404,7 @@ impl Emulator {
 
                 opcodes::JMP_ABS => {
                     // JuMP to address
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.cpu.pc = addr;
                     // Compensate for length addition
@@ -385,7 +424,7 @@ impl Emulator {
                 opcodes::JSR_ABS => {
                     // Jump to SubRoutine
                     self.push_pc_to_stack(2);
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     self.cpu.pc = addr;
                     // Compensate for length addition
                     self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
@@ -431,7 +470,7 @@ impl Emulator {
                 }
 
                 opcodes::LDA_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.cpu.a = self.load(addr);
                 }
@@ -460,7 +499,7 @@ impl Emulator {
                     self.cpu.a = self.load(addr);
                 }
                 opcodes::LDA_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
                     logdata.push(addr);
                     self.cpu.a = self.load(addr);
                 }
@@ -471,7 +510,7 @@ impl Emulator {
                 }
 
                 opcodes::LDX_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.cpu.x = self.load(addr);
                 }
@@ -485,7 +524,7 @@ impl Emulator {
                     logdata.push(self.cpu.x as u16);
                 }
                 opcodes::LDX_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
                     logdata.push(addr);
                     self.cpu.x = self.load(addr);
                 }
@@ -495,7 +534,7 @@ impl Emulator {
                     self.cpu.x = self.load(addr);
                 }
                 opcodes::LDY_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.cpu.y = self.load(addr);
                 }
@@ -509,7 +548,7 @@ impl Emulator {
                     logdata.push(self.cpu.y as u16);
                 }
                 opcodes::LDY_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
                     logdata.push(addr);
                     self.cpu.y = self.load(addr);
                 }
@@ -520,20 +559,41 @@ impl Emulator {
                 }
 
                 opcodes::LSR => {
-                    // Logical Shift Right
-                    // LSR shifts all bits right one position.
-                    // 0 is shifted into bit 7 and the original bit 0 is shifted into the Carry.
-                    let b0: u8 = self.cpu.a & 0b0000_0001;
-                    self.cpu.a = self.cpu.a >> 1;
-
-                    if b0 == 1 {
-                        self.cpu.set_status_flag(cpu::CARRY_BIT);
-                    } else {
-                        self.cpu.clear_status_flag(cpu::CARRY_BIT);
-                    }
-
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    logdata.push(self.cpu.a as u16);
+                    self.cpu.a = self.cpu.lsr(self.cpu.a);
+                    logdata.push(self.cpu.a as u16);
+                }
+                opcodes::LSR_ZP => {
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.lsr(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::LSR_ZPX => {
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.lsr(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::LSR_ABS => {
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.lsr(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::LSR_ABX => {
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.lsr(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
                 }
 
                 opcodes::NOP => {
@@ -602,6 +662,82 @@ impl Emulator {
                     self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
                 }
 
+                opcodes::ROL => {
+                    logdata.push(self.cpu.a as u16);
+                    self.cpu.a = self.cpu.rol(self.cpu.a);
+                    logdata.push(self.cpu.a as u16);
+                }
+                opcodes::ROL_ZP => {
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.rol(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROL_ZPX => {
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.rol(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROL_ABS => {
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.rol(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROL_ABX => {
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.rol(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+
+                opcodes::ROR => {
+                    logdata.push(self.cpu.a as u16);
+                    self.cpu.a = self.cpu.ror(self.cpu.a);
+                    logdata.push(self.cpu.a as u16);
+                }
+                opcodes::ROR_ZP => {
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.ror(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROR_ZPX => {
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.ror(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROR_ABS => {
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.ror(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+                opcodes::ROR_ABX => {
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    let value: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(value as u16);
+                    let result: u8 = self.cpu.ror(value);
+                    logdata.push(result as u16);
+                    self.mem.ram[addr as usize] = result;
+                }
+
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
@@ -625,7 +761,7 @@ impl Emulator {
                 }
 
                 opcodes::STA_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -635,7 +771,7 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.a);
                 }
                 opcodes::STA_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.a);
                 }
@@ -661,12 +797,12 @@ impl Emulator {
                 }
 
                 opcodes::STX_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.x);
                 }
                 opcodes::STX_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1) as u16;
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.x);
                 }
@@ -676,12 +812,12 @@ impl Emulator {
                     self.mem.store(addr, self.cpu.x);
                 }
                 opcodes::STY_ABS => {
-                    let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.y);
                 }
                 opcodes::STY_ZP => {
-                    let addr: u16 = self.mem.value_at_addr(self.cpu.pc + 1).into();
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
                     self.mem.store(addr, self.cpu.y);
                 }

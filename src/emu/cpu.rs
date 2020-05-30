@@ -172,6 +172,88 @@ impl Cpu {
             self.set_status_flag(NEGATIVE_BIT);
         }
     }
+
+    pub fn asl(&mut self, value: u8) -> u8 {
+        // Arithmetic Shift Left
+        // ASL shifts all bits left one position.
+        // 0 is shifted into bit 0 and the original bit 7 is shifted into the Carry.
+        let b7: u8 = value & 0b1000_0000;
+        let value = value << 1;
+
+        if b7 == 128 {
+            self.set_status_flag(CARRY_BIT);
+        } else {
+            self.clear_status_flag(CARRY_BIT);
+        }
+
+        self.check_negative(value);
+        self.check_zero(value);
+
+        value
+    }
+
+    pub fn lsr(&mut self, value: u8) -> u8 {
+        // Logical Shift Right
+        // LSR shifts all bits right one position.
+        // 0 is shifted into bit 7 and the original bit 0 is shifted into the Carry.
+        let b0: u8 = value & 0b0000_0001;
+        let value = value >> 1;
+
+        if b0 == 1 {
+            self.set_status_flag(CARRY_BIT);
+        } else {
+            self.clear_status_flag(CARRY_BIT);
+        }
+
+        self.check_negative(value);
+        self.check_zero(value);
+
+        value
+    }
+
+    pub fn rol(&mut self, value: u8) -> u8 {
+        // ROtate Left
+        // ROL shifts all bits left one position.
+        // The Carry is shifted into bit 0 and the original bit 7 is shifted into the Carry.
+        let b7: u8 = value & 0b1000_0000;
+        let value = value << 1;
+
+        let b0 = self.status & CARRY_BIT;
+
+        if b7 == 128 {
+            self.set_status_flag(CARRY_BIT);
+        } else {
+            self.clear_status_flag(CARRY_BIT);
+        }
+        let value = (value & !0b0000_0001) | (b0 & 0b0000_0001);
+
+        self.check_negative(value);
+        self.check_zero(value);
+
+        value
+    }
+
+    pub fn ror(&mut self, value: u8) -> u8 {
+        // ROtate Right
+        // ROR shifts all bits right one position.
+        // The Carry is shifted into bit 7 and the original bit 0 is shifted into the Carry.
+        let b0: u8 = value & 0b0000_0001;
+        let value = value >> 1;
+
+        let b7 = (self.status & CARRY_BIT) << 7;
+
+        if b0 == 1 {
+            self.set_status_flag(CARRY_BIT);
+        } else {
+            self.clear_status_flag(CARRY_BIT);
+        }
+        let value = (value & !0b1000_0000) | (b7 & 0b1000_0000);
+
+        self.check_negative(value);
+        self.check_zero(value);
+
+        value
+    }
 }
 
 #[cfg(test)]
@@ -414,6 +496,170 @@ mod tests {
 
         cpu.compare(2, 1);
         assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+    }
+
+    #[test]
+    fn test_asl() {
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.asl(0);
+        assert_eq!(value, 0);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.asl(127);
+        assert_eq!(value, 254);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.asl(255);
+        assert_eq!(value, 254);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.asl(128);
+        assert_eq!(value, 0);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+    }
+
+    #[test]
+    fn test_lsr() {
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.lsr(0);
+        assert_eq!(value, 0);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.lsr(1);
+        assert_eq!(value, 0);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.lsr(255);
+        assert_eq!(value, 127);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.lsr(8);
+        assert_eq!(value, 4);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+    }
+
+    #[test]
+    fn test_rol() {
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.rol(0);
+        assert_eq!(value, 0);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        cpu.set_status_flag(CARRY_BIT);
+        let value = cpu.rol(0);
+        assert_eq!(value, 1);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.rol(1);
+        assert_eq!(value, 2);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        cpu.set_status_flag(CARRY_BIT);
+        let value = cpu.rol(128);
+        assert_eq!(value, 1);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.rol(127);
+        assert_eq!(value, 254);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        cpu.set_status_flag(CARRY_BIT);
+        let value = cpu.rol(255);
+        assert_eq!(value, 255);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+    }
+
+    #[test]
+    fn test_ror() {
+        let mut cpu: Cpu = Cpu::new();
+
+        let value = cpu.ror(0);
+        assert_eq!(value, 0);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        cpu.set_status_flag(CARRY_BIT);
+        let value = cpu.ror(0);
+        assert_eq!(value, 128);
+        assert_eq!(false, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.ror(1);
+        assert_eq!(value, 0);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(true, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        cpu.set_status_flag(CARRY_BIT);
+        let value = cpu.ror(1);
+        assert_eq!(value, 128);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.ror(255);
+        assert_eq!(value, 127);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(false, cpu.negative_flag());
+
+        let mut cpu: Cpu = Cpu::new();
+        let value = cpu.ror(8);
+        assert_eq!(value, 4);
+        assert_eq!(false, cpu.carry_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.negative_flag());
     }
