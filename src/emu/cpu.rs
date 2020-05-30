@@ -35,6 +35,12 @@ impl Cpu {
         }
     }
 
+    pub fn and(&mut self, operand: u8) {
+        self.a &= operand;
+        self.check_negative(self.a);
+        self.check_zero(self.a);
+    }
+
     pub fn bit(&mut self, operand: u8) {
         // Bits 7 and 6 of operand are transfered to bit 7 and 6 of SR (N,V);
         let mask: u8 = 0b1100_0000;
@@ -171,6 +177,12 @@ impl Cpu {
             self.clear_status_flag(ZERO_BIT);
             self.set_status_flag(NEGATIVE_BIT);
         }
+    }
+
+    pub fn eor(&mut self, operand: u8) {
+        self.a = self.a ^ operand;
+        self.check_negative(self.a);
+        self.check_zero(self.a);
     }
 
     pub fn asl(&mut self, value: u8) -> u8 {
@@ -412,6 +424,28 @@ mod tests {
     }
 
     #[test]
+    fn test_and() {
+        let mut cpu: Cpu = Cpu::new();
+        cpu.a = 0b1000_0001;
+        cpu.and(0b1100_0000);
+        assert_eq!(cpu.a, 0b1000_0000);
+        assert_eq!(cpu.negative_flag(), true);
+        assert_eq!(cpu.zero_flag(), false);
+
+        cpu.a = 0b1000_0001;
+        cpu.and(0b0100_0000);
+        assert_eq!(cpu.a, 0b0000_0000);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), true);
+
+        cpu.a = 0b0100_0001;
+        cpu.and(0b0100_0000);
+        assert_eq!(cpu.a, 0b0100_0000);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), false);
+    }
+
+    #[test]
     fn test_bit() {
         let mut cpu: Cpu = Cpu::new();
         cpu.a = 0b1000_0001;
@@ -449,6 +483,28 @@ mod tests {
         assert_eq!(true, cpu.zero_flag());
         cpu.check_zero(8);
         assert_eq!(false, cpu.zero_flag());
+    }
+
+    #[test]
+    fn test_eor() {
+        let mut cpu: Cpu = Cpu::new();
+        cpu.a = 0b1000_0001;
+        cpu.eor(0b1100_0000);
+        assert_eq!(cpu.a, 0b0100_0001);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), false);
+
+        cpu.a = 0b1000_0001;
+        cpu.eor(0b0100_0000);
+        assert_eq!(cpu.a, 0b1100_0001);
+        assert_eq!(cpu.negative_flag(), true);
+        assert_eq!(cpu.zero_flag(), false);
+
+        cpu.a = 0b1000_0000;
+        cpu.eor(0b1000_0000);
+        assert_eq!(cpu.a, 0b0000_0000);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), true);
     }
 
     #[test]

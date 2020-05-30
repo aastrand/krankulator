@@ -73,22 +73,53 @@ impl Emulator {
             logdata.push(self.cpu.pc);
 
             match opcode {
+                opcodes::AND_ABS => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
+                }
+                opcodes::AND_ABX => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
+                }
+                opcodes::AND_ABY => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
+                }
                 opcodes::AND_IMM => {
                     // Bitwise AND with accumulator
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
-                    self.cpu.a &= operand;
-
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.and(operand);
+                }
+                opcodes::AND_INX => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
+                }
+                opcodes::AND_INY => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
+                }
+                opcodes::AND_ZP => {
+                    // Bitwise AND with accumulator
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
+                    logdata.push(addr);
+                    self.cpu.and(self.mem.value_at_addr(addr));
                 }
                 opcodes::AND_ZPX => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.cpu.a &= self.mem.value_at_addr(addr);
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.and(self.mem.value_at_addr(addr));
                 }
 
                 opcodes::ADC_IMM => {
@@ -426,13 +457,60 @@ impl Emulator {
                     self.cpu.check_zero(self.cpu.y);
                 }
 
+                opcodes::EOR_ABS => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_absolute(self.cpu.pc);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_ABX => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_ABY => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
                 opcodes::EOR_IMM => {
                     // bitwise Exclusive OR
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
-                    self.cpu.a = self.cpu.a ^ operand;
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_INX => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_INY => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_ZP => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_zeropage(self.cpu.pc);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
+                }
+                opcodes::EOR_ZPX => {
+                    // bitwise Exclusive OR
+                    let addr = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.eor(operand);
                 }
 
                 opcodes::JMP_ABS => {
