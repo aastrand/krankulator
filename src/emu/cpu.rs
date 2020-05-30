@@ -223,6 +223,12 @@ impl Cpu {
         value
     }
 
+    pub fn ora(&mut self, value: u8) {
+        self.a |= value;
+        self.check_negative(self.a);
+        self.check_zero(self.a);
+    }
+
     pub fn rol(&mut self, value: u8) -> u8 {
         // ROtate Left
         // ROL shifts all bits left one position.
@@ -621,6 +627,28 @@ mod tests {
         assert_eq!(false, cpu.carry_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.negative_flag());
+    }
+
+    #[test]
+    fn test_ora() {
+        let mut cpu: Cpu = Cpu::new();
+        cpu.a = 0b1000_0001;
+        cpu.ora(0b1100_0000);
+        assert_eq!(cpu.a, 0b1100_0001);
+        assert_eq!(cpu.negative_flag(), true);
+        assert_eq!(cpu.zero_flag(), false);
+
+        cpu.a = 0;
+        cpu.ora(0);
+        assert_eq!(cpu.a, 0);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), true);
+
+        cpu.a = 0b0000_1010;
+        cpu.ora(0b0000_0101);
+        assert_eq!(cpu.a, 0b0000_1111);
+        assert_eq!(cpu.negative_flag(), false);
+        assert_eq!(cpu.zero_flag(), false);
     }
 
     #[test]

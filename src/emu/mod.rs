@@ -744,14 +744,67 @@ impl Emulator {
                     // No operation
                 }
 
+                opcodes::ORA_ABS => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_ABX => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_ABY => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
                 opcodes::ORA_IMM => {
                     // Bitwise OR with Accumulator
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
-                    self.cpu.a |= operand;
-
-                    self.cpu.check_negative(self.cpu.a);
-                    self.cpu.check_zero(self.cpu.a);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_INX => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_INY => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_ZP => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
+                }
+                opcodes::ORA_ZPX => {
+                    // Bitwise OR with Accumulator
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.ora(operand);
                 }
 
                 opcodes::PHA => {
