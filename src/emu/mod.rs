@@ -6,6 +6,7 @@ pub mod opcodes;
 
 extern crate shrust;
 use rand::Rng;
+use std::collections::HashSet;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
@@ -13,6 +14,8 @@ pub struct Emulator {
     lookup: opcodes::Lookup,
     iohandler: Box<dyn io::IOHandler>,
     rng: rand::rngs::ThreadRng,
+    stepping: bool,
+    breakpoints: Box<HashSet<u16>>,
 }
 
 impl Emulator {
@@ -23,6 +26,8 @@ impl Emulator {
             lookup: opcodes::Lookup::new(),
             iohandler: Box::new(io::CursesIOHandler::new()),
             rng: rand::thread_rng(),
+            stepping: false,
+            breakpoints: Box::new(HashSet::new()),
         }
     }
 
@@ -34,6 +39,8 @@ impl Emulator {
             lookup: opcodes::Lookup::new(),
             iohandler: Box::new(io::HeadlessIOHandler {}),
             rng: rand::thread_rng(),
+            stepping: false,
+            breakpoints: Box::new(HashSet::new()),
         }
     }
 
@@ -50,8 +57,13 @@ impl Emulator {
         let mut last: u16 = 0xfff;
 
         self.iohandler.init();
+        self.breakpoints.insert(0x35a2);
 
         loop {
+            if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
+                dbg::debug(self);
+            }
+
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
                     self.iohandler.log(&format!(
@@ -122,15 +134,65 @@ impl Emulator {
                     self.cpu.and(self.mem.value_at_addr(addr));
                 }
 
+                opcodes::ADC_ABS => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
+                opcodes::ADC_ABX => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
+                opcodes::ADC_ABY => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
+                opcodes::ADC_INX => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
+                opcodes::ADC_INY => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
                 opcodes::ADC_ZP => {
                     // Add Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.add_to_a_with_carry(operand);
+                }
+                opcodes::ADC_ZPX => {
+                    // Add Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -536,6 +598,7 @@ impl Emulator {
                     // Jump to SubRoutine
                     self.push_pc_to_stack(2);
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    logdata.push(addr);
                     self.cpu.pc = addr;
                     // Compensate for length addition
                     self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
@@ -935,18 +998,69 @@ impl Emulator {
                     self.mem.store(addr, result);
                 }
 
+                opcodes::SBC_ABS => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SBC_ABX => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SBC_ABY => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
                     let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
-                opcodes::SBC_ZP => {
+                opcodes::SBC_INX => {
                     // Subtract Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.indirect_value_at_addr(self.cpu.pc + 1);
+                    let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
+                opcodes::SBC_INY => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SBC_ZP => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+                opcodes::SBC_ZPX => {
+                    // Subtract Memory to Accumulator with Carry
+                    let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
+                    logdata.push(addr);
+                    let operand: u8 = self.mem.value_at_addr(addr);
+                    logdata.push(operand as u16);
+                    self.cpu.sub_from_a_with_carry(operand);
+                }
+
                 opcodes::SEC => {
                     self.cpu.set_status_flag(cpu::CARRY_BIT);
                 }

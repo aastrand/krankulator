@@ -6,7 +6,7 @@ pub trait IOHandler {
     fn init(&mut self);
     fn log(&self, logline: &str);
     fn display(&self, mem: &memory::Memory);
-    fn input(&mut self, mem: &mut memory::Memory);
+    fn input(&mut self, mem: &mut memory::Memory) -> Option<char>;
     fn exit(&self, s: &str);
 }
 
@@ -20,8 +20,8 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem: &mut memory::Memory) {
-        // TOOO
+    fn input(&mut self, mem: &mut memory::Memory) -> Option<char> {
+        None
     }
 
     #[allow(unused_variables)]
@@ -53,15 +53,17 @@ impl IOHandler for CursesIOHandler {
         self.window.mvaddstr(0, 0, logline);
     }
 
-    fn input(&mut self, mem: &mut memory::Memory) {
+    fn input(&mut self, mem: &mut memory::Memory) -> Option<char> {
         // TODO: Map more input
-        match self.window.getch() {
+        let c = match self.window.getch() {
             Some(pancurses::Input::Character(c)) => {
                 mem.ram[0xff] = c.to_ascii_lowercase() as u8;
+                Some(c.to_ascii_lowercase())
             }
-            _ => {}
-        }
+            _ => None,
+        };
         self.window.refresh();
+        c
     }
 
     fn display(&self, mem: &memory::Memory) {
