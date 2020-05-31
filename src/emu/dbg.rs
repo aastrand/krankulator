@@ -108,22 +108,33 @@ pub fn debug(emu: &mut Emulator) {
         },
     );
 
-    shell.new_command("b", "add breakpoint", 0, |io, emu, w| {
+    shell.new_command("b", "add/remove breakpoint", 0, |io, emu, w| {
         if w.len() > 0 {
             let input = strip_hex_input(w[0]);
             match u16::from_str_radix(input, 16) {
                 Ok(o) => {
-                    writeln!(io, "added breakpoint 0x{:x}", o)?;
-                    emu.breakpoints.insert(o);
+                    if emu.breakpoints.contains(&o) {
+                        emu.breakpoints.remove(&o);
+                        writeln!(io, "removed breakpoint 0x{:x}", o)?;
+                    } else {
+                        emu.breakpoints.insert(o);
+                        writeln!(io, "added breakpoint 0x{:x}", o)?;
+                    }
                 }
                 _ => {
                     writeln!(io, "invalid address: {}", w[0])?;
                 }
             };
         }
-        // TODO: add suport for adding / removing
+
+        writeln!(io, "breakpoints:")?;
         for b in emu.breakpoints.iter() {
-            writeln!(io, "breakpoint: 0x{:x}", b)?;
+            writeln!(
+                io,
+                "0x{:x}: {}",
+                b,
+                emu.lookup.name(emu.mem.ram[*b as usize]) // TODO: add arguments,
+            )?;
         }
         Ok(())
     });
