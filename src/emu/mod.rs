@@ -4,8 +4,9 @@ pub mod io;
 pub mod memory;
 pub mod opcodes;
 
+use signal_hook::{iterator::Signals, SIGINT};
 extern crate shrust;
-use rand::Rng;
+extern crate signal_hook;
 use std::collections::HashSet;
 
 pub struct Emulator {
@@ -13,7 +14,6 @@ pub struct Emulator {
     pub mem: memory::Memory,
     lookup: opcodes::Lookup,
     iohandler: Box<dyn io::IOHandler>,
-    rng: rand::rngs::ThreadRng,
     stepping: bool,
     breakpoints: Box<HashSet<u16>>,
 }
@@ -25,7 +25,6 @@ impl Emulator {
             mem: memory::Memory::new(),
             lookup: opcodes::Lookup::new(),
             iohandler: Box::new(io::CursesIOHandler::new()),
-            rng: rand::thread_rng(),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
         }
@@ -38,7 +37,6 @@ impl Emulator {
             mem: memory::Memory::new(),
             lookup: opcodes::Lookup::new(),
             iohandler: Box::new(io::HeadlessIOHandler {}),
-            rng: rand::thread_rng(),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
         }
@@ -57,11 +55,23 @@ impl Emulator {
         let mut last: u16 = 0xfff;
 
         self.iohandler.init();
-        self.breakpoints.insert(0x35a2);
+        //self.breakpoints.insert(0x35a2);
+
+        let signals = match Signals::new(&[SIGINT]) {
+            Ok(s) => s,
+            _ => panic!("Unable to install SIGINT handler!"),
+        };
 
         loop {
             if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
                 dbg::debug(self);
+            }
+
+            for signal in signals.pending() {
+                match signal {
+                    signal_hook::SIGINT => dbg::debug(self),
+                    _ => {}
+                }
             }
 
             if self.cpu.pc == last {
@@ -1310,7 +1320,7 @@ impl Emulator {
     }
 
     fn rng(&mut self) {
-        self.mem.ram[0xfe] = self.rng.gen();
+        self.mem.ram[0xfe] = rand::random::<u8>();
     }
 }
 

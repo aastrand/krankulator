@@ -94,6 +94,7 @@ impl Cpu {
             self.clear_status_flag(CARRY_BIT);
             (value & 0xff) as u8
         };
+
         // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         if (operand ^ value) & (self.a ^ value) & 0x80 != 0 {
             self.set_status_flag(OVERFLOW_BIT);
@@ -108,36 +109,6 @@ impl Cpu {
     }
 
     pub fn sub_from_a_with_carry(&mut self, operand: u8) {
-        /*let cin = if self.carry_flag() { 0 } else { 1 };
-        let value: i32 = (self.a as i32 - operand as i32) - cin;
-
-        if value < 0 {
-            // Set borrow, which is !carry
-            self.clear_status_flag(CARRY_BIT);
-        } else {
-            self.set_status_flag(CARRY_BIT);
-        }
-
-        // Handle overflow
-        let value = if value < -256 as i32 {
-            value + u8::max_value() as i32
-        } else {
-            value
-        };
-
-        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        if ((255 - operand) ^ value as u8) & ((self.a) ^ value as u8) & 0x80 != 0 {
-            self.set_status_flag(OVERFLOW_BIT);
-        } else {
-            self.clear_status_flag(OVERFLOW_BIT);
-        }
-
-        self.a = value as u8;
-
-        self.check_negative(self.a);
-        self.check_zero(self.a);
-
-        // TODO: this should be enough, but some testcases fail :|*/
         self.add_to_a_with_carry(operand ^ 255)
     }
 
