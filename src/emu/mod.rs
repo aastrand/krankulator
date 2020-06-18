@@ -4,6 +4,7 @@ pub mod io;
 pub mod memory;
 pub mod opcodes;
 
+use std::collections::VecDeque;
 use signal_hook::{iterator::Signals, SIGINT};
 extern crate shrust;
 extern crate signal_hook;
@@ -58,9 +59,12 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
+        const LOG_BUFFER_CAPACITY: usize = 30;
+
         let mut count: u64 = 0;
         let mut last: u16 = 0xfff;
 
+        let mut log_lines: VecDeque<String> = VecDeque::with_capacity(LOG_BUFFER_CAPACITY);
         self.iohandler.init();
 
         let signals = match Signals::new(&[SIGINT]) {
@@ -70,12 +74,12 @@ impl Emulator {
 
         loop {
             if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
-                self.debug(count);
+                self.debug(count, &log_lines);
             }
 
             for signal in signals.pending() {
                 match signal {
-                    signal_hook::SIGINT => self.debug(count),
+                    signal_hook::SIGINT => self.debug(count, &log_lines),
                     _ => {}
                 }
             }
@@ -85,7 +89,7 @@ impl Emulator {
                     self.iohandler.log(&format!(
                         "infite loop detected!"
                     ));
-                    self.debug(count);
+                    self.debug(count, &log_lines);
                 } else {
                     self.exit("reached probable end of code", count);
                     break;
@@ -1208,8 +1212,14 @@ impl Emulator {
                 break;
             }
 
+            let log_str: String = self.log_str(opcode, logdata);
+            log_lines.push_back(log_str);
+            if log_lines.len() > LOG_BUFFER_CAPACITY {
+                log_lines.pop_front();
+            }
+
             if self.should_log {
-                self.log(opcode, logdata);
+                self.iohandler.log(log_lines.back().unwrap());
             }
 
             self.rng();
@@ -1248,11 +1258,18 @@ impl Emulator {
         val
     }
 
-    fn debug(&mut self, count: u64) {
+    fn debug(&mut self, count: u64, log_lines: &VecDeque<String>) {
         self.iohandler.log(&format!(
             "entering debug mode after {} instructions!",
             count
         ));
+
+        if !self.should_log {
+            for line in log_lines.iter() {
+                self.iohandler.log(&line);
+            }
+        }
+
         self.log_stack();
         self.log_monitor();
 
@@ -1318,7 +1335,7 @@ impl Emulator {
         self.iohandler.log(&logline);
     }
 
-    fn log(&self, opcode: u8, logdata: Vec<u16>) {
+    fn log_str(&self, opcode: u8, logdata: Vec<u16>) -> String {
         let mut logline = String::with_capacity(80);
 
         logline.push_str(&format!(
@@ -1343,7 +1360,7 @@ impl Emulator {
 
         logline.push_str(&self.cpu.status_str());
 
-        self.iohandler.log(&logline);
+        logline
     }
 
     fn rng(&mut self) {
