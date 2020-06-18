@@ -146,6 +146,13 @@ pub fn debug(emu: &mut Emulator) {
         Ok(())
     });
 
+    shell.new_command_noargs("l", "toggle instruction logging", |io, emu| {
+        emu.should_log = !emu.should_log;
+        writeln!(io, "instruction logging enabled: {}", emu.should_log)?;
+
+        Ok(())
+    });
+
     shell.new_command_noargs("c", "continue", |_, _| Err(ExecError::Quit));
     shell.new_command_noargs("q", "quit", |_, _| {
         std::process::exit(0);

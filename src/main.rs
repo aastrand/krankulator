@@ -11,6 +11,7 @@ fn main() {
         (author: "Anders Å. <aastrand@gmail.com>")
         (@arg DISPLAY: -d --display "Use a mapped display")
         (@arg BIN: -b --binary "Read input as binary format")
+        (@arg SILENT: -s --silent "Silent mode")
         (@arg INPUT: +required "Sets the input file to use")
     )
     .get_matches();
@@ -34,6 +35,7 @@ fn main() {
     };
 
     emu.install_rom(code, offset);
+    emu.toggle_silent_mode(matches.is_present("SILENT"));
     emu.run();
 }
 

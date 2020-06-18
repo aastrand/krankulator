@@ -241,6 +241,25 @@ impl Cpu {
 
         value
     }
+
+    pub fn register_str(&self) -> String {
+        format!(
+            "a=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}",
+            self.a, self.x, self.y, self.sp
+        )
+    }
+
+    pub fn status_str(&self) -> String {
+        format!(
+            "\tN={} V={} Z={} C={} st={:#010b} (0x{:x})",
+            self.negative_flag() as i32,
+            self.overflow_flag() as i32,
+            self.zero_flag() as i32,
+            self.carry_flag() as i32,
+            self.status,
+            self.status
+        )
+    }
 }
 
 #[cfg(test)]

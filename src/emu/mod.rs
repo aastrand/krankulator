@@ -16,6 +16,7 @@ pub struct Emulator {
     iohandler: Box<dyn io::IOHandler>,
     stepping: bool,
     breakpoints: Box<HashSet<u16>>,
+    should_log: bool,
 }
 
 impl Emulator {
@@ -27,6 +28,7 @@ impl Emulator {
             iohandler: Box::new(io::CursesIOHandler::new()),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
+            should_log: true
         }
     }
 
@@ -39,6 +41,7 @@ impl Emulator {
             iohandler: Box::new(io::HeadlessIOHandler {}),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
+            should_log: true
         }
     }
 
@@ -50,12 +53,15 @@ impl Emulator {
         }
     }
 
+    pub fn toggle_silent_mode(&mut self, silent_mode: bool) {
+        self.should_log = !silent_mode
+    }
+
     pub fn run(&mut self) {
         let mut count: u64 = 0;
         let mut last: u16 = 0xfff;
 
         self.iohandler.init();
-        //self.breakpoints.insert(0x35a2);
 
         let signals = match Signals::new(&[SIGINT]) {
             Ok(s) => s,
@@ -64,12 +70,12 @@ impl Emulator {
 
         loop {
             if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
-                dbg::debug(self);
+                self.debug(count);
             }
 
             for signal in signals.pending() {
                 match signal {
-                    signal_hook::SIGINT => dbg::debug(self),
+                    signal_hook::SIGINT => self.debug(count),
                     _ => {}
                 }
             }
@@ -77,12 +83,9 @@ impl Emulator {
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
                     self.iohandler.log(&format!(
-                        "infite loop detected after {} instructions!",
-                        count
+                        "infite loop detected!"
                     ));
-                    self.log_stack();
-
-                    dbg::debug(self);
+                    self.debug(count);
                 } else {
                     self.exit("reached probable end of code", count);
                     break;
@@ -1205,7 +1208,10 @@ impl Emulator {
                 break;
             }
 
-            self.log(opcode, logdata);
+            if self.should_log {
+                self.log(opcode, logdata);
+            }
+
             self.rng();
             self.iohandler.input(&mut self.mem);
             self.iohandler.display(&self.mem);
@@ -1240,6 +1246,17 @@ impl Emulator {
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
         val
+    }
+
+    fn debug(&mut self, count: u64) {
+        self.iohandler.log(&format!(
+            "entering debug mode after {} instructions!",
+            count
+        ));
+        self.log_stack();
+        self.log_monitor();
+
+        dbg::debug(self);
     }
 
     fn exit(&mut self, reason: &str, count: u64) {
@@ -1280,6 +1297,27 @@ impl Emulator {
         }
     }
 
+    fn log_monitor(&self) {
+        let mut logline = String::with_capacity(80);
+
+        let opcode: u8 = self.mem.ram[self.cpu.pc as usize];
+
+        logline.push_str(&format!(
+            "0x{:x}: {} (0x{:x})",
+            self.cpu.pc,
+            self.lookup.name(opcode),
+            opcode
+        ));
+
+        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&self.cpu.register_str());
+
+        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&self.cpu.status_str());
+
+        self.iohandler.log(&logline);
+    }
+
     fn log(&self, opcode: u8, logdata: Vec<u16>) {
         let mut logline = String::with_capacity(80);
 
@@ -1299,22 +1337,11 @@ impl Emulator {
 
         logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
 
-        logline.push_str(&format!(
-            "a=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}",
-            self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp
-        ));
+        logline.push_str(&self.cpu.register_str());
 
         logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
 
-        logline.push_str(&format!(
-            "\tN={} V={} Z={} C={} st={:#010b} (0x{:x})",
-            self.cpu.negative_flag() as i32,
-            self.cpu.overflow_flag() as i32,
-            self.cpu.zero_flag() as i32,
-            self.cpu.carry_flag() as i32,
-            self.cpu.status,
-            self.cpu.status
-        ));
+        logline.push_str(&self.cpu.status_str());
 
         self.iohandler.log(&logline);
     }
