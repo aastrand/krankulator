@@ -19,6 +19,7 @@ pub struct Emulator {
     stepping: bool,
     breakpoints: Box<HashSet<u16>>,
     should_log: bool,
+    should_debug_on_infinite_loop: bool,
     instruction_count: u64,
 }
 
@@ -44,6 +45,7 @@ impl Emulator {
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
             should_log: true,
+            should_debug_on_infinite_loop: false,
             instruction_count: 0,
         }
     }
@@ -60,8 +62,12 @@ impl Emulator {
         self.should_log = !silent_mode
     }
 
+    pub fn toggle_debug_on_infinite_loop(&mut self, debug: bool) {
+        self.should_debug_on_infinite_loop = debug
+    }
+
     pub fn run(&mut self) {
-        let mut last: u16 = 0xfff;
+        let mut last: u16 = 0xffff;
 
         self.iohandler.init();
 
@@ -84,8 +90,12 @@ impl Emulator {
 
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
-                    self.iohandler.log(&format!("infite loop detected!"));
-                    self.debug();
+                    self.iohandler.log(&format!("infite loop detected on addr 0x{:x}!", self.cpu.pc));
+                    if self.should_debug_on_infinite_loop {
+                        self.debug();
+                    } else {
+                        break;
+                    }
                 } else {
                     self.exit("reached probable end of code");
                     break;

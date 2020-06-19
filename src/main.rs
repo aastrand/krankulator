@@ -9,9 +9,11 @@ fn main() {
     let matches = clap_app!(myapp =>
         (version: "0.1")
         (author: "Anders Å. <aastrand@gmail.com>")
-        (@arg DISPLAY: -d --display "Use a mapped display")
+        (@arg DISPLAY: --display "Use a mapped display")
         (@arg BIN: -b --binary "Read input as binary format")
         (@arg SILENT: -s --silent "Silent mode")
+        (@arg DEBUG: -d --debg "Debug on infinite loop")
+
         (@arg INPUT: +required "Sets the input file to use")
     )
     .get_matches();
@@ -36,6 +38,7 @@ fn main() {
 
     emu.install_rom(code, offset);
     emu.toggle_silent_mode(matches.is_present("SILENT"));
+    emu.toggle_debug_on_infinite_loop(matches.is_present("DEBUG"));
     emu.run();
 }
 
