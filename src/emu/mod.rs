@@ -1,10 +1,10 @@
 pub mod cpu;
 pub mod dbg;
 pub mod io;
+pub mod logging;
 pub mod memory;
 pub mod opcodes;
 
-use std::collections::VecDeque;
 use signal_hook::{iterator::Signals, SIGINT};
 extern crate shrust;
 extern crate signal_hook;
@@ -13,36 +13,38 @@ use std::collections::HashSet;
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: memory::Memory,
-    lookup: opcodes::Lookup,
+    lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
+    logformatter: logging::LogFormatter,
     stepping: bool,
     breakpoints: Box<HashSet<u16>>,
     should_log: bool,
+    instruction_count: u64,
 }
 
 impl Emulator {
     pub fn new() -> Emulator {
-        Emulator {
-            cpu: cpu::Cpu::new(),
-            mem: memory::Memory::new(),
-            lookup: opcodes::Lookup::new(),
-            iohandler: Box::new(io::CursesIOHandler::new()),
-            stepping: false,
-            breakpoints: Box::new(HashSet::new()),
-            should_log: true
-        }
+        Emulator::new_base(Box::new(io::CursesIOHandler::new()))
     }
 
     #[allow(dead_code)] // Only used by tests
     pub fn new_headless() -> Emulator {
+        Emulator::new_base(Box::new(io::HeadlessIOHandler {}))
+    }
+
+    fn new_base(iohandler: Box<dyn io::IOHandler>) -> Emulator {
+        let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
+
         Emulator {
             cpu: cpu::Cpu::new(),
             mem: memory::Memory::new(),
-            lookup: opcodes::Lookup::new(),
-            iohandler: Box::new(io::HeadlessIOHandler {}),
+            lookup: lookup,
+            iohandler: iohandler,
+            logformatter: logging::LogFormatter::new(30),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
-            should_log: true
+            should_log: true,
+            instruction_count: 0,
         }
     }
 
@@ -59,12 +61,8 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
-        const LOG_BUFFER_CAPACITY: usize = 30;
-
-        let mut count: u64 = 0;
         let mut last: u16 = 0xfff;
 
-        let mut log_lines: VecDeque<String> = VecDeque::with_capacity(LOG_BUFFER_CAPACITY);
         self.iohandler.init();
 
         let signals = match Signals::new(&[SIGINT]) {
@@ -74,24 +72,22 @@ impl Emulator {
 
         loop {
             if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
-                self.debug(count, &log_lines);
+                self.debug();
             }
 
             for signal in signals.pending() {
                 match signal {
-                    signal_hook::SIGINT => self.debug(count, &log_lines),
+                    signal_hook::SIGINT => self.debug(),
                     _ => {}
                 }
             }
 
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
-                    self.iohandler.log(&format!(
-                        "infite loop detected!"
-                    ));
-                    self.debug(count, &log_lines);
+                    self.iohandler.log(&format!("infite loop detected!"));
+                    self.debug();
                 } else {
-                    self.exit("reached probable end of code", count);
+                    self.exit("reached probable end of code");
                     break;
                 }
             }
@@ -1190,14 +1186,11 @@ impl Emulator {
                     // TSX sets NZ - TXS does not
                 }
                 _ => {
-                    self.exit(
-                        &format!(
-                            "{} (0x{:x}) not implemented!",
-                            self.lookup.name(opcode),
-                            opcode
-                        ),
-                        count,
-                    );
+                    self.exit(&format!(
+                        "{} (0x{:x}) not implemented!",
+                        self.lookup.name(opcode),
+                        opcode
+                    ));
                     break;
                 }
             }
@@ -1212,14 +1205,15 @@ impl Emulator {
                 break;
             }
 
-            let log_str: String = self.log_str(opcode, logdata);
-            log_lines.push_back(log_str);
-            if log_lines.len() > LOG_BUFFER_CAPACITY {
-                log_lines.pop_front();
-            }
-
+            let log_line: String = self.logformatter.log_instruction(
+                opcode,
+                self.lookup.name(opcode),
+                self.cpu.register_str(),
+                self.cpu.status_str(),
+                logdata,
+            );
             if self.should_log {
-                self.iohandler.log(log_lines.back().unwrap());
+                self.iohandler.log(&log_line);
             }
 
             self.rng();
@@ -1227,7 +1221,7 @@ impl Emulator {
             self.iohandler.display(&self.mem);
 
             self.cpu.pc += size;
-            count = count + 1;
+            self.instruction_count = self.instruction_count + 1;
         }
     }
 
@@ -1258,109 +1252,40 @@ impl Emulator {
         val
     }
 
-    fn debug(&mut self, count: u64, log_lines: &VecDeque<String>) {
+    fn debug(&mut self) {
         self.iohandler.log(&format!(
             "entering debug mode after {} instructions!",
-            count
+            self.instruction_count
         ));
 
         if !self.should_log {
-            for line in log_lines.iter() {
-                self.iohandler.log(&line);
-            }
+            self.iohandler.log(&self.logformatter.replay());
         }
 
-        self.log_stack();
-        self.log_monitor();
+        self.iohandler
+            .log(&self.logformatter.log_stack(&self.mem, self.cpu.sp));
+
+        let opcode: u8 = self.mem.ram[self.cpu.pc as usize];
+        self.iohandler.log(&self.logformatter.log_monitor(
+            opcode,
+            self.lookup.name(opcode),
+            self.cpu.pc,
+            self.cpu.register_str(),
+            self.cpu.status_str(),
+        ));
 
         dbg::debug(self);
     }
 
-    fn exit(&mut self, reason: &str, count: u64) {
+    fn exit(&mut self, reason: &str) {
         self.iohandler.log(&"");
         self.iohandler.log(reason);
 
         let s = format!(
             "\nexited after {} instructions at cpu.pc=0x{:x}",
-            count, self.cpu.pc
+            self.instruction_count, self.cpu.pc
         );
         self.iohandler.exit(&s);
-    }
-
-    fn log_stack(&self) {
-        let mut addr: u16 = 0x1ff;
-        self.iohandler.log(&format!("stack contents:"));
-        let mut buf = String::with_capacity(100);
-        let mut cols = 0;
-
-        loop {
-            if addr == self.mem.stack_addr(self.cpu.sp) {
-                self.iohandler.log(&buf);
-                break;
-            }
-            buf.push_str(&format!(
-                "0x{:x} = 0x{:x} \t",
-                addr,
-                self.mem.value_at_addr(addr)
-            ));
-            cols += 1;
-            addr = addr.wrapping_sub(1);
-
-            if cols > 8 {
-                self.iohandler.log(&buf);
-                buf = String::with_capacity(100);
-                cols = 0;
-            }
-        }
-    }
-
-    fn log_monitor(&self) {
-        let mut logline = String::with_capacity(80);
-
-        let opcode: u8 = self.mem.ram[self.cpu.pc as usize];
-
-        logline.push_str(&format!(
-            "0x{:x}: {} (0x{:x})",
-            self.cpu.pc,
-            self.lookup.name(opcode),
-            opcode
-        ));
-
-        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
-        logline.push_str(&self.cpu.register_str());
-
-        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
-        logline.push_str(&self.cpu.status_str());
-
-        self.iohandler.log(&logline);
-    }
-
-    fn log_str(&self, opcode: u8, logdata: Vec<u16>) -> String {
-        let mut logline = String::with_capacity(80);
-
-        logline.push_str(&format!(
-            "0x{:x}: {} (0x{:x})",
-            logdata[0],
-            self.lookup.name(opcode),
-            opcode
-        ));
-
-        if logdata.len() > 1 {
-            logline.push_str(&format!(" arg=0x{:x}", logdata[1]));
-            if logdata.len() > 2 {
-                logline.push_str(&format!("=>0x{:x}", logdata[2]));
-            }
-        }
-
-        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
-
-        logline.push_str(&self.cpu.register_str());
-
-        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
-
-        logline.push_str(&self.cpu.status_str());
-
-        logline
     }
 
     fn rng(&mut self) {
@@ -1371,9 +1296,6 @@ impl Emulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // TODO: add basic unittests for all instructions
-    // could clean up the integration test inputs, then
 
     #[test]
     fn test_install_rom() {

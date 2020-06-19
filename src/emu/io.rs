@@ -3,7 +3,7 @@ use pancurses;
 use std::{thread, time};
 
 pub trait IOHandler {
-    fn init(&mut self);
+    fn init(&self);
     fn log(&self, logline: &str);
     fn display(&self, mem: &memory::Memory);
     fn input(&mut self, mem: &mut memory::Memory) -> Option<char>;
@@ -13,7 +13,7 @@ pub trait IOHandler {
 pub struct HeadlessIOHandler {}
 
 impl IOHandler for HeadlessIOHandler {
-    fn init(&mut self) {}
+    fn init(&self) {}
 
     fn log(&self, logline: &str) {
         println!("{}", logline);
@@ -28,7 +28,7 @@ impl IOHandler for HeadlessIOHandler {
     fn display(&self, mem: &memory::Memory) {}
 
     fn exit(&self, s: &str) {
-        println!("{}", s);
+        self.log(s);
     }
 }
 
@@ -45,7 +45,7 @@ impl CursesIOHandler {
 }
 
 impl IOHandler for CursesIOHandler {
-    fn init(&mut self) {
+    fn init(&self) {
         self.window.timeout(0);
     }
 
