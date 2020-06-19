@@ -21,6 +21,7 @@ pub struct Emulator {
     should_log: bool,
     should_debug_on_infinite_loop: bool,
     instruction_count: u64,
+    cycle_count: u64
 }
 
 impl Emulator {
@@ -47,6 +48,7 @@ impl Emulator {
             should_log: true,
             should_debug_on_infinite_loop: false,
             instruction_count: 0,
+            cycle_count: 0
         }
     }
 
@@ -1232,6 +1234,7 @@ impl Emulator {
 
             self.cpu.pc += size;
             self.instruction_count = self.instruction_count + 1;
+            self.cycle_count = self.cycle_count + self.lookup.cycles(opcode) as u64
         }
     }
 
@@ -1264,8 +1267,9 @@ impl Emulator {
 
     fn debug(&mut self) {
         self.iohandler.log(&format!(
-            "entering debug mode after {} instructions!",
-            self.instruction_count
+            "entering debug mode after {} instructions ({} cycles)!",
+            self.instruction_count,
+            self.cycle_count
         ));
 
         if !self.should_log {

@@ -937,4 +937,8 @@ impl Lookup {
     pub fn size(&self, opcode: u8) -> u16 {
         self.opcodes[opcode as usize].size
     }
+
+    pub fn cycles(&self, opcode: u8) -> u8 {
+        self.opcodes[opcode as usize].cycles
+    }
 }
