@@ -1,6 +1,7 @@
 use super::Emulator;
 
 use shrust::{ExecError, Shell, ShellIO};
+use std::collections::HashSet;
 use std::io::prelude::*;
 
 fn strip_hex_input(s: &str) -> &str {
@@ -14,6 +15,7 @@ fn strip_hex_input(s: &str) -> &str {
     }
 }
 
+#[allow(unused_must_use)]
 pub fn debug(emu: &mut Emulator) {
     let mut shell = Shell::new(emu);
     shell.new_command("m", "mem.ram[addr]", 1, |io, emu, w| {
@@ -110,21 +112,7 @@ pub fn debug(emu: &mut Emulator) {
 
     shell.new_command("b", "add/remove breakpoint", 0, |io, emu, w| {
         if w.len() > 0 {
-            let input = strip_hex_input(w[0]);
-            match u16::from_str_radix(input, 16) {
-                Ok(o) => {
-                    if emu.breakpoints.contains(&o) {
-                        emu.breakpoints.remove(&o);
-                        writeln!(io, "removed breakpoint 0x{:x}", o)?;
-                    } else {
-                        emu.breakpoints.insert(o);
-                        writeln!(io, "added breakpoint 0x{:x}", o)?;
-                    }
-                }
-                _ => {
-                    writeln!(io, "invalid address: {}", w[0])?;
-                }
-            };
+            writeln!(io, "{}", toggle_breakpoint(w[0], &mut emu.breakpoints));
         }
 
         writeln!(io, "breakpoints:")?;
@@ -159,6 +147,22 @@ pub fn debug(emu: &mut Emulator) {
     });
 
     shell.run_loop(&mut ShellIO::default());
+}
+
+pub fn toggle_breakpoint(s: &str, breakpoints: &mut Box<HashSet<u16>>) -> String {
+    let input = strip_hex_input(s);
+    match u16::from_str_radix(input, 16) {
+        Ok(o) => {
+            if breakpoints.contains(&o) {
+                breakpoints.remove(&o);
+                format!("removed breakpoint 0x{:x}", o)
+            } else {
+                breakpoints.insert(o);
+                format!("added breakpoint 0x{:x}", o)
+            }
+        }
+        _ => format!("invalid address: {}", s),
+    }
 }
 
 #[cfg(test)]

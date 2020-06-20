@@ -13,6 +13,7 @@ fn main() {
         (@arg BIN: -b --binary "Read input as binary format")
         (@arg SILENT: -s --silent "Silent mode")
         (@arg DEBUG: -d --debg "Debug on infinite loop")
+        (@arg BREAKPOINT: -p --breakpoint +multiple "Add a breakpint")
 
         (@arg INPUT: +required "Sets the input file to use")
     )
@@ -35,6 +36,13 @@ fn main() {
     } else {
         util::read_code_ascii(matches.value_of("INPUT").unwrap())
     };
+
+    if matches.is_present("BREAKPOINT") {
+        for breakpoint in matches.values_of("BREAKPOINT").unwrap() {
+            println!("Adding breakpoint at {}", breakpoint);
+            emu::dbg::toggle_breakpoint(breakpoint, &mut emu.breakpoints);
+        }
+    }
 
     emu.install_rom(code, offset);
     emu.toggle_silent_mode(matches.is_present("SILENT"));
@@ -262,5 +270,21 @@ mod tests {
         assert_eq!(emu.cpu.sp, 0xfd);
         assert_eq!(emu.mem.ram[0x1fe], 0x08);
         assert_eq!(emu.mem.ram[0x1ff], 0x06);
+    }
+
+    #[test]
+    fn test_klaus_2m5() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
+        emu.install_rom(
+            util::read_code_bin(&String::from("input/6502_functional_test.bin")),
+            0,
+        );
+        emu.cpu.pc = 0x400;
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_silent_mode(true);
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, 0x3469);
     }
 }

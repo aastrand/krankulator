@@ -5,9 +5,7 @@ pub mod log;
 pub mod memory;
 pub mod opcodes;
 
-use signal_hook::{iterator::Signals, SIGINT};
 extern crate shrust;
-extern crate signal_hook;
 use std::collections::HashSet;
 
 pub struct Emulator {
@@ -17,11 +15,12 @@ pub struct Emulator {
     iohandler: Box<dyn io::IOHandler>,
     logformatter: log::LogFormatter,
     stepping: bool,
-    breakpoints: Box<HashSet<u16>>,
+    pub breakpoints: Box<HashSet<u16>>,
     should_log: bool,
     should_debug_on_infinite_loop: bool,
+    be_quiet: bool,
     instruction_count: u64,
-    cycle_count: u64
+    cycle_count: u64,
 }
 
 impl Emulator {
@@ -47,8 +46,9 @@ impl Emulator {
             breakpoints: Box::new(HashSet::new()),
             should_log: true,
             should_debug_on_infinite_loop: false,
+            be_quiet: false,
             instruction_count: 0,
-            cycle_count: 0
+            cycle_count: 0,
         }
     }
 
@@ -60,8 +60,13 @@ impl Emulator {
         }
     }
 
-    pub fn toggle_silent_mode(&mut self, silent_mode: bool) {
-        self.should_log = !silent_mode
+    pub fn toggle_silent_mode(&mut self, be_quiet: bool) {
+        self.be_quiet = be_quiet
+    }
+
+    #[allow(dead_code)] // Only used by tests
+    pub fn toggle_quiet_mode(&mut self, should_log: bool) {
+        self.be_quiet = !should_log;
     }
 
     pub fn toggle_debug_on_infinite_loop(&mut self, debug: bool) {
@@ -73,26 +78,17 @@ impl Emulator {
 
         self.iohandler.init();
 
-        let signals = match Signals::new(&[SIGINT]) {
-            Ok(s) => s,
-            _ => panic!("Unable to install SIGINT handler!"),
-        };
-
         loop {
             if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
                 self.debug();
             }
 
-            for signal in signals.pending() {
-                match signal {
-                    signal_hook::SIGINT => self.debug(),
-                    _ => {}
-                }
-            }
-
             if self.cpu.pc == last {
                 if self.mem.value_at_addr(last) != opcodes::BRK {
-                    self.iohandler.log(&format!("infite loop detected on addr 0x{:x}!", self.cpu.pc));
+                    self.iohandler.log(&format!(
+                        "infite loop detected on addr 0x{:x}!",
+                        self.cpu.pc
+                    ));
                     if self.should_debug_on_infinite_loop {
                         self.debug();
                     } else {
@@ -1217,15 +1213,17 @@ impl Emulator {
                 break;
             }
 
-            let log_line: String = self.logformatter.log_instruction(
-                opcode,
-                self.lookup.name(opcode),
-                self.cpu.register_str(),
-                self.cpu.status_str(),
-                logdata,
-            );
-            if self.should_log {
-                self.iohandler.log(&log_line);
+            if !self.should_log {
+                let log_line: String = self.logformatter.log_instruction(
+                    opcode,
+                    self.lookup.name(opcode),
+                    self.cpu.register_str(),
+                    self.cpu.status_str(),
+                    logdata,
+                );
+                if self.be_quiet {
+                    self.iohandler.log(&log_line);
+                }
             }
 
             self.rng();
@@ -1268,11 +1266,10 @@ impl Emulator {
     fn debug(&mut self) {
         self.iohandler.log(&format!(
             "entering debug mode after {} instructions ({} cycles)!",
-            self.instruction_count,
-            self.cycle_count
+            self.instruction_count, self.cycle_count
         ));
 
-        if !self.should_log {
+        if !self.be_quiet {
             self.iohandler.log(&self.logformatter.replay());
         }
 
