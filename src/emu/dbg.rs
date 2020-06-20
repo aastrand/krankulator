@@ -134,9 +134,16 @@ pub fn debug(emu: &mut Emulator) {
         Ok(())
     });
 
-    shell.new_command_noargs("l", "toggle instruction logging", |io, emu| {
+    shell.new_command_noargs("l", "toggle quiet mode", |io, emu| {
         emu.should_log = !emu.should_log;
-        writeln!(io, "instruction logging enabled: {}", emu.should_log)?;
+        writeln!(io, "quiet mode enabled: {}", emu.should_log)?;
+
+        Ok(())
+    });
+
+    shell.new_command_noargs("v", "toggle verbose mode", |io, emu| {
+        emu.verbose = !emu.verbose;
+        writeln!(io, "verbose mode enabled: {}", emu.should_log)?;
 
         Ok(())
     });

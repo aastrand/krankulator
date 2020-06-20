@@ -1233,8 +1233,8 @@ impl Emulator {
             // TODO: replace this with real memory mapping handlers
             //self.rng();
 
-            self.iohandler.input(&mut self.mem);
-            self.iohandler.display(&self.mem);
+            //self.iohandler.input(&mut self.mem);
+            //self.iohandler.display(&self.mem);
 
             self.cpu.pc += size;
             self.instruction_count = self.instruction_count + 1;
