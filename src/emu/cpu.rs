@@ -735,4 +735,25 @@ mod tests {
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.negative_flag());
     }
+
+    #[test]
+    fn test_status_str() {
+        let mut cpu = Cpu::new();
+        cpu.set_status_flag(255);
+        let s = cpu.status_str();
+
+        assert_eq!(s, "\tN=1 V=1 Z=1 C=1 st=0b11111111 (0xff)");
+    }
+
+    #[test]
+    fn test_register_str() {
+        let mut cpu = Cpu::new();
+        cpu.a = 0x42;
+        cpu.x = 0x47;
+        cpu.y = 0x11;
+        cpu.sp = 0xab;
+        let s = cpu.register_str();
+
+        assert_eq!(s, "a=0x42 x=0x47 y=0x11 sp=0xab");
+    }
 }

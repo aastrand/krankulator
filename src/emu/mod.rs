@@ -1,7 +1,7 @@
 pub mod cpu;
 pub mod dbg;
 pub mod io;
-pub mod logging;
+pub mod log;
 pub mod memory;
 pub mod opcodes;
 
@@ -15,7 +15,7 @@ pub struct Emulator {
     pub mem: memory::Memory,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
-    logformatter: logging::LogFormatter,
+    logformatter: log::LogFormatter,
     stepping: bool,
     breakpoints: Box<HashSet<u16>>,
     should_log: bool,
@@ -42,7 +42,7 @@ impl Emulator {
             mem: memory::Memory::new(),
             lookup: lookup,
             iohandler: iohandler,
-            logformatter: logging::LogFormatter::new(30),
+            logformatter: log::LogFormatter::new(30),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
             should_log: true,

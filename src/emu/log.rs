@@ -122,3 +122,57 @@ impl LogFormatter {
         buf
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_monitor() {
+        let sut = LogFormatter::new(10);
+        let s = sut.log_monitor(0x4c, &format!("JMP"), 0x400, format!("regs"), format!("status"));
+
+        assert_eq!(s, "0x400: JMP (0x4c)                                regs                               status");
+    }
+
+    #[test]
+    fn test_log_stack() {
+        let sut = LogFormatter::new(10);
+        let mem = memory::Memory::new();
+        let s = sut.log_stack(&mem, 0xfa);
+
+        assert_eq!(s, "stack contents:0x1ff = 0x0 \t0x1fe = 0x0 \t0x1fd = 0x0 \t0x1fc = 0x0 \t0x1fb = 0x0 \t");
+    }
+
+    #[test]
+    fn test_log_instruction() {
+        let mut sut = LogFormatter::new(10);
+        let logdata: Vec<u16> =  vec!(0x4211);
+        let s = sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), logdata);
+
+        assert_eq!(s, "0x4211: JMP (0x4c)                               regs                               status");
+    }
+
+    #[test]
+    fn test_replay() {
+        let mut sut = LogFormatter::new(10);
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), vec!(0x4211));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), vec!(0x1337));
+
+        let s = sut.replay();
+
+        assert_eq!(s, "0x4211: JMP (0x4c)                               regs                               status\n0x1337: JMP (0x4c)                               regs2                              status2\n");
+    }
+
+    #[test]
+    fn test_replay_capacity() {
+        let mut sut = LogFormatter::new(2);
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), vec!(0x4211));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), vec!(0x1337));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs3"), format!("status3"), vec!(0x42));
+
+        let s = sut.replay();
+
+        assert_eq!(s, "0x1337: JMP (0x4c)                               regs2                              status2\n0x42: JMP (0x4c)                                 regs3                              status3\n");
+    }
+}
