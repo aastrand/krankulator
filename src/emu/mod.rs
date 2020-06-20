@@ -18,7 +18,7 @@ pub struct Emulator {
     pub breakpoints: Box<HashSet<u16>>,
     should_log: bool,
     should_debug_on_infinite_loop: bool,
-    be_quiet: bool,
+    verbose: bool,
     instruction_count: u64,
     cycle_count: u64,
 }
@@ -46,7 +46,7 @@ impl Emulator {
             breakpoints: Box::new(HashSet::new()),
             should_log: true,
             should_debug_on_infinite_loop: false,
-            be_quiet: false,
+            verbose: true,
             instruction_count: 0,
             cycle_count: 0,
         }
@@ -60,13 +60,13 @@ impl Emulator {
         }
     }
 
-    pub fn toggle_silent_mode(&mut self, be_quiet: bool) {
-        self.be_quiet = be_quiet
+    pub fn toggle_verbose_mode(&mut self, verbose: bool) {
+        self.verbose = verbose
     }
 
     #[allow(dead_code)] // Only used by tests
-    pub fn toggle_quiet_mode(&mut self, should_log: bool) {
-        self.be_quiet = !should_log;
+    pub fn toggle_quiet_mode(&mut self, quiet_mode: bool) {
+        self.should_log = !quiet_mode;
     }
 
     pub fn toggle_debug_on_infinite_loop(&mut self, debug: bool) {
@@ -77,6 +77,7 @@ impl Emulator {
         let mut last: u16 = 0xffff;
 
         self.iohandler.init();
+        let mut logdata: Box<Vec<u16>> = Box::new(Vec::<u16>::new());
 
         loop {
             if self.stepping
@@ -104,7 +105,8 @@ impl Emulator {
 
             last = self.cpu.pc;
             let opcode = self.mem.ram[self.cpu.pc as usize];
-            let mut logdata: Vec<u16> = Vec::<u16>::new();
+
+            logdata.clear();
             logdata.push(self.cpu.pc);
 
             match opcode {
@@ -1215,20 +1217,22 @@ impl Emulator {
                 break;
             }
 
-            if !self.should_log {
+            if self.should_log {
                 let log_line: String = self.logformatter.log_instruction(
                     opcode,
                     self.lookup.name(opcode),
                     self.cpu.register_str(),
                     self.cpu.status_str(),
-                    logdata,
+                    &logdata,
                 );
-                if self.be_quiet {
+                if self.verbose {
                     self.iohandler.log(&log_line);
                 }
             }
 
-            self.rng();
+            // TODO: replace this with real memory mapping handlers
+            //self.rng();
+
             self.iohandler.input(&mut self.mem);
             self.iohandler.display(&self.mem);
 
@@ -1271,7 +1275,7 @@ impl Emulator {
             self.instruction_count, self.cycle_count
         ));
 
-        if !self.be_quiet {
+        if self.verbose {
             self.iohandler.log(&self.logformatter.replay());
         }
 
@@ -1301,6 +1305,7 @@ impl Emulator {
         self.iohandler.exit(&s);
     }
 
+    #[allow(dead_code)]
     fn rng(&mut self) {
         self.mem.ram[0xfe] = rand::random::<u8>();
     }

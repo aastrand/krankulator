@@ -11,7 +11,8 @@ fn main() {
         (author: "Anders Å. <aastrand@gmail.com>")
         (@arg DISPLAY: --display "Use a mapped display")
         (@arg BIN: -b --binary "Read input as binary format")
-        (@arg SILENT: -s --silent "Silent mode")
+        (@arg VERBOSE: -v --verbose "Verbose mode")
+        (@arg QUIET_MODE: -q --quiet "Quiet mode, overrides verbose")
         (@arg DEBUG: -d --debg "Debug on infinite loop")
         (@arg BREAKPOINT: -p --breakpoint +multiple "Add a breakpint")
 
@@ -45,7 +46,8 @@ fn main() {
     }
 
     emu.install_rom(code, offset);
-    emu.toggle_silent_mode(matches.is_present("SILENT"));
+    emu.toggle_verbose_mode(matches.is_present("VERBOSE") & !matches.is_present("QUIET_MODE"));
+    emu.toggle_quiet_mode(matches.is_present("QUIET_MODE"));
     emu.toggle_debug_on_infinite_loop(matches.is_present("DEBUG"));
     emu.run();
 }
@@ -282,7 +284,7 @@ mod tests {
         emu.cpu.pc = 0x400;
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
-        emu.toggle_silent_mode(true);
+        emu.toggle_verbose_mode(false);
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x3469);

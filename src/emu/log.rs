@@ -71,7 +71,7 @@ impl LogFormatter {
         opcode_name: &str,
         registers: String,
         status: String,
-        logdata: Vec<u16>,
+        logdata: &Box<Vec<u16>>,
     ) -> String {
         let mut logline = String::with_capacity(80);
 
@@ -102,7 +102,7 @@ impl LogFormatter {
         opcode_name: &str,
         registers: String,
         status: String,
-        logdata: Vec<u16>,
+        logdata: &Box<Vec<u16>>,
     ) -> String {
         self.log_lines.push_back(self.log_str(opcode, opcode_name, registers, status, logdata));
         if self.log_lines.len() > self.buffer_capacity {
@@ -147,8 +147,8 @@ mod tests {
     #[test]
     fn test_log_instruction() {
         let mut sut = LogFormatter::new(10);
-        let logdata: Vec<u16> =  vec!(0x4211);
-        let s = sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), logdata);
+        let logdata = Box::new(vec!(0x4211));
+        let s = sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &logdata);
 
         assert_eq!(s, "0x4211: JMP (0x4c)                               regs                               status");
     }
@@ -156,8 +156,8 @@ mod tests {
     #[test]
     fn test_replay() {
         let mut sut = LogFormatter::new(10);
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), vec!(0x4211));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), vec!(0x1337));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &Box::new(vec!(0x4211)));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), &Box::new(vec!(0x1337)));
 
         let s = sut.replay();
 
@@ -167,9 +167,9 @@ mod tests {
     #[test]
     fn test_replay_capacity() {
         let mut sut = LogFormatter::new(2);
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), vec!(0x4211));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), vec!(0x1337));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs3"), format!("status3"), vec!(0x42));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &Box::new(vec!(0x4211)));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), &Box::new(vec!(0x1337)));
+        sut.log_instruction(0x4c, &format!("JMP"), format!("regs3"), format!("status3"), &Box::new(vec!(0x42)));
 
         let s = sut.replay();
 
