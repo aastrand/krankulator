@@ -79,7 +79,9 @@ impl Emulator {
         self.iohandler.init();
 
         loop {
-            if self.stepping || self.breakpoints.contains(&self.cpu.pc) {
+            if self.stepping
+                || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
+            {
                 self.debug();
             }
 
