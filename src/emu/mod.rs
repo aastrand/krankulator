@@ -7,6 +7,7 @@ pub mod opcodes;
 
 extern crate shrust;
 use std::collections::HashSet;
+use std::time::SystemTime;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
@@ -78,6 +79,7 @@ impl Emulator {
 
         self.iohandler.init();
         let mut logdata: Box<Vec<u16>> = Box::new(Vec::<u16>::new());
+        let start_time = SystemTime::now();
 
         loop {
             if self.stepping
@@ -1240,6 +1242,13 @@ impl Emulator {
             self.instruction_count = self.instruction_count + 1;
             self.cycle_count = self.cycle_count + self.lookup.cycles(opcode) as u64
         }
+
+        self.iohandler.log(&format!(
+            "Exiting after {} instructions, {} cycles ({:.1} MHz)",
+            self.instruction_count,
+            self.cycle_count,
+            (self.cycle_count as f64 / start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
+        ));
     }
 
     fn push_pc_to_stack(&mut self, offset: u16) {
