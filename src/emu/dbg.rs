@@ -1,26 +1,15 @@
 use super::Emulator;
+use super::super::util;
 
 use shrust::{ExecError, Shell, ShellIO};
 use std::collections::HashSet;
 use std::io::prelude::*;
 
-fn strip_hex_input(s: &str) -> &str {
-    if s.len() > 1 {
-        match &s[..2] {
-            "0x" => &s[2..],
-            _ => s,
-        }
-    } else {
-        s
-    }
-}
-
 #[allow(unused_must_use)]
 pub fn debug(emu: &mut Emulator) {
     let mut shell = Shell::new(emu);
     shell.new_command("m", "mem.ram[addr]", 1, |io, emu, w| {
-        let input = strip_hex_input(w[0]);
-        match u16::from_str_radix(input, 16) {
+        match util::hex_str_to_u16(w[0]) {
             Ok(addr) => {
                 writeln!(
                     io,
@@ -29,8 +18,7 @@ pub fn debug(emu: &mut Emulator) {
                 )?;
 
                 if w.len() > 1 {
-                    let value = strip_hex_input(w[1]);
-                    match u8::from_str_radix(value, 16) {
+                    match util::hex_str_to_u8(w[0]) {
                         Ok(v) => {
                             emu.mem.ram[addr as usize] = v;
                             writeln!(io, "wrote self.mem.ram[0x{:x}] = 0x{:x}", addr, v)?;
@@ -49,8 +37,7 @@ pub fn debug(emu: &mut Emulator) {
     });
 
     shell.new_command("o", "opcode", 1, |io, emu, w| {
-        let input = strip_hex_input(w[0]);
-        match u8::from_str_radix(input, 16) {
+        match util::hex_str_to_u8(w[0]) {
             Ok(o) => {
                 writeln!(io, "opcode 0x{:x} => {}", o, emu.lookup.name(o))?;
             }
@@ -66,8 +53,7 @@ pub fn debug(emu: &mut Emulator) {
         "edit cpu.<member> (a, x, y, sp, status, pc), e.g 'cpu a 0xff'",
         2,
         |io, emu, w| {
-            let value = strip_hex_input(w[1]);
-            match u16::from_str_radix(value, 16) {
+            match util::hex_str_to_u16(w[1]) {
                 Ok(v) => match w[0] {
                     "a" => {
                         let value: u8 = (v & 0xff) as u8;
@@ -157,8 +143,7 @@ pub fn debug(emu: &mut Emulator) {
 }
 
 pub fn toggle_breakpoint(s: &str, breakpoints: &mut Box<HashSet<u16>>) -> String {
-    let input = strip_hex_input(s);
-    match u16::from_str_radix(input, 16) {
+    match util::hex_str_to_u16(s) {
         Ok(o) => {
             if breakpoints.contains(&o) {
                 breakpoints.remove(&o);
@@ -169,18 +154,5 @@ pub fn toggle_breakpoint(s: &str, breakpoints: &mut Box<HashSet<u16>>) -> String
             }
         }
         _ => format!("invalid address: {}", s),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_hex_input() {
-        assert_eq!(strip_hex_input("1"), "1");
-        assert_eq!(strip_hex_input("12"), "12");
-        assert_eq!(strip_hex_input("0x"), "");
-        assert_eq!(strip_hex_input("0x43"), "43");
     }
 }

@@ -1,6 +1,7 @@
 pub mod cpu;
 pub mod dbg;
 pub mod io;
+pub mod loaders;
 pub mod log;
 pub mod memory;
 pub mod opcodes;
