@@ -30,7 +30,7 @@ impl LogFormatter {
             buf.push_str(&format!(
                 "0x{:x} = 0x{:x} \t",
                 addr,
-                mem.value_at_addr(addr)
+                mem.read_bus(addr)
             ));
             cols += 1;
             addr = addr.wrapping_sub(1);

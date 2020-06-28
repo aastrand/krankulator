@@ -7,7 +7,7 @@ pub const STACK_BASE_OFFSET: u16 = 0x100;
 pub const STACK_START_ADDR: u8 = 0xff;
 
 pub struct Memory {
-    pub ram: [u8; MAX_RAM_SIZE],
+    ram: [u8; MAX_RAM_SIZE],
 }
 
 impl Memory {
@@ -26,27 +26,27 @@ impl Memory {
     }
 
     pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
-        let value: u8 = self.value_at_addr(pc + 1).wrapping_add(idx);
+        let value: u8 = self.read_bus(pc + 1).wrapping_add(idx);
         self.get_16b_addr(value as u16)
     }
 
     pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
-        let base = self.value_at_addr(pc + 1);
+        let base = self.read_bus(pc + 1);
 
-        let lb = self.value_at_addr(base as u16);
+        let lb = self.read_bus(base as u16);
         let lbidx = lb.wrapping_add(idx);
         let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
-        let hb = self.value_at_addr((base + 1) as u16).wrapping_add(carry);
+        let hb = self.read_bus((base + 1) as u16).wrapping_add(carry);
 
         Memory::to_16b_addr(hb, lbidx)
     }
 
     pub fn addr_zeropage(&self, pc: u16) -> u16 {
-        self.value_at_addr(pc + 1) as u16
+        self.read_bus(pc + 1) as u16
     }
 
     pub fn addr_zeropage_idx(&self, pc: u16, idx: u8) -> u16 {
-        self.value_at_addr(pc + 1).wrapping_add(idx) as u16
+        self.read_bus(pc + 1).wrapping_add(idx) as u16
     }
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
@@ -54,12 +54,17 @@ impl Memory {
         ((self.ram[offset as usize + 1] as u16) << 8) + self.ram[offset as usize] as u16
     }
 
-    pub fn value_at_addr(&self, addr: u16) -> u8 {
+    pub fn read_bus(&self, addr: u16) -> u8 {
+        // TODO: mapper here
         self.ram[addr as usize]
+    }
+    
+    pub fn write_bus(&mut self, addr: u16, value: u8) {
+        self.ram[addr as usize] = value;
     }
 
     pub fn indirect_value_at_addr(&self, addr: u16) -> u8 {
-        self.ram[self.ram[addr as usize] as usize]
+        self.read_bus(self.read_bus(addr) as u16)
     }
 
     pub fn stack_addr(&self, sp: u8) -> u16 {
@@ -74,11 +79,16 @@ impl Memory {
         self.ram[self.stack_addr(sp) as usize]
     }
 
-    pub fn store(&mut self, addr: u16, value: u8) {
-        self.ram[addr as usize] = value;
-    }
     pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
         ((hb as u16) << 8) + ((lb as u16) & 0xff)
+    }
+    
+    pub fn install_rom(&mut self, rom: Vec<u8>, offset: u16) {
+        let mut i: u32 = 0;
+        for code in rom.iter() {
+            self.ram[(offset + i as u16) as usize] = *code;
+            i += 1;
+        }
     }
 }
 
@@ -202,7 +212,7 @@ mod tests {
         let mut memory: Memory = Memory::new();
         memory.ram[0x2001] = 0x11;
 
-        let value = memory.value_at_addr(0x2001);
+        let value = memory.read_bus(0x2001);
 
         assert_eq!(value, 0x11);
     }
@@ -245,7 +255,7 @@ mod tests {
     #[test]
     fn test_store() {
         let mut memory: Memory = Memory::new();
-        memory.store(0x200, 0xff);
+        memory.write_bus(0x200, 0xff);
 
         assert_eq!(memory.ram[0x200], 0xff);
     }

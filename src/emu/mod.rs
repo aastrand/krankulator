@@ -55,11 +55,7 @@ impl Emulator {
     }
 
     pub fn install_rom(&mut self, rom: Vec<u8>, offset: u16) {
-        let mut i: u32 = 0;
-        for code in rom.iter() {
-            self.mem.ram[(offset + i as u16) as usize] = *code;
-            i += 1;
-        }
+        self.mem.install_rom(rom, offset)
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -90,7 +86,7 @@ impl Emulator {
             }
 
             if self.cpu.pc == last {
-                if self.mem.value_at_addr(last) != opcodes::BRK {
+                if self.mem.read_bus(last) != opcodes::BRK {
                     self.iohandler.log(&format!(
                         "infite loop detected on addr 0x{:x}!",
                         self.cpu.pc
@@ -107,7 +103,7 @@ impl Emulator {
             }
 
             last = self.cpu.pc;
-            let opcode = self.mem.ram[self.cpu.pc as usize];
+            let opcode = self.mem.read_bus(self.cpu.pc);
 
             logdata.clear();
             logdata.push(self.cpu.pc);
@@ -117,23 +113,23 @@ impl Emulator {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_ABX => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_ABY => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_IMM => {
                     // Bitwise AND with accumulator
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.and(operand);
                 }
@@ -141,32 +137,32 @@ impl Emulator {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_INY => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_ZP => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
                 opcodes::AND_ZPX => {
                     // Bitwise AND with accumulator
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.cpu.and(self.mem.value_at_addr(addr));
+                    self.cpu.and(self.mem.read_bus(addr));
                 }
 
                 opcodes::ADC_ABS => {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -174,7 +170,7 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -182,13 +178,13 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
                 opcodes::ADC_IMM => {
                     // Add Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -196,7 +192,7 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -204,7 +200,7 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -212,7 +208,7 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -220,7 +216,7 @@ impl Emulator {
                     // Add Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.add_to_a_with_carry(operand);
                 }
@@ -232,42 +228,42 @@ impl Emulator {
                 }
                 opcodes::ASL_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.asl(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ASL_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.asl(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ASL_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.asl(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ASL_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.asl(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
 
                 opcodes::BIT_ABS => {
                     // Test BITs
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.bit(operand);
                 }
@@ -279,7 +275,7 @@ impl Emulator {
                 }
 
                 opcodes::BPL => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on PLus)
                     if !self.cpu.negative_flag() {
@@ -288,7 +284,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BMI => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on MInus
                     if self.cpu.negative_flag() {
@@ -297,7 +293,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BVC => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on oVerflow Clear
                     if !self.cpu.overflow_flag() {
@@ -306,7 +302,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BVS => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on oVerflow Set
                     if self.cpu.overflow_flag() {
@@ -315,7 +311,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BCC => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on Carry Clear
                     if !self.cpu.carry_flag() {
@@ -324,7 +320,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BCS => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on Carry Set
                     if self.cpu.carry_flag() {
@@ -333,7 +329,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BEQ => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on EQual
                     if self.cpu.zero_flag() {
@@ -342,7 +338,7 @@ impl Emulator {
                     }
                 }
                 opcodes::BNE => {
-                    let operand: i8 = self.mem.value_at_addr(self.cpu.pc + 1) as i8;
+                    let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
                     logdata.push(operand as u16);
                     // Branch on Not Equal
                     if !self.cpu.zero_flag() {
@@ -401,33 +397,33 @@ impl Emulator {
                 opcodes::CMP_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_ABY => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_IMM => {
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CMP_INX => {
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
 
                     self.cpu.compare(self.cpu.a, operand);
@@ -435,7 +431,7 @@ impl Emulator {
                 opcodes::CMP_INY => {
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
 
                     self.cpu.compare(self.cpu.a, operand);
@@ -448,19 +444,19 @@ impl Emulator {
                 opcodes::CMP_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.a, operand);
                 }
                 opcodes::CPX_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 }
                 opcodes::CPX_IMM => {
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.x, operand);
                 }
@@ -472,12 +468,12 @@ impl Emulator {
                 opcodes::CPY_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 }
                 opcodes::CPY_IMM => {
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.compare(self.cpu.y, operand);
                 }
@@ -490,10 +486,10 @@ impl Emulator {
                 opcodes::DEC_ABS => {
                     // DECrement memory
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_sub(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -501,10 +497,10 @@ impl Emulator {
                 opcodes::DEC_ABX => {
                     // DECrement memory
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_sub(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -512,10 +508,10 @@ impl Emulator {
                 opcodes::DEC_ZP => {
                     // DECrement memory
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_sub(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -523,10 +519,10 @@ impl Emulator {
                 opcodes::DEC_ZPX => {
                     // DECrement memory
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_sub(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -550,55 +546,55 @@ impl Emulator {
                 opcodes::EOR_ABS => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_absolute(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_ABX => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_ABY => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_IMM => {
                     // bitwise Exclusive OR
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_INX => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_INY => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_ZP => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_zeropage(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
                 opcodes::EOR_ZPX => {
                     // bitwise Exclusive OR
                     let addr = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.eor(operand);
                 }
@@ -647,10 +643,10 @@ impl Emulator {
                 opcodes::INC_ABS => {
                     // INCrement memory
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_add(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -658,10 +654,10 @@ impl Emulator {
                 opcodes::INC_ABX => {
                     // INCrement memory
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_add(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -669,10 +665,10 @@ impl Emulator {
                 opcodes::INC_ZP => {
                     // INCrement memory
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_add(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -680,10 +676,10 @@ impl Emulator {
                 opcodes::INC_ZPX => {
                     // INCrement memory
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     let value: u8 = operand.wrapping_add(1);
-                    self.mem.store(addr, value);
+                    self.mem.write_bus(addr, value);
 
                     self.cpu.check_negative(value);
                     self.cpu.check_zero(value);
@@ -800,35 +796,35 @@ impl Emulator {
                 }
                 opcodes::LSR_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.lsr(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::LSR_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.lsr(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::LSR_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.lsr(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::LSR_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.lsr(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
 
                 opcodes::NOP => {
@@ -839,7 +835,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -847,7 +843,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -855,13 +851,13 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
                 opcodes::ORA_IMM => {
                     // Bitwise OR with Accumulator
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -869,7 +865,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -877,7 +873,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -885,7 +881,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -893,7 +889,7 @@ impl Emulator {
                     // Bitwise OR with Accumulator
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.ora(operand);
                 }
@@ -957,35 +953,35 @@ impl Emulator {
                 }
                 opcodes::ROL_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.rol(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROL_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.rol(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROL_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.rol(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROL_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.rol(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
 
                 opcodes::ROR => {
@@ -995,42 +991,42 @@ impl Emulator {
                 }
                 opcodes::ROR_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.ror(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROR_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.ror(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROR_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.ror(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
                 opcodes::ROR_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                    let value: u8 = self.mem.value_at_addr(addr);
+                    let value: u8 = self.mem.read_bus(addr);
                     logdata.push(value as u16);
                     let result: u8 = self.cpu.ror(value);
                     logdata.push(result as u16);
-                    self.mem.store(addr, result);
+                    self.mem.write_bus(addr, result);
                 }
 
                 opcodes::SBC_ABS => {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1038,7 +1034,7 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1046,13 +1042,13 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
                 opcodes::SBC_IMM => {
                     // Subtract Memory to Accumulator with Carry
-                    let operand: u8 = self.mem.value_at_addr(self.cpu.pc + 1);
+                    let operand: u8 = self.mem.read_bus(self.cpu.pc + 1);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1060,7 +1056,7 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1068,7 +1064,7 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1076,7 +1072,7 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1084,7 +1080,7 @@ impl Emulator {
                     // Subtract Memory to Accumulator with Carry
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    let operand: u8 = self.mem.value_at_addr(addr);
+                    let operand: u8 = self.mem.read_bus(addr);
                     logdata.push(operand as u16);
                     self.cpu.sub_from_a_with_carry(operand);
                 }
@@ -1102,68 +1098,68 @@ impl Emulator {
                 opcodes::STA_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_ABX => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_ABY => {
                     let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_INX => {
                     let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
                 opcodes::STA_INY => {
                     let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.a);
+                    self.mem.write_bus(addr, self.cpu.a);
                 }
 
                 opcodes::STX_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.x);
+                    self.mem.write_bus(addr, self.cpu.x);
                 }
                 opcodes::STX_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.x);
+                    self.mem.write_bus(addr, self.cpu.x);
                 }
                 opcodes::STX_ZPY => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.y);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.x);
+                    self.mem.write_bus(addr, self.cpu.x);
                 }
                 opcodes::STY_ABS => {
                     let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.y);
+                    self.mem.write_bus(addr, self.cpu.y);
                 }
                 opcodes::STY_ZP => {
                     let addr: u16 = self.mem.addr_zeropage(self.cpu.pc);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.y);
+                    self.mem.write_bus(addr, self.cpu.y);
                 }
                 opcodes::STY_ZPX => {
                     let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x);
                     logdata.push(addr);
-                    self.mem.store(addr, self.cpu.y);
+                    self.mem.write_bus(addr, self.cpu.y);
                 }
                 opcodes::TAX => {
                     // Transfer Accumulator to Index X
@@ -1273,7 +1269,7 @@ impl Emulator {
     }
 
     fn load(&mut self, addr: u16) -> u8 {
-        let val: u8 = self.mem.value_at_addr(addr);
+        let val: u8 = self.mem.read_bus(addr);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
         val
@@ -1292,7 +1288,7 @@ impl Emulator {
         self.iohandler
             .log(&self.logformatter.log_stack(&self.mem, self.cpu.sp));
 
-        let opcode: u8 = self.mem.ram[self.cpu.pc as usize];
+        let opcode: u8 = self.mem.read_bus(self.cpu.pc);
         self.iohandler.log(&self.logformatter.log_monitor(
             opcode,
             self.lookup.name(opcode),
@@ -1317,34 +1313,34 @@ impl Emulator {
 
     #[allow(dead_code)]
     fn rng(&mut self) {
-        self.mem.ram[0xfe] = rand::random::<u8>();
+        self.mem.write_bus(0xfe, rand::random::<u8>());
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod emu_tests {
     use super::*;
 
     #[test]
     fn test_install_rom() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
 
         let mut code: Vec<u8> = Vec::<u8>::new();
         code.push(0x47);
         code.push(0x11);
         emu.install_rom(code, memory::CODE_START_ADDR);
 
-        assert_eq!(emu.mem.ram[start], 0x47);
-        assert_eq!(emu.mem.ram[start + 1], 0x11);
+        assert_eq!(emu.mem.read_bus(start), 0x47);
+        assert_eq!(emu.mem.read_bus(start + 1), 0x11);
     }
 
     #[test]
     fn test_and_imm() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::AND_IMM;
-        emu.mem.ram[start + 1] = 0b1000_0000;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::AND_IMM);
+        emu.mem.write_bus(start + 1, 0b1000_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
@@ -1352,8 +1348,8 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[start] = opcodes::AND_IMM;
-        emu.mem.ram[start + 1] = 0;
+        emu.mem.write_bus(start, opcodes::AND_IMM);
+        emu.mem.write_bus(start + 1, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -1363,12 +1359,12 @@ mod tests {
     #[test]
     fn test_and_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::AND_ZPX;
-        emu.mem.ram[start + 1] = 0x01;
-        emu.mem.ram[0x01] = 0x01;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::AND_ZPX);
+        emu.mem.write_bus(start + 1, 0x01);
+        emu.mem.write_bus(0x01, 0x01);
         emu.cpu.x = 0x01;
-        emu.mem.ram[0x02] = 0b1000_0000;
+        emu.mem.write_bus(0x02, 0b1000_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
@@ -1376,8 +1372,8 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[start] = opcodes::AND_IMM;
-        emu.mem.ram[0x02] = 0;
+        emu.mem.write_bus(start, opcodes::AND_IMM);
+        emu.mem.write_bus(0x02, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -1387,12 +1383,12 @@ mod tests {
     #[test]
     fn test_bit_abs() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::BIT_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::BIT_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
 
-        emu.mem.ram[0x4711] = 0b1100_0000;
+        emu.mem.write_bus(0x4711, 0b1100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1401,7 +1397,7 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x4711] = 0b0100_0000;
+        emu.mem.write_bus(0x4711, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1413,10 +1409,10 @@ mod tests {
     #[test]
     fn test_bit_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::BIT_ZP;
-        emu.mem.ram[start + 1] = 0x01;
-        emu.mem.ram[0x01] = 0b1100_0000;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::BIT_ZP);
+        emu.mem.write_bus(start + 1, 0x01);
+        emu.mem.write_bus(0x01, 0b1100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1425,7 +1421,7 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x01] = 0b0100_0000;
+        emu.mem.write_bus(0x01, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1437,30 +1433,30 @@ mod tests {
     #[test]
     fn test_brk() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::BRK;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::BRK);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), false);
         assert_eq!(emu.cpu.pc, 0x600);
 
-        emu.mem.ram[0xffff] = 0x47;
-        emu.mem.ram[0xfffe] = 0x11;
+        emu.mem.write_bus(0xffff, 0x47);
+        emu.mem.write_bus(0xfffe, 0x11);
         emu.cpu.set_status_flag(cpu::NEGATIVE_BIT);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), true);
         assert_eq!(emu.cpu.pc, 0x4711);
-        assert_eq!(emu.mem.ram[0x1ff], 0x6);
-        assert_eq!(emu.mem.ram[0x1fe], 0x2);
-        assert_eq!(emu.mem.ram[0x1fd], 0b1011_0000);
+        assert_eq!(emu.mem.read_bus(0x1ff), 0x6);
+        assert_eq!(emu.mem.read_bus(0x1fe), 0x2);
+        assert_eq!(emu.mem.read_bus(0x1fd), 0b1011_0000);
     }
 
     #[test]
     fn test_clc() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::CLC;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::CLC);
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
         emu.run();
 
@@ -1470,8 +1466,8 @@ mod tests {
     #[test]
     fn test_cld() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::CLD;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::CLD);
         emu.cpu.set_status_flag(cpu::DECIMAL_BIT);
         emu.run();
 
@@ -1481,8 +1477,8 @@ mod tests {
     #[test]
     fn test_cli() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::CLI;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::CLI);
         emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         emu.run();
 
@@ -1492,8 +1488,8 @@ mod tests {
     #[test]
     fn test_clv() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::CLV;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::CLV);
         emu.cpu.set_status_flag(cpu::OVERFLOW_BIT);
         emu.run();
 
@@ -1502,13 +1498,13 @@ mod tests {
 
     #[test]
     fn test_cmp_abs() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
-        emu.mem.ram[start] = opcodes::CMP_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1518,10 +1514,10 @@ mod tests {
 
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1531,10 +1527,10 @@ mod tests {
 
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
-        emu.mem.ram[start] = opcodes::CMP_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 1);
 
         emu.run();
 
@@ -1545,14 +1541,14 @@ mod tests {
 
     #[test]
     fn test_cmp_abx() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1563,10 +1559,10 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1577,10 +1573,10 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 1);
 
         emu.run();
 
@@ -1591,14 +1587,14 @@ mod tests {
 
     #[test]
     fn test_cmp_aby() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1609,10 +1605,10 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1623,10 +1619,10 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 1);
 
         emu.run();
 
@@ -1637,12 +1633,12 @@ mod tests {
 
     #[test]
     fn test_cmp_imm() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_IMM;
-        emu.mem.ram[start + 1] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_IMM);
+        emu.mem.write_bus(start + 1, 0);
 
         emu.run();
 
@@ -1653,8 +1649,8 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_IMM;
-        emu.mem.ram[start + 1] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_IMM);
+        emu.mem.write_bus(start + 1, 0);
 
         emu.run();
 
@@ -1665,8 +1661,8 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_IMM;
-        emu.mem.ram[start + 1] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_IMM);
+        emu.mem.write_bus(start + 1, 1);
 
         emu.run();
 
@@ -1677,15 +1673,15 @@ mod tests {
 
     #[test]
     fn test_cmp_inx() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_INX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x11;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_INX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x11);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -1695,11 +1691,11 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_INX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x11;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_INX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x11);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1710,11 +1706,11 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_INX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x11;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_INX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x11);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 1);
 
         emu.run();
 
@@ -1725,15 +1721,15 @@ mod tests {
 
     #[test]
     fn test_cmp_iny() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_INY;
-        emu.mem.ram[start + 1] = 0x42;
-        emu.mem.ram[0x42] = 0x10;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_INY);
+        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.write_bus(0x42, 0x10);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -1743,11 +1739,11 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_INY;
-        emu.mem.ram[start + 1] = 0x42;
-        emu.mem.ram[0x42] = 0x10;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_INY);
+        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.write_bus(0x42, 0x10);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 0);
 
         emu.run();
 
@@ -1758,11 +1754,11 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::CMP_INY;
-        emu.mem.ram[start + 1] = 0x42;
-        emu.mem.ram[0x42] = 0x10;
-        emu.mem.ram[0x43] = 0x47;
-        emu.mem.ram[0x4711] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_INY);
+        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.write_bus(0x42, 0x10);
+        emu.mem.write_bus(0x43, 0x47);
+        emu.mem.write_bus(0x4711, 1);
 
         emu.run();
 
@@ -1773,13 +1769,13 @@ mod tests {
 
     #[test]
     fn test_cmp_zpx() {
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ZPX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ZPX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0);
 
         emu.run();
 
@@ -1790,9 +1786,9 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ZPX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0;
+        emu.mem.write_bus(start, opcodes::CMP_ZPX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0);
 
         emu.run();
 
@@ -1803,9 +1799,9 @@ mod tests {
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::CMP_ZPX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 1;
+        emu.mem.write_bus(start, opcodes::CMP_ZPX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 1);
 
         emu.run();
 
@@ -1817,21 +1813,21 @@ mod tests {
     #[test]
     fn test_dec_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::DEC_ZP;
-        emu.mem.ram[start + 1] = 0x01;
-        emu.mem.ram[0x01] = 0x00;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::DEC_ZP);
+        emu.mem.write_bus(start + 1, 0x01);
+        emu.mem.write_bus(0x01, 0x00);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x01], 0xff);
+        assert_eq!(emu.mem.read_bus(0x01), 0xff);
         assert_eq!(emu.cpu.negative_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x01] = 1;
+        emu.mem.write_bus(0x01, 1);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x01], 0);
+        assert_eq!(emu.mem.read_bus(0x01), 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
     }
@@ -1839,9 +1835,9 @@ mod tests {
     #[test]
     fn test_eor_imm() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::EOR_IMM;
-        emu.mem.ram[start + 1] = 0b1000_1000;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::EOR_IMM);
+        emu.mem.write_bus(start + 1, 0b1000_1000);
         emu.cpu.a = 0b0000_1000;
         emu.run();
 
@@ -1853,21 +1849,21 @@ mod tests {
     #[test]
     fn test_inc_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::INC_ZP;
-        emu.mem.ram[start + 1] = 0x01;
-        emu.mem.ram[0x01] = 0xff;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::INC_ZP);
+        emu.mem.write_bus(start + 1, 0x01);
+        emu.mem.write_bus(0x01, 0xff);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x01], 0);
+        assert_eq!(emu.mem.read_bus(0x01), 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x01] = 127;
+        emu.mem.write_bus(0x01, 127);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x01], 128);
+        assert_eq!(emu.mem.read_bus(0x01), 128);
         assert_eq!(emu.cpu.negative_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), false);
     }
@@ -1875,10 +1871,10 @@ mod tests {
     #[test]
     fn test_jmp_abs() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::JMP_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::JMP_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x4711);
@@ -1887,11 +1883,11 @@ mod tests {
     #[test]
     fn test_jmp_ind() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::JMP_IND;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x42;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::JMP_IND);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
 
         emu.run();
 
@@ -1901,27 +1897,27 @@ mod tests {
     #[test]
     fn test_jsr() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::JSR_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::JSR_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
 
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x4711);
         assert_eq!(emu.cpu.sp, 0xfd);
-        assert_eq!(emu.mem.ram[0x1ff], (memory::CODE_START_ADDR >> 8) as u8);
-        assert_eq!(emu.mem.ram[0x1fe], 0x02);
+        assert_eq!(emu.mem.read_bus(0x1ff), (memory::CODE_START_ADDR >> 8) as u8);
+        assert_eq!(emu.mem.read_bus(0x1fe), 0x02);
     }
 
     #[test]
     fn test_lda_abs() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDA_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x42;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDA_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
@@ -1932,11 +1928,11 @@ mod tests {
     #[test]
     fn test_lda_abs_flags() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDA_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 255;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDA_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 255);
         emu.run();
 
         assert_eq!(emu.cpu.a, 255);
@@ -1944,7 +1940,7 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x4711] = 0;
+        emu.mem.write_bus(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -1955,12 +1951,12 @@ mod tests {
     #[test]
     fn test_lda_abx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDA_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x42;
+        emu.mem.write_bus(start, opcodes::LDA_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
@@ -1969,12 +1965,12 @@ mod tests {
     #[test]
     fn test_lda_aby() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::LDA_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x42;
+        emu.mem.write_bus(start, opcodes::LDA_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -1983,9 +1979,9 @@ mod tests {
     #[test]
     fn test_lda_imm() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDA_IMM;
-        emu.mem.ram[start + 1] = 0x42;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDA_IMM);
+        emu.mem.write_bus(start + 1, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -1994,12 +1990,12 @@ mod tests {
     #[test]
     fn test_lda_inx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDA_INX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x15;
-        emu.mem.ram[0x15] = 0x12;
+        emu.mem.write_bus(start, opcodes::LDA_INX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x15);
+        emu.mem.write_bus(0x15, 0x12);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x12);
@@ -2008,13 +2004,13 @@ mod tests {
     #[test]
     fn test_lda_iny() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::LDA_INY;
-        emu.mem.ram[start + 1] = 0x16;
-        emu.mem.ram[0x16] = 0x10;
-        emu.mem.ram[0x17] = 0x42;
-        emu.mem.ram[0x4211] = 0x11;
+        emu.mem.write_bus(start, opcodes::LDA_INY);
+        emu.mem.write_bus(start + 1, 0x16);
+        emu.mem.write_bus(0x16, 0x10);
+        emu.mem.write_bus(0x17, 0x42);
+        emu.mem.write_bus(0x4211, 0x11);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x11);
@@ -2023,13 +2019,13 @@ mod tests {
     #[test]
     fn test_lda_iny_wrap() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 0x1;
-        emu.mem.ram[start] = opcodes::LDA_INY;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x41] = 0xff;
-        emu.mem.ram[0x42] = 0x41;
-        emu.mem.ram[0x4200] = 0x47;
+        emu.mem.write_bus(start, opcodes::LDA_INY);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x41, 0xff);
+        emu.mem.write_bus(0x42, 0x41);
+        emu.mem.write_bus(0x4200, 0x47);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x47);
@@ -2038,10 +2034,10 @@ mod tests {
     #[test]
     fn test_lda_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDA_ZP;
-        emu.mem.ram[start + 1] = 0x42;
-        emu.mem.ram[0x42] = 0x15;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDA_ZP);
+        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.write_bus(0x42, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -2050,11 +2046,11 @@ mod tests {
     #[test]
     fn test_lda_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDA_ZPX;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x42] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDA_ZPX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -2063,12 +2059,12 @@ mod tests {
     #[test]
     fn test_ldx_aby() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::LDX_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDX_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2077,11 +2073,11 @@ mod tests {
     #[test]
     fn test_ldx_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDX_ZP;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x41] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDX_ZP);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x41, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2090,11 +2086,11 @@ mod tests {
     #[test]
     fn test_ldx_zp_flags() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDX_ZP;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x41] = 255;
+        emu.mem.write_bus(start, opcodes::LDX_ZP);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x41, 255);
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
@@ -2102,7 +2098,7 @@ mod tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.ram[0x41] = 0;
+        emu.mem.write_bus(0x41, 0);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
@@ -2113,12 +2109,12 @@ mod tests {
     #[test]
     fn test_ldx_zpy() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
         emu.cpu.y = 8;
-        emu.mem.ram[start] = opcodes::LDX_ZPY;
-        emu.mem.ram[start + 1] = 0x41;
-        emu.mem.ram[0x41 + 8] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDX_ZPY);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x41 + 8, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2127,11 +2123,11 @@ mod tests {
     #[test]
     fn test_ldy_abs() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDY_ABS;
-        emu.mem.ram[start + 1] = 0x11;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x15;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDY_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2140,12 +2136,12 @@ mod tests {
     #[test]
     fn test_ldy_abx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::LDY_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
-        emu.mem.ram[0x4711] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDY_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2154,10 +2150,10 @@ mod tests {
     #[test]
     fn test_ldy_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDY_ZP;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[0x10] = 0x15;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDY_ZP);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(0x10, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2166,11 +2162,11 @@ mod tests {
     #[test]
     fn test_ldy_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 8;
-        emu.mem.ram[start] = opcodes::LDY_ZPX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[0x18] = 0x15;
+        emu.mem.write_bus(start, opcodes::LDY_ZPX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(0x18, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2179,9 +2175,9 @@ mod tests {
     #[test]
     fn test_ldy_imm() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::LDY_IMM;
-        emu.mem.ram[start + 1] = 0x15;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LDY_IMM);
+        emu.mem.write_bus(start + 1, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2190,9 +2186,9 @@ mod tests {
     #[test]
     fn test_lsr() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 3;
-        emu.mem.ram[start] = opcodes::LSR;
+        emu.mem.write_bus(start, opcodes::LSR);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x1);
@@ -2213,8 +2209,8 @@ mod tests {
     #[test]
     fn test_nop() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::NOP;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::NOP);
 
         emu.run();
 
@@ -2229,10 +2225,10 @@ mod tests {
     #[test]
     fn test_ora_imm() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1000_0000;
-        emu.mem.ram[start] = opcodes::ORA_IMM;
-        emu.mem.ram[start + 1] = 0b0000_0001;
+        emu.mem.write_bus(start, opcodes::ORA_IMM);
+        emu.mem.write_bus(start + 1, 0b0000_0001);
 
         emu.run();
         assert_eq!(emu.cpu.a, 129);
@@ -2241,8 +2237,8 @@ mod tests {
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.cpu.a = 0;
-        emu.mem.ram[start] = opcodes::ORA_IMM;
-        emu.mem.ram[start + 1] = 0;
+        emu.mem.write_bus(start, opcodes::ORA_IMM);
+        emu.mem.write_bus(start + 1, 0);
 
         emu.run();
         assert_eq!(emu.cpu.a, 0);
@@ -2253,22 +2249,22 @@ mod tests {
     #[test]
     fn test_pha() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
-        emu.mem.ram[start] = opcodes::PHA;
+        emu.mem.write_bus(start, opcodes::PHA);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x1ff as usize], 0x42);
+        assert_eq!(emu.mem.read_bus(0x1ff), 0x42);
         assert_eq!(emu.cpu.sp, 0xfe);
     }
 
     #[test]
     fn test_pla() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp -= 1;
-        emu.mem.ram[0x1ff] = 0x42;
-        emu.mem.ram[start] = opcodes::PLA;
+        emu.mem.write_bus(0x1ff, 0x42);
+        emu.mem.write_bus(start, opcodes::PLA);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -2278,22 +2274,22 @@ mod tests {
     #[test]
     fn test_php() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
-        emu.mem.ram[start] = opcodes::PHP;
+        emu.mem.write_bus(start, opcodes::PHP);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x1ff as usize], 0b0011_0001);
+        assert_eq!(emu.mem.read_bus(0x1ff), 0b0011_0001);
         assert_eq!(emu.cpu.sp, 0xfe);
     }
 
     #[test]
     fn test_plp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp -= 1;
-        emu.mem.ram[0x1ff] = 0x1;
-        emu.mem.ram[start] = opcodes::PLP;
+        emu.mem.write_bus(0x1ff, 0x1);
+        emu.mem.write_bus(start, opcodes::PLP);
         emu.run();
 
         assert_eq!(emu.cpu.status, 0b0010_0001);
@@ -2303,9 +2299,9 @@ mod tests {
     #[test]
     fn test_plp_overflow() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::PLP;
-        emu.mem.ram[0x100] = 0x2;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::PLP);
+        emu.mem.write_bus(0x100, 0x2);
 
         emu.run();
 
@@ -2317,11 +2313,11 @@ mod tests {
     #[test]
     fn test_rti() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::RTI;
-        emu.mem.ram[0x1ff] = 0x6;
-        emu.mem.ram[0x1fe] = 0x8;
-        emu.mem.ram[0x1fd] = 0b1011_0000;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::RTI);
+        emu.mem.write_bus(0x1ff, 0x6);
+        emu.mem.write_bus(0x1fe, 0x8);
+        emu.mem.write_bus(0x1fd, 0b1011_0000);
         emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         emu.cpu.sp = 0xfc;
         emu.run();
@@ -2333,11 +2329,11 @@ mod tests {
     #[test]
     fn test_rts() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::RTS;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::RTS);
         emu.cpu.sp = 0xfd;
-        emu.mem.ram[0x1ff] = (memory::CODE_START_ADDR >> 8) as u8;
-        emu.mem.ram[0x1fe] = 0x01;
+        emu.mem.write_bus(0x1ff, (memory::CODE_START_ADDR >> 8) as u8);
+        emu.mem.write_bus(0x1fe, 0x01);
 
         emu.run();
         assert_eq!(emu.cpu.pc, 0x0602);
@@ -2347,147 +2343,147 @@ mod tests {
     #[test]
     fn test_sta_abx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::STA_ABX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.write_bus(start, opcodes::STA_ABX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x4711], 0x42);
+        assert_eq!(emu.mem.read_bus(0x4711), 0x42);
     }
 
     #[test]
     fn test_sta_aby() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::STA_ABY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[start + 2] = 0x47;
+        emu.mem.write_bus(start, opcodes::STA_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x4711], 0x42);
+        assert_eq!(emu.mem.read_bus(0x4711), 0x42);
     }
 
     #[test]
     fn test_sta_inx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.x = 1;
-        emu.mem.ram[start] = opcodes::STA_INX;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[0x11] = 0x42;
+        emu.mem.write_bus(start, opcodes::STA_INX);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(0x11, 0x42);
 
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x42], 0x42);
+        assert_eq!(emu.mem.read_bus(0x42), 0x42);
     }
 
     #[test]
     fn test_sta_iny() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::STA_INY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[0x10] = 0x41;
+        emu.mem.write_bus(start, opcodes::STA_INY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(0x10, 0x41);
 
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x42], 0x42);
+        assert_eq!(emu.mem.read_bus(0x42), 0x42);
     }
 
     #[test]
     fn test_sta_iny_wrap() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.ram[start] = opcodes::STA_INY;
-        emu.mem.ram[start + 1] = 0x10;
-        emu.mem.ram[0x10] = 0xff;
-        emu.mem.ram[0x11] = 0x0;
+        emu.mem.write_bus(start, opcodes::STA_INY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(0x10, 0xff);
+        emu.mem.write_bus(0x11, 0x0);
 
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x100], 0x42);
+        assert_eq!(emu.mem.read_bus(0x100), 0x42);
     }
 
     #[test]
     fn test_sta_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 0x01;
         emu.cpu.a = 0x42;
-        emu.mem.ram[start] = opcodes::STA_ZPX;
-        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.write_bus(start, opcodes::STA_ZPX);
+        emu.mem.write_bus(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.read_bus(0x11), 0x42);
     }
 
     #[test]
     fn test_stx_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 0x42;
-        emu.mem.ram[start] = opcodes::STX_ZP;
-        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.write_bus(start, opcodes::STX_ZP);
+        emu.mem.write_bus(start + 1, 0x11);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.read_bus(0x11), 0x42);
     }
 
     #[test]
     fn test_stx_zpy() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 0x42;
         emu.cpu.y = 0x1;
 
-        emu.mem.ram[start] = opcodes::STX_ZPY;
-        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.write_bus(start, opcodes::STX_ZPY);
+        emu.mem.write_bus(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.read_bus(0x11), 0x42);
     }
 
     #[test]
     fn test_sty_zp() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 0x42;
-        emu.mem.ram[start] = opcodes::STY_ZP;
-        emu.mem.ram[start + 1] = 0x11;
+        emu.mem.write_bus(start, opcodes::STY_ZP);
+        emu.mem.write_bus(start + 1, 0x11);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.read_bus(0x11), 0x42);
     }
 
     #[test]
     fn test_sty_zpx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 0x42;
         emu.cpu.x = 0x1;
 
-        emu.mem.ram[start] = opcodes::STY_ZPX;
-        emu.mem.ram[start + 1] = 0x10;
+        emu.mem.write_bus(start, opcodes::STY_ZPX);
+        emu.mem.write_bus(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.ram[0x11], 0x42);
+        assert_eq!(emu.mem.read_bus(0x11), 0x42);
     }
 
     #[test]
     fn test_sec() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::SEC;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::SEC);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -2496,8 +2492,8 @@ mod tests {
     #[test]
     fn test_sed() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::SED;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::SED);
         emu.run();
 
         assert_eq!(emu.cpu.decimal_flag(), true);
@@ -2506,8 +2502,8 @@ mod tests {
     #[test]
     fn test_sei() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
-        emu.mem.ram[start] = opcodes::SEI;
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::SEI);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), true);
@@ -2516,9 +2512,9 @@ mod tests {
     #[test]
     fn test_tsx() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp = 255;
-        emu.mem.ram[start] = opcodes::TSX;
+        emu.mem.write_bus(start, opcodes::TSX);
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
@@ -2527,7 +2523,7 @@ mod tests {
 
         let mut emu: Emulator = Emulator::new_headless();
         emu.cpu.sp = 0;
-        emu.mem.ram[start] = opcodes::TSX;
+        emu.mem.write_bus(start, opcodes::TSX);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
@@ -2538,9 +2534,9 @@ mod tests {
     #[test]
     fn test_txs() {
         let mut emu: Emulator = Emulator::new_headless();
-        let start: usize = memory::CODE_START_ADDR as usize;
+        let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 255;
-        emu.mem.ram[start] = opcodes::TXS;
+        emu.mem.write_bus(start, opcodes::TXS);
         emu.run();
 
         assert_eq!(emu.cpu.sp, 255);

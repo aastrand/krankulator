@@ -80,7 +80,7 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x0);
-        assert_eq!(emu.mem.ram[0x1], 0x80);
+        assert_eq!(emu.mem.read_bus(0x1), 0x80);
         assert_eq!(emu.cpu.carry_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), true);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -111,9 +111,9 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 8);
-        assert_eq!(emu.mem.ram[0x200], 1);
-        assert_eq!(emu.mem.ram[0x201], 5);
-        assert_eq!(emu.mem.ram[0x202], 8);
+        assert_eq!(emu.mem.read_bus(0x200), 1);
+        assert_eq!(emu.mem.read_bus(0x201), 5);
+        assert_eq!(emu.mem.read_bus(0x202), 8);
     }
 
     #[test]
@@ -159,12 +159,12 @@ mod tests {
         assert_eq!(emu.cpu.a, 1);
         assert_eq!(emu.cpu.x, 2);
         assert_eq!(emu.cpu.y, 3);
-        assert_eq!(emu.mem.ram[1], 1);
-        assert_eq!(emu.mem.ram[2], 2);
-        assert_eq!(emu.mem.ram[3], 3);
-        assert_eq!(emu.mem.ram[0x0100], 1);
-        assert_eq!(emu.mem.ram[0x0200], 2);
-        assert_eq!(emu.mem.ram[0x0300], 3);
+        assert_eq!(emu.mem.read_bus(1), 1);
+        assert_eq!(emu.mem.read_bus(2), 2);
+        assert_eq!(emu.mem.read_bus(3), 3);
+        assert_eq!(emu.mem.read_bus(0x0100), 1);
+        assert_eq!(emu.mem.read_bus(0x0200), 2);
+        assert_eq!(emu.mem.read_bus(0x0300), 3);
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(emu.cpu.a, 1);
         assert_eq!(emu.cpu.x, 0);
         assert_eq!(emu.cpu.y, 1);
-        assert_eq!(emu.mem.ram[0x100], 1);
+        assert_eq!(emu.mem.read_bus(0x100), 1);
         assert_eq!(emu.cpu.zero_flag(), true);
         assert_eq!(emu.cpu.carry_flag(), true);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -195,8 +195,8 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 3);
-        assert_eq!(emu.mem.ram[0x0201], 3);
-        assert_eq!(emu.mem.ram[0x0200], 3);
+        assert_eq!(emu.mem.read_bus(0x0201), 3);
+        assert_eq!(emu.mem.read_bus(0x0200), 3);
         assert_eq!(emu.cpu.zero_flag(), true);
     }
 
@@ -210,8 +210,8 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 1);
-        assert_eq!(emu.mem.ram[0x0201], 1);
-        assert_eq!(emu.mem.ram[0x0200], 1);
+        assert_eq!(emu.mem.read_bus(0x0201), 1);
+        assert_eq!(emu.mem.read_bus(0x0200), 1);
         assert_eq!(emu.cpu.zero_flag(), false);
     }
 
@@ -254,9 +254,9 @@ mod tests {
         assert_eq!(emu.cpu.sp, 0xff);
 
         for sp in 0..15 {
-            assert_eq!(emu.mem.ram[(0x1ff - sp) as usize], sp as u8);
-            assert_eq!(emu.mem.ram[(0x200 + sp) as usize], sp as u8);
-            assert_eq!(emu.mem.ram[(0x21f - sp) as usize], sp as u8);
+            assert_eq!(emu.mem.read_bus(0x1ff - sp), sp as u8);
+            assert_eq!(emu.mem.read_bus(0x200 + sp), sp as u8);
+            assert_eq!(emu.mem.read_bus(0x21f - sp), sp as u8);
         }
     }
 
@@ -270,7 +270,7 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x03);
-        assert_eq!(emu.mem.ram[0x200], 0x03);
+        assert_eq!(emu.mem.read_bus(0x200), 0x03);
     }
 
     #[test]
@@ -284,8 +284,8 @@ mod tests {
 
         assert_eq!(emu.cpu.x, 0x15);
         assert_eq!(emu.cpu.sp, 0xfd);
-        assert_eq!(emu.mem.ram[0x1fe], 0x08);
-        assert_eq!(emu.mem.ram[0x1ff], 0x06);
+        assert_eq!(emu.mem.read_bus(0x1fe), 0x08);
+        assert_eq!(emu.mem.read_bus(0x1ff), 0x06);
     }
 
     #[test]

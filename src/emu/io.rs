@@ -57,7 +57,7 @@ impl IOHandler for CursesIOHandler {
         // TODO: Map more input
         let c = match self.window.getch() {
             Some(pancurses::Input::Character(c)) => {
-                mem.ram[0xff] = c.to_ascii_lowercase() as u8;
+                mem.write_bus(0xff, c.to_ascii_lowercase() as u8);
                 Some(c.to_ascii_lowercase())
             }
             _ => None,
@@ -80,7 +80,7 @@ impl IOHandler for CursesIOHandler {
                 let chr: char = if addr == apple_addr {
                     'O'
                 } else {
-                    let value: u8 = mem.ram[addr as usize];
+                    let value: u8 = mem.read_bus(addr);
                     if value == 1 {
                         '#'
                     } else {
