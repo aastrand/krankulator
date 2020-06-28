@@ -1,3 +1,8 @@
+
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
+
 pub fn strip_hex_str(s: &str) -> &str {
     if s.len() > 1 {
        match &s[..2] {
@@ -19,6 +24,29 @@ pub fn hex_str_to_u8(s: &str) -> Result<u8, std::num::ParseIntError> {
    u8::from_str_radix(s, 16)
 }
 
+pub fn read_bytes(path: &str) -> Vec<u8> {
+    if !Path::new(path).exists() {
+        panic!("File does not exist: {}", path);
+    }
+
+    let result = std::fs::read(path);
+    match result {
+        Ok(code) => {
+            return code;
+        }
+        _ => {
+            panic!("Error while parsing binary file {}", path);
+        }
+    }
+}
+
+pub fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
 
 #[cfg(test)]
 mod tests {

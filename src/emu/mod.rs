@@ -6,6 +6,8 @@ pub mod log;
 pub mod memory;
 pub mod opcodes;
 
+pub mod mapper;
+
 extern crate shrust;
 use std::collections::HashSet;
 use std::time::SystemTime;
@@ -54,8 +56,8 @@ impl Emulator {
         }
     }
 
-    pub fn install_rom(&mut self, rom: Vec<u8>, offset: u16) {
-        self.mem.install_rom(rom, offset)
+    pub fn install_mapper(&mut self, mapper: Box<dyn mapper::MemoryMapper>) {
+        self.mem.install_mapper(mapper);
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -1320,20 +1322,6 @@ impl Emulator {
 #[cfg(test)]
 mod emu_tests {
     use super::*;
-
-    #[test]
-    fn test_install_rom() {
-        let mut emu: Emulator = Emulator::new_headless();
-        let start: u16 = memory::CODE_START_ADDR;
-
-        let mut code: Vec<u8> = Vec::<u8>::new();
-        code.push(0x47);
-        code.push(0x11);
-        emu.install_rom(code, memory::CODE_START_ADDR);
-
-        assert_eq!(emu.mem.read_bus(start), 0x47);
-        assert_eq!(emu.mem.read_bus(start + 1), 0x11);
-    }
 
     #[test]
     fn test_and_imm() {

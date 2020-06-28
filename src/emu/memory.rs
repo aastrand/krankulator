@@ -1,20 +1,24 @@
-use std::boxed::Box;
+use super::mapper;
 
-pub const MAX_RAM_SIZE: usize = 65536;
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
 pub const STACK_BASE_OFFSET: u16 = 0x100;
 pub const STACK_START_ADDR: u8 = 0xff;
 
 pub struct Memory {
-    ram: [u8; MAX_RAM_SIZE],
+    mapper: Box<dyn mapper::MemoryMapper>
 }
 
 impl Memory {
     pub fn new() -> Memory {
         Memory {
-            ram: *Box::new([0; MAX_RAM_SIZE]),
+            mapper: Box::new(mapper::IdentityMapper::new())
         }
+    }
+
+    // TODO: create with constructor instead?
+    pub fn install_mapper(&mut self, mapper: Box<dyn mapper::MemoryMapper>) {
+        self.mapper = mapper;
     }
 
     pub fn addr_absolute(&self, pc: u16) -> u16 {
@@ -51,16 +55,15 @@ impl Memory {
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
         // little endian, so 2nd first
-        ((self.ram[offset as usize + 1] as u16) << 8) + self.ram[offset as usize] as u16
+        ((self.read_bus(offset + 1) as u16) << 8) + self.read_bus(offset) as u16
     }
 
     pub fn read_bus(&self, addr: u16) -> u8 {
-        // TODO: mapper here
-        self.ram[addr as usize]
+        self.mapper.read_bus(addr)
     }
     
     pub fn write_bus(&mut self, addr: u16, value: u8) {
-        self.ram[addr as usize] = value;
+        self.mapper.write_bus(addr, value)
     }
 
     pub fn indirect_value_at_addr(&self, addr: u16) -> u8 {
@@ -72,23 +75,15 @@ impl Memory {
     }
 
     pub fn push_to_stack(&mut self, sp: u8, value: u8) {
-        self.ram[self.stack_addr(sp) as usize] = value;
+        self.mapper.write_bus(self.stack_addr(sp), value);
     }
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
-        self.ram[self.stack_addr(sp) as usize]
+        self.mapper.read_bus(self.stack_addr(sp))
     }
 
     pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
         ((hb as u16) << 8) + ((lb as u16) & 0xff)
-    }
-    
-    pub fn install_rom(&mut self, rom: Vec<u8>, offset: u16) {
-        let mut i: u32 = 0;
-        for code in rom.iter() {
-            self.ram[(offset + i as u16) as usize] = *code;
-            i += 1;
-        }
     }
 }
 
@@ -99,8 +94,8 @@ mod tests {
     #[test]
     fn test_addr_absolute() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x11;
-        memory.ram[0x2002] = 0x47;
+        memory.write_bus(0x2001, 0x11);
+        memory.write_bus(0x2002, 0x47);
 
         let value = memory.addr_absolute(0x2000);
 
@@ -110,8 +105,8 @@ mod tests {
     #[test]
     fn test_addr_absolute_idx() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x10;
-        memory.ram[0x2002] = 0x47;
+        memory.write_bus(0x2001, 0x10);
+        memory.write_bus(0x2002, 0x47);
 
         let value = memory.addr_absolute_idx(0x2000, 1);
 
@@ -121,9 +116,9 @@ mod tests {
     #[test]
     fn test_addr_idx_indirect() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x41;
-        memory.ram[0x42] = 0x11;
-        memory.ram[0x43] = 0x47;
+        memory.write_bus(0x2001, 0x41);
+        memory.write_bus(0x42, 0x11);
+        memory.write_bus(0x43, 0x47);
 
         let value = memory.addr_idx_indirect(0x2000, 0x1);
 
@@ -133,9 +128,9 @@ mod tests {
     #[test]
     fn test_addr_idx_indirect_wrap() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x43;
-        memory.ram[0x42] = 0x11;
-        memory.ram[0x43] = 0x47;
+        memory.write_bus(0x2001, 0x43);
+        memory.write_bus(0x42, 0x11);
+        memory.write_bus(0x43, 0x47);
 
         let value = memory.addr_idx_indirect(0x2000, 0xff);
 
@@ -145,9 +140,9 @@ mod tests {
     #[test]
     fn test_addr_indirect_idx() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x42;
-        memory.ram[0x42] = 0x10;
-        memory.ram[0x43] = 0x47;
+        memory.write_bus(0x2001, 0x42);
+        memory.write_bus(0x42, 0x10);
+        memory.write_bus(0x43, 0x47);
 
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
@@ -157,9 +152,9 @@ mod tests {
     #[test]
     fn test_addr_indirect_idx_wrap_with_carry() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x42;
-        memory.ram[0x42] = 0x12;
-        memory.ram[0x43] = 0x46;
+        memory.write_bus(0x2001, 0x42);
+        memory.write_bus(0x42, 0x12);
+        memory.write_bus(0x43, 0x46);
 
         let value = memory.addr_indirect_idx(0x2000, 0xff);
 
@@ -169,7 +164,7 @@ mod tests {
     #[test]
     fn test_addr_zeropage() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x11;
+        memory.write_bus(0x2001, 0x11);
 
         let value = memory.addr_zeropage(0x2000);
 
@@ -179,7 +174,7 @@ mod tests {
     #[test]
     fn test_addr_zeropage_idx() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x10;
+        memory.write_bus(0x2001, 0x10);
 
         let value = memory.addr_zeropage_idx(0x2000, 0x1);
 
@@ -189,7 +184,7 @@ mod tests {
     #[test]
     fn test_addr_zeropage_idx_wrap() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x43;
+        memory.write_bus(0x2001, 0x43);
 
         let value = memory.addr_zeropage_idx(0x2000, 0xff);
 
@@ -199,8 +194,8 @@ mod tests {
     #[test]
     fn test_get_16b_addr() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x11;
-        memory.ram[0x2002] = 0x47;
+        memory.write_bus(0x2001, 0x11);
+        memory.write_bus(0x2002, 0x47);
 
         let value = memory.get_16b_addr(0x2001);
 
@@ -210,7 +205,7 @@ mod tests {
     #[test]
     fn test_value_at_addr() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x11;
+        memory.write_bus(0x2001, 0x11);
 
         let value = memory.read_bus(0x2001);
 
@@ -220,8 +215,8 @@ mod tests {
     #[test]
     fn test_indirect_value_at_addr() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x2001] = 0x11;
-        memory.ram[0x11] = 0x47;
+        memory.write_bus(0x2001, 0x11);
+        memory.write_bus(0x11, 0x47);
 
         let value = memory.indirect_value_at_addr(0x2001);
 
@@ -233,13 +228,13 @@ mod tests {
         let mut memory: Memory = Memory::new();
         memory.push_to_stack(0xff, 0x42);
 
-        assert_eq!(memory.ram[0x1ff as usize], 0x42);
+        assert_eq!(memory.read_bus(0x1ff), 0x42);
     }
 
     #[test]
     fn test_pull_from_stack() {
         let mut memory: Memory = Memory::new();
-        memory.ram[0x1ff as usize] = 0x42;
+        memory.write_bus(0x1ff, 0x42);
         let value: u8 = memory.pull_from_stack(0xff);
 
         assert_eq!(value, 0x42);
@@ -257,7 +252,7 @@ mod tests {
         let mut memory: Memory = Memory::new();
         memory.write_bus(0x200, 0xff);
 
-        assert_eq!(memory.ram[0x200], 0xff);
+        assert_eq!(memory.read_bus(0x200), 0xff);
     }
 
     #[test]
