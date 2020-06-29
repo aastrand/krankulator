@@ -50,7 +50,7 @@ impl Emulator {
     #[allow(dead_code)] // Only used by tests
     pub fn new_headless() -> Emulator {
         Emulator::new_base(
-            Box::new(io::HeadlessIOHandler {}),
+            Box::new(io::SDLIOHandler {}),
             Box::new(memory::Memory::new()),
         )
     }
@@ -103,7 +103,10 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
-        self.iohandler.init();
+        match self.iohandler.init() {
+            Err(msg) => self.iohandler.log(&msg),
+            _ => {}
+        }
         self.start_time = SystemTime::now();
 
         loop {
