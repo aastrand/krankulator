@@ -259,4 +259,39 @@ mod tests {
 
         assert_eq!(emu.cpu.pc, 0x3469);
     }
+
+    //#[test]
+    fn test_nestest() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
+        emu.install_mapper(loader::load_nes(&String::from("input/nestest.nes")));
+        emu.cpu.pc = 0xc000;
+        emu.cpu.sp = 0xfd;
+        emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        if let Ok(lines) = util::read_lines(&String::from("input/nestest.log")) {
+            for line in lines {
+                if let Ok(expected) = line {
+                    println!("{}", expected);
+                    println!("{}", emu.log_str());
+
+                    let expected_addr = &expected[0..4];
+                    if util::hex_str_to_u16(expected_addr).ok().unwrap() != emu.cpu.pc {
+                        panic!("Deviated from nestest.log");
+                    }
+
+                    let opcode = emu.execute_instruction();
+                } else {
+                    panic!("Error iterating over nesttest.log");
+                }
+            }
+        } else {
+            panic!("Could not read nestest.log");
+        }
+
+        //assert_eq!(emu.cpu.pc, 0x3469);
+    }
 }

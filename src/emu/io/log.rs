@@ -44,53 +44,42 @@ impl LogFormatter {
         buf
     }
 
-    pub fn log_monitor(
+    pub fn log_str(
         &self,
-        opcode: u8,
+        opcode: [u8; 3],
         opcode_name: &str,
+        size: u16,
         pc: u16,
         registers: String,
         status: String,
+        logdata: &Vec<u16>
     ) -> String {
         let mut logline = String::with_capacity(80);
 
-        logline.push_str(&format!("0x{:x}: {} (0x{:x})", pc, opcode_name, opcode));
+        logline.push_str(&format!("{:04X} ", pc));
+        logline.push_str(&(1..(7 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&format!("{:02X}", opcode[0]));
 
-        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
-        logline.push_str(&registers);
-
-        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
-        logline.push_str(&status);
-
-        logline
-    }
-
-    fn log_str(
-        &self,
-        opcode: u8,
-        opcode_name: &str,
-        registers: String,
-        status: String,
-        logdata: &Box<Vec<u16>>,
-    ) -> String {
-        let mut logline = String::with_capacity(80);
-
-        logline.push_str(&format!(
-            "0x{:x}: {} (0x{:x})",
-            logdata[0], opcode_name, opcode
-        ));
+        if size > 1 {
+            logline.push_str(&format!(" {:02X}", opcode[1]));
+            if size > 2 {
+                logline.push_str(&format!(" {:02X}", opcode[2]));
+            }
+        }
+        logline.push_str(&(1..(16 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&format!(" {}", opcode_name));
 
         if logdata.len() > 1 {
-            logline.push_str(&format!(" arg=0x{:x}", logdata[1]));
+            logline.push_str(&format!(" {:X}", logdata[1]));
             if logdata.len() > 2 {
-                logline.push_str(&format!("=>0x{:x}", logdata[2]));
+                logline.push_str(&format!(" = 0x{:X}", logdata[2]));
             }
         }
 
-        logline.push_str(&(1..(50 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&(1..(49 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&registers);
 
-        logline.push_str(&(1..(85 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&(1..(80 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&status);
 
         logline
@@ -98,13 +87,15 @@ impl LogFormatter {
 
     pub fn log_instruction(
         &mut self,
-        opcode: u8,
+        opcode: [u8; 3],
         opcode_name: &str,
+        size: u16,
+        pc: u16,
         registers: String,
         status: String,
-        logdata: &Box<Vec<u16>>,
+        logdata: &Vec<u16>
     ) -> String {
-        self.log_lines.push_back(self.log_str(opcode, opcode_name, registers, status, logdata));
+        self.log_lines.push_back(self.log_str(opcode, opcode_name, size, pc, registers, status, logdata));
         if self.log_lines.len() > self.buffer_capacity {
             self.log_lines.pop_front();
         }
@@ -128,12 +119,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_log_monitor() {
+    fn test_log_str_size_3() {
         let sut = LogFormatter::new(10);
-        let s = sut.log_monitor(0x4c, &format!("JMP"), 0x400, format!("regs"), format!("status"));
+        let s = sut.log_str([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), format!("status"), &vec![]);
 
-        assert_eq!(s, "0x400: JMP (0x4c)                                regs                               status");
+        assert_eq!(s, "0400  4C 11 47  JMP                             regs                           status");
     }
+
+    #[test]
+    fn test_log_str_size_2() {
+        let sut = LogFormatter::new(10);
+        let s = sut.log_str([0x29, 0x42, 0x0], &format!("AND"), 2, 0xc000, format!("regs"), format!("status"), &vec![]);
+
+        assert_eq!(s, "C000  29 42     AND                             regs                           status");
+    }
+
+    #[test]
+    fn test_log_str_size_1() {
+        let sut = LogFormatter::new(10);
+        let s = sut.log_str([0xea, 0x0, 0x0], &format!("NOP"), 1, 0xfffe, format!("regs"), format!("status"), &vec![]);
+
+        assert_eq!(s, "FFFE  EA        NOP                             regs                           status");
+    }
+
 
     #[test]
     fn test_log_stack() {
@@ -145,34 +153,25 @@ mod tests {
     }
 
     #[test]
-    fn test_log_instruction() {
-        let mut sut = LogFormatter::new(10);
-        let logdata = Box::new(vec!(0x4211));
-        let s = sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &logdata);
-
-        assert_eq!(s, "0x4211: JMP (0x4c)                               regs                               status");
-    }
-
-    #[test]
     fn test_replay() {
         let mut sut = LogFormatter::new(10);
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &Box::new(vec!(0x4211)));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), &Box::new(vec!(0x1337)));
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), format!("status"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), format!("status2"), &vec![]);
 
         let s = sut.replay();
 
-        assert_eq!(s, "0x4211: JMP (0x4c)                               regs                               status\n0x1337: JMP (0x4c)                               regs2                              status2\n");
+        assert_eq!(s, "0400  4C 11 47  JMP                             regs                           status\n1337  4C 11 47  JMP                             regs2                          status2\n");
     }
 
     #[test]
     fn test_replay_capacity() {
         let mut sut = LogFormatter::new(2);
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs"), format!("status"), &Box::new(vec!(0x4211)));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs2"), format!("status2"), &Box::new(vec!(0x1337)));
-        sut.log_instruction(0x4c, &format!("JMP"), format!("regs3"), format!("status3"), &Box::new(vec!(0x42)));
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x4211, format!("regs"), format!("status"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), format!("status2"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x42, format!("regs3"), format!("status3"), &vec![]);
 
         let s = sut.replay();
 
-        assert_eq!(s, "0x1337: JMP (0x4c)                               regs2                              status2\n0x42: JMP (0x4c)                                 regs3                              status3\n");
+        assert_eq!(s, "1337  4C 11 47  JMP                             regs2                          status2\n0042  4C 11 47  JMP                             regs3                          status3\n");
     }
 }

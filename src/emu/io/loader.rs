@@ -72,6 +72,8 @@ const PRG_BANK_SIZE: usize = 16384;
 impl Loader for InesLoader {
     fn load(&self, path: &str) -> Box<dyn mapper::MemoryMapper> {
         let bytes = util::read_bytes(path);
+
+        // TODO: create header struct
         for i in 0 .. INES_HEADER_SIZE {
             println!("header byte {}: 0x{:x}", i, bytes.get(i as usize).unwrap());
         }

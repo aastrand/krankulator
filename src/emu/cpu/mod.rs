@@ -245,20 +245,20 @@ impl Cpu {
     }
 
     pub fn register_str(&self) -> String {
+        // A:00 X:00 Y:00 P:26 SP:FB
         format!(
-            "a=0x{:x} x=0x{:x} y=0x{:x} sp=0x{:x}",
-            self.a, self.x, self.y, self.sp
+            "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.a, self.x, self.y, self.status, self.sp
         )
     }
 
     pub fn status_str(&self) -> String {
         format!(
-            "\tN={} V={} Z={} C={} st={:#010b} (0x{:x})",
+            "\tN:{} V:{} Z:{} C:{} P:{:#010b}",
             self.negative_flag() as i32,
             self.overflow_flag() as i32,
             self.zero_flag() as i32,
             self.carry_flag() as i32,
-            self.status,
             self.status
         )
     }
@@ -744,7 +744,7 @@ mod tests {
         cpu.set_status_flag(255);
         let s = cpu.status_str();
 
-        assert_eq!(s, "\tN=1 V=1 Z=1 C=1 st=0b11111111 (0xff)");
+        assert_eq!(s, "\tN:1 V:1 Z:1 C:1 P:0b11111111");
     }
 
     #[test]
@@ -756,6 +756,6 @@ mod tests {
         cpu.sp = 0xab;
         let s = cpu.register_str();
 
-        assert_eq!(s, "a=0x42 x=0x47 y=0x11 sp=0xab");
+        assert_eq!(s, "A:42 X:47 Y:11 P:20 SP:AB");
     }
 }

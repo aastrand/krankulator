@@ -84,6 +84,10 @@ impl Memory {
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
         self.mapper.read_bus(self.stack_addr(sp))
     }
+
+    pub fn raw_opcode(&self, addr: u16) -> [u8; 3] {
+        [self.read_bus(addr), self.read_bus(addr+1), self.read_bus(addr+2)]
+    }
 }
 
 #[cfg(test)]

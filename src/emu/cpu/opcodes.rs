@@ -164,9 +164,9 @@ pub struct Lookup {
 }
 
 static _SENTINEL: Opcode = Opcode {
-    name: "OPCODE MISSING IN LOOKUP SEE opcodes.rs",
-    size: 0xffff,
-    cycles: 255,
+    name: "NOP",
+    size: 0xffff, // Inaccurate, will have to be adjusted
+    cycles: 0xff, // Inaccurate, will have to be adjusted
 };
 
 impl Lookup {
@@ -935,10 +935,31 @@ impl Lookup {
     }
 
     pub fn size(&self, opcode: u8) -> u16 {
-        self.opcodes[opcode as usize].size
+        let size = self.opcodes[opcode as usize].size;
+        if size == 0xffff {
+            // Handle NOPs
+            // https://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes
+            match opcode & 0xf {
+                0x0 => 1, // #i
+                0x2 => 1, // #
+                0x4 => 2, // d
+                0xc => 3, // a
+                _ => {
+                    1
+                }
+            }
+        } else {
+            size
+        }
     }
 
     pub fn cycles(&self, opcode: u8) -> u8 {
-        self.opcodes[opcode as usize].cycles
+        let cycles = self.opcodes[opcode as usize].cycles;
+        if cycles == 0xff {
+            // Handle NOPs
+            2 // TODO: make accurate
+        } else {
+            cycles
+        }
     }
 }

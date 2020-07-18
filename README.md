@@ -11,4 +11,5 @@ Resources:
 * [6502 opcodes](http://www.6502.org/tutorials/6502opcodes.html)
 * [6502_65C02_functional_tests](https://github.com/Klaus2m5/6502_65C02_functional_tests)
 * [6502 addressing modes](https://slark.me/c64-downloads/6502-addressing-modes.pdf)
-
+* [nestest](http://www.qmtpro.com/~nes/misc/)
+* [nesdev](https://wiki.nesdev.com)
