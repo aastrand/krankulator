@@ -6,13 +6,13 @@ pub const STACK_BASE_OFFSET: u16 = 0x100;
 pub const STACK_START_ADDR: u8 = 0xff;
 
 pub struct Memory {
-    mapper: Box<dyn mapper::MemoryMapper>
+    mapper: Box<dyn mapper::MemoryMapper>,
 }
 
 impl Memory {
     pub fn new() -> Memory {
         Memory {
-            mapper: Box::new(mapper::IdentityMapper::new())
+            mapper: Box::new(mapper::IdentityMapper::new()),
         }
     }
 
@@ -35,7 +35,7 @@ impl Memory {
     }
 
     pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
-        let base = self.read_bus(pc + 1);
+        let base = self.read_bus(pc + 1) as u16;
 
         let lb = self.read_bus(base as u16);
         let lbidx = lb.wrapping_add(idx);
@@ -61,7 +61,6 @@ impl Memory {
     pub fn read_bus(&self, addr: u16) -> u8 {
         self.mapper.read_bus(addr)
     }
-    
     pub fn write_bus(&mut self, addr: u16, value: u8) {
         self.mapper.write_bus(addr, value)
     }
@@ -157,6 +156,18 @@ mod tests {
         memory.write_bus(0x43, 0x46);
 
         let value = memory.addr_indirect_idx(0x2000, 0xff);
+
+        assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_indirect_idx_overflow() {
+        let mut memory: Memory = Memory::new();
+        memory.write_bus(0x2001, 0xff);
+        memory.write_bus(0xff, 0x10);
+        memory.write_bus(0x100, 0x47);
+
+        let value = memory.addr_indirect_idx(0x2000, 0x1);
 
         assert_eq!(value, 0x4711);
     }

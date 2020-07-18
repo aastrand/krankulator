@@ -88,23 +88,25 @@ impl Loader for InesLoader {
         let prg_offset: u32 = INES_HEADER_SIZE + (*flags & 0b0000_01000) as u32 * 64;
         println!("prg_offset: 0x{:x}", prg_offset);
 
-        let mut prg_banks: Vec<Box<[u8]>> = vec![];
+        let mut prg_banks: Vec<Box<[u8; PRG_BANK_SIZE]>> = vec![];
 
         for b in 0..*num_prg_blocks {
-            let mut code: Box<[u8]> = Box::new([0; PRG_BANK_SIZE]);
+            let mut code: Box<[u8; PRG_BANK_SIZE]> = Box::new([0; PRG_BANK_SIZE]);
 
-            for i in prg_offset + b as u32 .. prg_offset + PRG_BANK_SIZE as u32 {
-                code[i as usize] = *bytes.get(i as usize).unwrap();
-            }
+            let block_offset: usize = prg_offset as usize + (b as u32 * PRG_BANK_SIZE as u32) as usize;
+            code[0..PRG_BANK_SIZE].clone_from_slice(&bytes[block_offset..(block_offset+PRG_BANK_SIZE)]);
 
             prg_banks.push(code);
         }
 
-        Box::new(mapper::IdentityMapper::new())
+        // TODO: read mapper byte and get correct one
+        let mapper = mapper::NROMMapper::new(**prg_banks.get(0).unwrap(), None);
+
+        Box::new(mapper)
     }
 
     fn code_start(&self) -> u16 {
-        0xfffb
+        0xc000 // TODO: fix interrupt vectors
     }
 }
 
