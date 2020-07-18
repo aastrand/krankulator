@@ -116,11 +116,7 @@ impl Cpu {
 
     pub fn check_negative(&mut self, value: u8) {
         // After most instructions that have a value result, this flag will contain bit 7 of that result.
-        if (value >> 7) == 1 {
-            self.set_status_flag(NEGATIVE_BIT);
-        } else {
-            self.clear_status_flag(NEGATIVE_BIT);
-        }
+        self.status = self.status & !NEGATIVE_BIT | (value & NEGATIVE_BIT);
     }
 
     pub fn check_zero(&mut self, value: u8) {
@@ -142,12 +138,12 @@ impl Cpu {
             } else {
                 self.clear_status_flag(ZERO_BIT);
             }
-            self.clear_status_flag(NEGATIVE_BIT);
         } else {
             self.clear_status_flag(CARRY_BIT);
             self.clear_status_flag(ZERO_BIT);
-            self.set_status_flag(NEGATIVE_BIT);
         }
+
+        self.check_negative(register_value.wrapping_sub(operand));
     }
 
     pub fn eor(&mut self, operand: u8) {
@@ -550,6 +546,11 @@ mod tests {
         assert_eq!(true, cpu.carry_flag());
         assert_eq!(false, cpu.zero_flag());
         assert_eq!(false, cpu.negative_flag());
+
+        cpu.compare(0x80, 0);
+        assert_eq!(true, cpu.carry_flag());
+        assert_eq!(false, cpu.zero_flag());
+        assert_eq!(true, cpu.negative_flag());
     }
 
     #[test]
