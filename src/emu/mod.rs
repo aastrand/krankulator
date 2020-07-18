@@ -610,8 +610,24 @@ impl Emulator {
                 opcodes::JMP_IND => {
                     // JuMP to address stored in arg
                     let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                    // AN INDIRECT JUMP MUST NEVER USE A
+                    // VECTOR BEGINNING ON THE LAST BYTE
+                    // OF A PAGE
+                    // For example if address $3000 contains $40, $30FF contains $80, and $3100 contains $50, 
+                    // the result of JMP ($30FF) will be a transfer of control to $4080 rather than $5080 as you intended
+                    // i.e. the 6502 took the low byte of the address from $30FF and the high byte from $3000.
+                    let adjusted_addr = if (addr & 0xff) == 0xff {
+                        addr & 0xff00
+                    } else {
+                        addr + 1
+                    };
+
+                    let hb = self.mem.read_bus(adjusted_addr);
+                    let lb = self.mem.read_bus(addr);
+
                     logdata.push(addr);
-                    let operand: u16 = self.mem.get_16b_addr(addr);
+
+                    let operand: u16 = memory::to_16b_addr(hb, lb);
                     logdata.push(operand);
                     self.cpu.pc = operand;
                     // Compensate for length addition
@@ -1878,6 +1894,24 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x42);
+    }
+
+    #[test]
+    fn test_jmp_ind_last_byte() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::JMP_IND);
+        emu.mem.write_bus(start + 1, 0xff);
+        emu.mem.write_bus(start + 2, 0x30);
+        emu.mem.write_bus(0x3000, 0x47);
+        emu.mem.write_bus(0x30ff, 0x12);
+
+        // should not be used
+        emu.mem.write_bus(0x3100, 0x11);
+
+        emu.run();
+
+        assert_eq!(emu.cpu.pc, 0x4712);
     }
 
     #[test]

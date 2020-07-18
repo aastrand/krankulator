@@ -9,6 +9,10 @@ pub struct Memory {
     mapper: Box<dyn mapper::MemoryMapper>,
 }
 
+pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
+    ((hb as u16) << 8) + ((lb as u16) & 0xff)
+}
+
 impl Memory {
     pub fn new() -> Memory {
         Memory {
@@ -42,7 +46,7 @@ impl Memory {
         let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
         let hb = self.read_bus((base + 1) as u16).wrapping_add(carry);
 
-        Memory::to_16b_addr(hb, lbidx)
+        to_16b_addr(hb, lbidx)
     }
 
     pub fn addr_zeropage(&self, pc: u16) -> u16 {
@@ -79,10 +83,6 @@ impl Memory {
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
         self.mapper.read_bus(self.stack_addr(sp))
-    }
-
-    pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
-        ((hb as u16) << 8) + ((lb as u16) & 0xff)
     }
 }
 
@@ -268,6 +268,6 @@ mod tests {
 
     #[test]
     fn test_to_16b_addr() {
-        assert_eq!(Memory::to_16b_addr(0x47, 0x11), 0x4711);
+        assert_eq!(to_16b_addr(0x47, 0x11), 0x4711);
     }
 }
