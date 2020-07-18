@@ -1,12 +1,10 @@
 pub mod cpu;
 pub mod dbg;
 pub mod io;
-pub mod loaders;
-pub mod log;
 pub mod memory;
-pub mod opcodes;
 
-pub mod mapper;
+use cpu::opcodes;
+use memory::mapper;
 
 extern crate shrust;
 use std::collections::HashSet;
@@ -17,7 +15,7 @@ pub struct Emulator {
     pub mem: memory::Memory,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
-    logformatter: log::LogFormatter,
+    logformatter: io::log::LogFormatter,
     stepping: bool,
     pub breakpoints: Box<HashSet<u16>>,
     should_log: bool,
@@ -45,7 +43,7 @@ impl Emulator {
             mem: memory::Memory::new(),
             lookup: lookup,
             iohandler: iohandler,
-            logformatter: log::LogFormatter::new(30),
+            logformatter: io::log::LogFormatter::new(30),
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
             should_log: true,

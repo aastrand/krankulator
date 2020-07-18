@@ -1,3 +1,7 @@
+use super::memory;
+
+pub mod opcodes;
+
 pub const NEGATIVE_BIT: u8 = 0b10000000;
 pub const OVERFLOW_BIT: u8 = 0b01000000;
 pub const IGNORE_BIT: u8 = 0b00100000;
@@ -6,8 +10,6 @@ pub const DECIMAL_BIT: u8 = 0b00001000;
 pub const INTERRUPT_BIT: u8 = 0b00000100;
 pub const ZERO_BIT: u8 = 0b00000010;
 pub const CARRY_BIT: u8 = 0b00000001;
-
-use super::memory;
 
 pub struct Cpu {
     pub pc: u16,

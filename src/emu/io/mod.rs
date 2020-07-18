@@ -1,3 +1,6 @@
+pub mod loader;
+pub mod log;
+
 use super::memory;
 use pancurses;
 use std::{thread, time};

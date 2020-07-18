@@ -1,5 +1,4 @@
-use super::mapper;
-use super::super::util;
+use super::super::{super::util, memory::mapper};
 
 extern crate hex;
 

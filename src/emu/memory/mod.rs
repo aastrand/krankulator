@@ -1,4 +1,4 @@
-use super::mapper;
+pub mod mapper;
 
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
