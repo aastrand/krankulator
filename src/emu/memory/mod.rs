@@ -35,7 +35,7 @@ impl Memory {
 
     pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
         let value: u8 = self.read_bus(pc + 1).wrapping_add(idx);
-        self.get_16b_addr(value as u16)
+        ((self.read_bus(((value as u8).wrapping_add(1)) as u16) as u16) << 8) + self.read_bus(value as u16) as u16
     }
 
     pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
@@ -44,7 +44,7 @@ impl Memory {
         let lb = self.read_bus(base as u16);
         let lbidx = lb.wrapping_add(idx);
         let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
-        let hb = self.read_bus((base + 1) as u16).wrapping_add(carry);
+        let hb = self.read_bus((base as u8).wrapping_add(1) as u16).wrapping_add(carry);
 
         to_16b_addr(hb, lbidx)
     }
@@ -129,6 +129,18 @@ mod tests {
     }
 
     #[test]
+    fn test_addr_idx_indirect_zp() {
+        let mut memory: Memory = Memory::new();
+        memory.write_bus(0x2001, 0xff);
+        memory.write_bus(0xff, 0x0);
+        memory.write_bus(0x00, 0x4);
+
+        let value = memory.addr_idx_indirect(0x2000, 0x0);
+
+        assert_eq!(value, 0x400);
+    }
+
+    #[test]
     fn test_addr_idx_indirect_wrap() {
         let mut memory: Memory = Memory::new();
         memory.write_bus(0x2001, 0x43);
@@ -169,11 +181,24 @@ mod tests {
         let mut memory: Memory = Memory::new();
         memory.write_bus(0x2001, 0xff);
         memory.write_bus(0xff, 0x10);
-        memory.write_bus(0x100, 0x47);
+        memory.write_bus(0x00, 0x47);
 
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
         assert_eq!(value, 0x4711);
+    }
+
+    #[test]
+    fn test_addr_indirect_idx_overflow_ff() {
+        // D959  B1 FF     LDA ($FF),Y = 0146 @ 0245 = 12  A:01 X:65 Y:FF P:E5 SP:FA PPU: 77,215 CYC:8824
+        let mut memory: Memory = Memory::new();
+        memory.write_bus(0x2001, 0xff);
+        memory.write_bus(0xff, 0x46);
+        memory.write_bus(0x00, 0x01);
+
+        let value = memory.addr_indirect_idx(0x2000, 0xff);
+
+        assert_eq!(value, 0x0245);
     }
 
     #[test]
