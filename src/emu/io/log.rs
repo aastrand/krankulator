@@ -69,10 +69,10 @@ impl LogFormatter {
         logline.push_str(&(1..(16 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&format!(" {}", opcode_name));
 
-        if logdata.len() > 1 {
-            logline.push_str(&format!(" {:X}", logdata[1]));
-            if logdata.len() > 2 {
-                logline.push_str(&format!(" = 0x{:X}", logdata[2]));
+        if logdata.len() > 0 {
+            logline.push_str(&format!(" {:X}", logdata[0]));
+            if logdata.len() > 1 {
+                logline.push_str(&format!(" = {:X}", logdata[1]));
             }
         }
 

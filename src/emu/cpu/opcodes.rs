@@ -940,7 +940,7 @@ impl Lookup {
             // Handle NOPs
             // https://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes
             match opcode & 0xf {
-                0x0 => 1, // #i
+                0x0 => 2, // #i
                 0x2 => 1, // #
                 0x4 => 2, // d
                 0xc => 3, // a

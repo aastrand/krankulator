@@ -102,21 +102,7 @@ impl Emulator {
             }
             last = self.cpu.pc;
             let opcode = self.execute_instruction();
-
-            if self.should_log {
-                let log_line: String = self.logformatter.log_instruction(
-                    self.mem.raw_opcode(last),
-                    self.lookup.name(opcode),
-                    self.lookup.size(opcode),
-                    last,
-                    self.cpu.register_str(),
-                    self.cpu.status_str(),
-                    &self.logdata,
-                );
-                if self.verbose {
-                    self.iohandler.log(&log_line);
-                }
-            }
+            self.log(opcode, last);
         }
 
         self.iohandler.log(&format!(
@@ -127,9 +113,25 @@ impl Emulator {
         ));
     }
 
+    pub fn log(&mut self, opcode: u8, pc: u16) {
+        if self.should_log {
+            let log_line: String = self.logformatter.log_instruction(
+                self.mem.raw_opcode(pc),
+                self.lookup.name(opcode),
+                self.lookup.size(opcode),
+                pc,
+                self.cpu.register_str(),
+                self.cpu.status_str(),
+                &self.logdata,
+            );
+            if self.verbose {
+                self.iohandler.log(&log_line);
+            }
+        }
+    }
+
     pub fn execute_instruction(&mut self) -> u8 {
         self.logdata.clear();
-        self.logdata.push(self.cpu.pc);
 
         let opcode = self.mem.read_bus(self.cpu.pc);
         let size: u16 = self.lookup.size(opcode);
