@@ -266,24 +266,37 @@ mod tests {
         emu.install_mapper(loader::load_nes(&String::from("input/nestest.nes")));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
+        emu.cycles = 7;
         emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
 
         emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
+        emu.toggle_quiet_mode(false);
+        emu.toggle_verbose_mode(true);
 
         if let Ok(lines) = util::read_lines(&String::from("input/nestest.log")) {
             for line in lines {
                 if let Ok(expected) = line {
                     println!("{}", expected);
-                    println!("{}", emu.log_str());
 
                     let expected_addr = &expected[0..4];
-                    if util::hex_str_to_u16(expected_addr).ok().unwrap() != emu.cpu.pc {
-                        panic!("Deviated from nestest.log");
-                    }
+                    let pc = emu.cpu.pc;
 
-                    let opcode = emu.execute_instruction();
+                    let expected_status = &expected[65..67];
+                    let status = emu.cpu.status;
+
+                    //let expected_cycles = &expected[90..];
+                    //let cycles = emu.cycles;
+
+                    let last = emu.cpu.pc;
+                    emu.logdata.clear();
+                    emu.log(emu.mem.read_bus(emu.cpu.pc), last);
+                    emu.execute_instruction();
+
+                    assert_eq!(util::hex_str_to_u16(expected_addr).ok().unwrap(), pc);
+                    assert_eq!(util::hex_str_to_u8(expected_status).ok().unwrap(), status);
+                    // TODO: look into this
+                    //assert_eq!(expected_cycles.parse::<u64>().unwrap(), cycles);
+
                 } else {
                     panic!("Error iterating over nesttest.log");
                 }

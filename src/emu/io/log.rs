@@ -51,6 +51,7 @@ impl LogFormatter {
         size: u16,
         pc: u16,
         registers: String,
+        cycles: u64,
         status: String,
         logdata: &Vec<u16>
     ) -> String {
@@ -79,7 +80,10 @@ impl LogFormatter {
         logline.push_str(&(1..(49 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&registers);
 
-        logline.push_str(&(1..(80 - logline.len())).map(|_| " ").collect::<String>());
+        logline.push_str(&format!(" PPU:  0,0  "));
+        logline.push_str(&format!(" CYC:{}", cycles));
+
+        logline.push_str(&(1..(110 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&status);
 
         logline
@@ -92,10 +96,11 @@ impl LogFormatter {
         size: u16,
         pc: u16,
         registers: String,
+        cycles: u64,
         status: String,
         logdata: &Vec<u16>
     ) -> String {
-        self.log_lines.push_back(self.log_str(opcode, opcode_name, size, pc, registers, status, logdata));
+        self.log_lines.push_back(self.log_str(opcode, opcode_name, size, pc, registers, cycles, status, logdata));
         if self.log_lines.len() > self.buffer_capacity {
             self.log_lines.pop_front();
         }
@@ -121,27 +126,34 @@ mod tests {
     #[test]
     fn test_log_str_size_3() {
         let sut = LogFormatter::new(10);
-        let s = sut.log_str([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), format!("status"), &vec![]);
+        let s = sut.log_str([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), 0, format!("status"), &vec![]);
 
-        assert_eq!(s, "0400  4C 11 47  JMP                             regs                           status");
+        assert_eq!(s, "0400  4C 11 47  JMP                             regs PPU:  0,0   CYC:0                                       status");
     }
 
     #[test]
     fn test_log_str_size_2() {
         let sut = LogFormatter::new(10);
-        let s = sut.log_str([0x29, 0x42, 0x0], &format!("AND"), 2, 0xc000, format!("regs"), format!("status"), &vec![]);
+        let s = sut.log_str([0x29, 0x42, 0x0], &format!("AND"), 2, 0xc000, format!("regs"), 0, format!("status"), &vec![]);
 
-        assert_eq!(s, "C000  29 42     AND                             regs                           status");
+        assert_eq!(s, "C000  29 42     AND                             regs PPU:  0,0   CYC:0                                       status");
     }
 
     #[test]
     fn test_log_str_size_1() {
         let sut = LogFormatter::new(10);
-        let s = sut.log_str([0xea, 0x0, 0x0], &format!("NOP"), 1, 0xfffe, format!("regs"), format!("status"), &vec![]);
+        let s = sut.log_str([0xea, 0x0, 0x0], &format!("NOP"), 1, 0xfffe, format!("regs"), 0, format!("status"), &vec![]);
 
-        assert_eq!(s, "FFFE  EA        NOP                             regs                           status");
+        assert_eq!(s, "FFFE  EA        NOP                             regs PPU:  0,0   CYC:0                                       status");
     }
 
+    #[test]
+    fn test_log_str_cyc() {
+        let sut = LogFormatter::new(10);
+        let s = sut.log_str([0xea, 0x0, 0x0], &format!("NOP"), 1, 0xfffe, format!("regs"), 43432423, format!("status"), &vec![]);
+
+        assert_eq!(s, "FFFE  EA        NOP                             regs PPU:  0,0   CYC:43432423                                status");
+    }
 
     #[test]
     fn test_log_stack() {
@@ -155,23 +167,23 @@ mod tests {
     #[test]
     fn test_replay() {
         let mut sut = LogFormatter::new(10);
-        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), format!("status"), &vec![]);
-        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), format!("status2"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x400, format!("regs"), 0, format!("status"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), 0, format!("status2"), &vec![]);
 
         let s = sut.replay();
 
-        assert_eq!(s, "0400  4C 11 47  JMP                             regs                           status\n1337  4C 11 47  JMP                             regs2                          status2\n");
+        assert_eq!(s, "0400  4C 11 47  JMP                             regs PPU:  0,0   CYC:0                                       status\n1337  4C 11 47  JMP                             regs2 PPU:  0,0   CYC:0                                      status2\n");
     }
 
     #[test]
     fn test_replay_capacity() {
         let mut sut = LogFormatter::new(2);
-        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x4211, format!("regs"), format!("status"), &vec![]);
-        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), format!("status2"), &vec![]);
-        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x42, format!("regs3"), format!("status3"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x4211, format!("regs"), 0, format!("status"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x1337, format!("regs2"), 0, format!("status2"), &vec![]);
+        sut.log_instruction([0x4c, 0x11, 0x47], &format!("JMP"), 3, 0x42, format!("regs3"), 0, format!("status3"), &vec![]);
 
         let s = sut.replay();
 
-        assert_eq!(s, "1337  4C 11 47  JMP                             regs2                          status2\n0042  4C 11 47  JMP                             regs3                          status3\n");
+        assert_eq!(s, "1337  4C 11 47  JMP                             regs2 PPU:  0,0   CYC:0                                      status2\n0042  4C 11 47  JMP                             regs3 PPU:  0,0   CYC:0                                      status3\n");
     }
 }

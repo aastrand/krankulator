@@ -23,7 +23,7 @@ pub struct Emulator {
     should_debug_on_infinite_loop: bool,
     verbose: bool,
     instruction_count: u64,
-    cycle_count: u64,
+    pub cycles: u64,
 }
 
 impl Emulator {
@@ -52,7 +52,7 @@ impl Emulator {
             should_debug_on_infinite_loop: false,
             verbose: true,
             instruction_count: 0,
-            cycle_count: 0,
+            cycles: 0,
         }
     }
 
@@ -108,8 +108,8 @@ impl Emulator {
         self.iohandler.log(&format!(
             "Exiting after {} instructions, {} cycles ({:.1} MHz)",
             self.instruction_count,
-            self.cycle_count,
-            (self.cycle_count as f64 / start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
+            self.cycles,
+            (self.cycles as f64 / start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
         ));
     }
 
@@ -121,6 +121,7 @@ impl Emulator {
                 self.lookup.size(opcode),
                 pc,
                 self.cpu.register_str(),
+                self.cycles,
                 self.cpu.status_str(),
                 &self.logdata,
             );
@@ -1296,7 +1297,7 @@ impl Emulator {
 
         self.cpu.pc += size;
         self.instruction_count = self.instruction_count + 1;
-        self.cycle_count = self.cycle_count + self.lookup.cycles(opcode) as u64;
+        self.cycles = self.cycles + self.lookup.cycles(opcode) as u64;
 
         opcode
     }
@@ -1336,6 +1337,7 @@ impl Emulator {
             self.lookup.size(opcode),
             self.cpu.pc,
             self.cpu.register_str(),
+            self.cycles,
             self.cpu.status_str(),
             &vec![]
         )
@@ -1344,7 +1346,7 @@ impl Emulator {
     fn debug(&mut self) {
         self.iohandler.log(&format!(
             "entering debug mode after {} instructions ({} cycles)!",
-            self.instruction_count, self.cycle_count
+            self.instruction_count, self.cycles
         ));
 
         if !self.verbose {
