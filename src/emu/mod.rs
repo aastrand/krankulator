@@ -744,6 +744,49 @@ impl Emulator {
                 self.cpu.check_zero(self.cpu.y);
             }
 
+            opcodes::LAX_ABS => {
+                let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+            opcodes::LAX_ABY => {
+                let addr: u16 = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+            opcodes::LAX_INX => {
+                let addr: u16 = self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x);
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+            opcodes::LAX_INY => {
+                let addr: u16 = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+            opcodes::LAX_ZP => {
+                let addr: u16 = self.mem.addr_zeropage(self.cpu.pc) as u16;
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+            opcodes::LAX_ZPY => {
+                let addr: u16 = self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.y);
+                self.logdata.push(addr);
+                let value = self.load(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+            }
+
             opcodes::LDA_ABS => {
                 let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
                 self.logdata.push(addr);
@@ -1949,6 +1992,22 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_lax_abs() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LAX_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x042);
+        assert_eq!(emu.cpu.x, 0x042);
+        assert_eq!(emu.cpu.negative_flag(), false);
+        assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
     fn test_lda_abs_flags() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: u16 = memory::CODE_START_ADDR;
@@ -2000,6 +2059,21 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_lax_aby() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.y = 1;
+        emu.mem.write_bus(start, opcodes::LAX_ABY);
+        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0x42);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x42);
+        assert_eq!(emu.cpu.x, 0x42);
+    }
+
+    #[test]
     fn test_lda_imm() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: u16 = memory::CODE_START_ADDR;
@@ -2025,6 +2099,21 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_lax_inx() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.x = 1;
+        emu.mem.write_bus(start, opcodes::LAX_INX);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x42, 0x15);
+        emu.mem.write_bus(0x15, 0x12);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x12);
+        assert_eq!(emu.cpu.x, 0x12);
+    }
+
+    #[test]
     fn test_lda_iny() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: u16 = memory::CODE_START_ADDR;
@@ -2037,6 +2126,22 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x11);
+    }
+
+    #[test]
+    fn test_lax_iny() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.y = 1;
+        emu.mem.write_bus(start, opcodes::LAX_INY);
+        emu.mem.write_bus(start + 1, 0x16);
+        emu.mem.write_bus(0x16, 0x10);
+        emu.mem.write_bus(0x17, 0x42);
+        emu.mem.write_bus(0x4211, 0x11);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x11);
+        assert_eq!(emu.cpu.x, 0x11);
     }
 
     #[test]
@@ -2064,6 +2169,33 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
+    }
+
+    #[test]
+    fn test_lax_zp() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::LAX_ZP);
+        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.write_bus(0x42, 0x15);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x15);
+        assert_eq!(emu.cpu.x, 0x15);
+    }
+
+    #[test]
+    fn test_lax_zpy() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.y = 8;
+        emu.mem.write_bus(start, opcodes::LAX_ZPY);
+        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.write_bus(0x41 + 8, 0x15);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x15);
+        assert_eq!(emu.cpu.x, 0x15);
     }
 
     #[test]

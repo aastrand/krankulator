@@ -151,6 +151,12 @@ pub const STX_ABS: u8 = 0x8e; // (STore X register)
 pub const STY_ZP: u8 = 0x84; // (STore Y register)
 pub const STY_ZPX: u8 = 0x94; // (STore Y register)
 pub const STY_ABS: u8 = 0x8c; // (STore Y register)
+pub const LAX_INX: u8 = 0xa3; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_ZP: u8 = 0xa7; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_ABS: u8 = 0xaf; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_INY: u8 = 0xb3; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_ZPY: u8 = 0xb7; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_ABY: u8 = 0xbf; // LAX = LDA + LDX (Illegal opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -924,6 +930,36 @@ impl Lookup {
         };
         lookup[STY_ABS as usize] = &Opcode { // (STore Y register)
             name: "STY_ABS",
+            size: 3,
+            cycles: 4,
+        };
+        lookup[LAX_INX as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_INX",
+            size: 2,
+            cycles: 6,
+        };
+        lookup[LAX_ZP as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_ZP",
+            size: 2,
+            cycles: 3,
+        };
+        lookup[LAX_ABS as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_ABS",
+            size: 3,
+            cycles: 4,
+        };
+        lookup[LAX_INY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_INY",
+            size: 2,
+            cycles: 6,
+        };
+        lookup[LAX_ZPY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_ZPY",
+            size: 2,
+            cycles: 4,
+        };
+        lookup[LAX_ABY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+            name: "LAX_ABY",
             size: 3,
             cycles: 4,
         };
