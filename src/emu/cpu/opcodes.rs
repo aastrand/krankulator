@@ -151,12 +151,24 @@ pub const STX_ABS: u8 = 0x8e; // (STore X register)
 pub const STY_ZP: u8 = 0x84; // (STore Y register)
 pub const STY_ZPX: u8 = 0x94; // (STore Y register)
 pub const STY_ABS: u8 = 0x8c; // (STore Y register)
-pub const LAX_INX: u8 = 0xa3; // LAX = LDA + LDX (Illegal opcode)
-pub const LAX_ZP: u8 = 0xa7; // LAX = LDA + LDX (Illegal opcode)
-pub const LAX_ABS: u8 = 0xaf; // LAX = LDA + LDX (Illegal opcode)
-pub const LAX_INY: u8 = 0xb3; // LAX = LDA + LDX (Illegal opcode)
-pub const LAX_ZPY: u8 = 0xb7; // LAX = LDA + LDX (Illegal opcode)
-pub const LAX_ABY: u8 = 0xbf; // LAX = LDA + LDX (Illegal opcode)
+pub const LAX_INX: u8 = 0xa3; // LAX = LDA + LDX (Unofficial opcode)
+pub const LAX_ZP: u8 = 0xa7; // LAX = LDA + LDX (Unofficial opcode)
+pub const LAX_ABS: u8 = 0xaf; // LAX = LDA + LDX (Unofficial opcode)
+pub const LAX_INY: u8 = 0xb3; // LAX = LDA + LDX (Unofficial opcode)
+pub const LAX_ZPY: u8 = 0xb7; // LAX = LDA + LDX (Unofficial opcode)
+pub const LAX_ABY: u8 = 0xbf; // LAX = LDA + LDX (Unofficial opcode)
+pub const SAX_INX: u8 = 0x83; // SAX = Store A&X (Unofficial opcode)
+pub const SAX_ZP: u8 = 0x87; // SAX = Store A&X (Unofficial opcode)
+pub const SAX_ABS: u8 = 0x8f; // SAX = Store A&X (Unofficial opcode)
+pub const SAX_ZPY: u8 = 0x97; // SAX = Store A&X (Unofficial opcode)
+pub const SBC_IMM_NOP: u8 = 0xeb; // SBC = SBC + NOP (Unofficial opcode)
+pub const DCP_INX: u8 = 0xc3; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_ZP: u8 = 0xc7; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_ABS: u8 = 0xcf; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_INY: u8 = 0xd3; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_ZPX: u8 = 0xd7; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_ABY: u8 = 0xdb; // DCP = DEC + CMP (Unofficial opcode)
+pub const DCP_ABX: u8 = 0xdf; // DCP = DEC + CMP (Unofficial opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -933,35 +945,95 @@ impl Lookup {
             size: 3,
             cycles: 4,
         };
-        lookup[LAX_INX as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_INX as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_INX",
             size: 2,
             cycles: 6,
         };
-        lookup[LAX_ZP as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_ZP as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ZP",
             size: 2,
             cycles: 3,
         };
-        lookup[LAX_ABS as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_ABS as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ABS",
             size: 3,
             cycles: 4,
         };
-        lookup[LAX_INY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_INY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_INY",
             size: 2,
             cycles: 6,
         };
-        lookup[LAX_ZPY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_ZPY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ZPY",
             size: 2,
             cycles: 4,
         };
-        lookup[LAX_ABY as usize] = &Opcode { // LAX = LDA + LDX (Illegal opcode)
+        lookup[LAX_ABY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ABY",
             size: 3,
             cycles: 4,
+        };
+        lookup[SAX_INX as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
+            name: "SAX_INX",
+            size: 2,
+            cycles: 6,
+        };
+        lookup[SAX_ZP as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
+            name: "SAX_ZP",
+            size: 2,
+            cycles: 3,
+        };
+        lookup[SAX_ABS as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
+            name: "SAX_ABS",
+            size: 3,
+            cycles: 4,
+        };
+        lookup[SAX_ZPY as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
+            name: "SAX_ZPY",
+            size: 2,
+            cycles: 4,
+        };
+        lookup[SBC_IMM_NOP as usize] = &Opcode { // SBC = SBC + NOP (Unofficial opcode)
+            name: "SBC_IMM_NOP",
+            size: 2,
+            cycles: 2,
+        };
+        lookup[DCP_INX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_INX",
+            size: 2,
+            cycles: 8,
+        };
+        lookup[DCP_ZP as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_ZP",
+            size: 2,
+            cycles: 5,
+        };
+        lookup[DCP_ABS as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_ABS",
+            size: 3,
+            cycles: 6,
+        };
+        lookup[DCP_INY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_INY",
+            size: 2,
+            cycles: 8,
+        };
+        lookup[DCP_ZPX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_ZPX",
+            size: 2,
+            cycles: 6,
+        };
+        lookup[DCP_ABY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_ABY",
+            size: 3,
+            cycles: 7,
+        };
+        lookup[DCP_ABX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
+            name: "DCP_ABX",
+            size: 3,
+            cycles: 7,
         };
         Lookup { opcodes: lookup }
     }
