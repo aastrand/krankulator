@@ -1485,6 +1485,24 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_isb() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::ISB_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+
+        emu.cpu.a = 0x20;
+        emu.mem.write_bus(0x4711, 0x10);
+
+        emu.run();
+
+        // carry = false => sub 1 extra
+        assert_eq!(emu.cpu.a, 0xe);
+        assert_eq!(emu.mem.read_bus(0x4711), 0x11);
+    }
+
+    #[test]
     fn test_jmp_abs() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: u16 = memory::CODE_START_ADDR;
