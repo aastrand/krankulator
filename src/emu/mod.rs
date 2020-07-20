@@ -600,6 +600,16 @@ impl Emulator {
                 self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
             }
 
+            opcodes::SLO_ABS
+            | opcodes::SLO_ABX
+            | opcodes::SLO_ABY
+            | opcodes::SLO_INX
+            | opcodes::SLO_INY
+            | opcodes::SLO_ZP
+            | opcodes::SLO_ZPX => {
+                self.slo(self.addr(opcode));
+            }
+
             opcodes::STA_ABS
             | opcodes::STA_ABX
             | opcodes::STA_ABY
@@ -679,12 +689,14 @@ impl Emulator {
         self.cpu.add_to_a_with_carry(operand);
     }
 
-    fn asl(&mut self, addr: u16) {
+    fn asl(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.read_bus(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.asl(value);
         self.logdata.push(result as u16);
         self.mem.write_bus(addr, result);
+
+        result
     }
 
     fn dec(&mut self, addr: u16) {
@@ -790,6 +802,11 @@ impl Emulator {
         let operand: u8 = self.mem.read_bus(addr);
         self.logdata.push(operand as u16);
         self.cpu.sub_from_a_with_carry(operand);
+    }
+
+    fn slo(&mut self, addr: u16) {
+        let result = self.asl(addr);
+        self.cpu.ora(result);
     }
 
     fn push_pc_to_stack(&mut self, offset: u16) {
@@ -2138,6 +2155,21 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.read_bus(0x42), 0b0001_0000);
+    }
+
+    #[test]
+    fn test_slo() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.a = 0b0000_1111;
+        emu.mem.write_bus(start, opcodes::SLO_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0b0111_1000);
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0b1111_1111);
+        assert_eq!(emu.mem.read_bus(0x4711), 0b1111_0000);
     }
 
     #[test]

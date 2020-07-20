@@ -2,16 +2,16 @@
 
 #[derive(Copy, Clone)]
 pub enum AddressingMode {
-    NA,
-    INX,
-    ABS,
-    INY,
-    ZP,
     ZPX,
-    ABY,
+    ABS,
+    ZP,
+    INY,
     ABX,
-    ZPY,
     IMM,
+    ZPY,
+    NA,
+    ABY,
+    INX,
 }
 
 pub const ADC_IMM: u8 = 0x69; // (ADd with Carry)
@@ -190,6 +190,13 @@ pub const ISB_INY: u8 = 0xf3; // ISB = INC + SBC (Unofficial opcode)
 pub const ISB_ZPX: u8 = 0xf7; // ISB = INC + SBC (Unofficial opcode)
 pub const ISB_ABY: u8 = 0xfb; // ISB = INC + SBC (Unofficial opcode)
 pub const ISB_ABX: u8 = 0xff; // ISB = INC + SBC (Unofficial opcode)
+pub const SLO_INX: u8 = 0x03; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_ZP: u8 = 0x07; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_ABS: u8 = 0x0f; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_INY: u8 = 0x13; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_ZPX: u8 = 0x17; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_ABY: u8 = 0x1b; // SLO = ASL + ORA (Unofficial opcode)
+pub const SLO_ABX: u8 = 0x1f; // SLO = ASL + ORA (Unofficial opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -1265,6 +1272,48 @@ impl Lookup {
         };
         lookup[ISB_ABX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABX",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABX,
+        };
+        lookup[SLO_INX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_INX",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INX,
+        };
+        lookup[SLO_ZP as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_ZP",
+            size: 2,
+            cycles: 5,
+            mode: AddressingMode::ZP,
+        };
+        lookup[SLO_ABS as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_ABS",
+            size: 3,
+            cycles: 6,
+            mode: AddressingMode::ABS,
+        };
+        lookup[SLO_INY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_INY",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INY,
+        };
+        lookup[SLO_ZPX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_ZPX",
+            size: 2,
+            cycles: 6,
+            mode: AddressingMode::ZPX,
+        };
+        lookup[SLO_ABY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_ABY",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABY,
+        };
+        lookup[SLO_ABX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
+            name: "SLO_ABX",
             size: 3,
             cycles: 7,
             mode: AddressingMode::ABX,

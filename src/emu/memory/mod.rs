@@ -58,8 +58,7 @@ impl Memory {
     }
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
-        // little endian, so 2nd first
-        ((self.read_bus(offset + 1) as u16) << 8) + self.read_bus(offset) as u16
+        to_16b_addr(self.read_bus(offset + 1), self.read_bus(offset))
     }
 
     pub fn read_bus(&self, addr: u16) -> u8 {
@@ -67,10 +66,6 @@ impl Memory {
     }
     pub fn write_bus(&mut self, addr: u16, value: u8) {
         self.mapper.write_bus(addr, value)
-    }
-
-    pub fn indirect_value_at_addr(&self, addr: u16) -> u8 {
-        self.read_bus(self.read_bus(addr) as u16)
     }
 
     pub fn stack_addr(&self, sp: u8) -> u16 {
@@ -250,17 +245,6 @@ mod tests {
         let value = memory.read_bus(0x2001);
 
         assert_eq!(value, 0x11);
-    }
-
-    #[test]
-    fn test_indirect_value_at_addr() {
-        let mut memory: Memory = Memory::new();
-        memory.write_bus(0x2001, 0x11);
-        memory.write_bus(0x11, 0x47);
-
-        let value = memory.indirect_value_at_addr(0x2001);
-
-        assert_eq!(value, 0x47);
     }
 
     #[test]
