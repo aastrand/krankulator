@@ -40,7 +40,7 @@ const BANK_ONE_ADDR: usize = 0x8000;
 const BANK_TWO_ADDR: usize = 0xC000;
 
 pub struct NROMMapper {
-    addr_space: [u8; MAX_RAM_SIZE],
+    addr_space: Box<[u8; MAX_RAM_SIZE]>,
 }
 
 impl NROMMapper {
@@ -60,7 +60,7 @@ impl NROMMapper {
         };
         mem[BANK_TWO_ADDR..BANK_TWO_ADDR + NROM_BANK_SIZE].clone_from_slice(&second);
 
-        NROMMapper { addr_space: *mem }
+        NROMMapper { addr_space: mem }
     }
 }
 
