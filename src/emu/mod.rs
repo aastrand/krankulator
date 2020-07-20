@@ -532,6 +532,16 @@ impl Emulator {
                 self.cpu.clear_status_flag(cpu::BREAK_BIT);
             }
 
+            opcodes::RRA_ABS
+            | opcodes::RRA_ABX
+            | opcodes::RRA_ABY
+            | opcodes::RRA_INX
+            | opcodes::RRA_INY
+            | opcodes::RRA_ZP
+            | opcodes::RRA_ZPX => {
+                self.rra(self.addr(opcode));
+            }
+
             opcodes::RTI => {
                 // RTI retrieves the Processor Status Word (flags)
                 // and the Program Counter from the stack in that order
@@ -553,6 +563,16 @@ impl Emulator {
                 self.cpu.pc = addr;
                 // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
+            }
+
+            opcodes::RLA_ABS
+            | opcodes::RLA_ABX
+            | opcodes::RLA_ABY
+            | opcodes::RLA_INX
+            | opcodes::RLA_INY
+            | opcodes::RLA_ZP
+            | opcodes::RLA_ZPX => {
+                self.rla(self.addr(opcode));
             }
 
             opcodes::ROL => {
@@ -598,6 +618,16 @@ impl Emulator {
             }
             opcodes::SEI => {
                 self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+            }
+
+            opcodes::SRE_ABS
+            | opcodes::SRE_ABX
+            | opcodes::SRE_ABY
+            | opcodes::SRE_INX
+            | opcodes::SRE_INY
+            | opcodes::SRE_ZP
+            | opcodes::SRE_ZPX => {
+                self.sre(self.addr(opcode));
             }
 
             opcodes::SLO_ABS
@@ -760,12 +790,14 @@ impl Emulator {
         self.cpu.x = value;
     }
 
-    fn lsr(&mut self, addr: u16) {
+    fn lsr(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.read_bus(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.lsr(value);
         self.logdata.push(result as u16);
         self.mem.write_bus(addr, result);
+
+        result
     }
 
     fn ora(&mut self, addr: u16) {
@@ -776,20 +808,34 @@ impl Emulator {
         self.cpu.ora(operand);
     }
 
-    fn rol(&mut self, addr: u16) {
+    fn rla(&mut self, addr: u16) {
+        let result = self.rol(addr);
+        self.cpu.and(result);
+    }
+
+    fn rol(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.read_bus(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.rol(value);
         self.logdata.push(result as u16);
         self.mem.write_bus(addr, result);
+
+        result
     }
 
-    fn ror(&mut self, addr: u16) {
+    fn ror(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.read_bus(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.ror(value);
         self.logdata.push(result as u16);
         self.mem.write_bus(addr, result);
+
+        result
+    }
+
+    fn rra(&mut self, addr: u16) {
+        let result = self.ror(addr);
+        self.cpu.add_to_a_with_carry(result);
     }
 
     fn sax(&mut self, addr: u16) {
@@ -807,6 +853,11 @@ impl Emulator {
     fn slo(&mut self, addr: u16) {
         let result = self.asl(addr);
         self.cpu.ora(result);
+    }
+
+    fn sre(&mut self, addr: u16) {
+        let result = self.lsr(addr);
+        self.cpu.eor(result);
     }
 
     fn push_pc_to_stack(&mut self, offset: u16) {
@@ -2072,6 +2123,39 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_rla() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.a = 0b0000_1110;
+        emu.mem.write_bus(start, opcodes::RLA_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0b0111_1000);
+        emu.cpu.set_status_flag(cpu::CARRY_BIT);
+        emu.run();
+
+        assert_eq!(emu.mem.read_bus(0x4711), 0b1111_0001);
+        assert_eq!(emu.cpu.a, 0b0000_0000);
+    }
+
+    #[test]
+    fn test_rra() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.write_bus(start, opcodes::RRA_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+
+        emu.cpu.a = 0x20;
+        emu.mem.write_bus(0x4711, 0b0000_0010);
+
+        emu.run();
+
+        assert_eq!(emu.cpu.a, 0x21);
+        assert_eq!(emu.mem.read_bus(0x4711), 0x1);
+    }
+
+    #[test]
     fn test_rti() {
         let mut emu: Emulator = Emulator::new_headless();
         let start: u16 = memory::CODE_START_ADDR;
@@ -2166,10 +2250,26 @@ mod emu_tests {
         emu.mem.write_bus(start + 1, 0x11);
         emu.mem.write_bus(start + 2, 0x47);
         emu.mem.write_bus(0x4711, 0b0111_1000);
+
         emu.run();
 
         assert_eq!(emu.cpu.a, 0b1111_1111);
         assert_eq!(emu.mem.read_bus(0x4711), 0b1111_0000);
+    }
+
+    #[test]
+    fn test_sre() {
+        let mut emu: Emulator = Emulator::new_headless();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.cpu.a = 0b1111_1111;
+        emu.mem.write_bus(start, opcodes::SRE_ABS);
+        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.write_bus(0x4711, 0b0001_1110);
+        emu.run();
+
+        assert_eq!(emu.mem.read_bus(0x4711), 0b0000_1111);
+        assert_eq!(emu.cpu.a, 0b1111_0000);
     }
 
     #[test]

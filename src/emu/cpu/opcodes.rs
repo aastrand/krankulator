@@ -2,15 +2,15 @@
 
 #[derive(Copy, Clone)]
 pub enum AddressingMode {
-    ZPX,
     ABS,
     ZP,
-    INY,
-    ABX,
-    IMM,
-    ZPY,
+    ZPX,
     NA,
     ABY,
+    IMM,
+    INY,
+    ABX,
+    ZPY,
     INX,
 }
 
@@ -197,6 +197,27 @@ pub const SLO_INY: u8 = 0x13; // SLO = ASL + ORA (Unofficial opcode)
 pub const SLO_ZPX: u8 = 0x17; // SLO = ASL + ORA (Unofficial opcode)
 pub const SLO_ABY: u8 = 0x1b; // SLO = ASL + ORA (Unofficial opcode)
 pub const SLO_ABX: u8 = 0x1f; // SLO = ASL + ORA (Unofficial opcode)
+pub const RLA_INX: u8 = 0x23; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_ZP: u8 = 0x27; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_ABS: u8 = 0x2f; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_INY: u8 = 0x33; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_ZPX: u8 = 0x37; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_ABY: u8 = 0x3b; // RLA = ROL + AND (Unofficial opcode)
+pub const RLA_ABX: u8 = 0x3f; // RLA = ROL + AND (Unofficial opcode)
+pub const SRE_INX: u8 = 0x43; // SRE = LSR + EOR (Unofficial opcode)
+pub const SRE_ZP: u8 = 0x47; // SRE = LSR + EOR (Unofficial opcode)
+pub const SRE_ABS: u8 = 0x4f; // SRE = LSR + EOR (Unofficial opcode))
+pub const SRE_INY: u8 = 0x53; // SRE = LSR + EOR (Unofficial opcode)
+pub const SRE_ZPX: u8 = 0x57; // SRE = LSR + EOR (Unofficial opcode)
+pub const SRE_ABY: u8 = 0x5b; // SRE = LSR + EOR (Unofficial opcode)
+pub const SRE_ABX: u8 = 0x5f; // SRE = LSR + EOR (Unofficial opcode)
+pub const RRA_INX: u8 = 0x63; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_ZP: u8 = 0x67; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_ABS: u8 = 0x6f; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_INY: u8 = 0x73; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_ZPX: u8 = 0x77; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_ABY: u8 = 0x7b; // RRA = ROR + ADC (Unofficial opcode)
+pub const RRA_ABX: u8 = 0x7f; // RRA = ROR + ADC (Unofficial opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -1314,6 +1335,132 @@ impl Lookup {
         };
         lookup[SLO_ABX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABX",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABX,
+        };
+        lookup[RLA_INX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_INX",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INX,
+        };
+        lookup[RLA_ZP as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_ZP",
+            size: 2,
+            cycles: 5,
+            mode: AddressingMode::ZP,
+        };
+        lookup[RLA_ABS as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_ABS",
+            size: 3,
+            cycles: 6,
+            mode: AddressingMode::ABS,
+        };
+        lookup[RLA_INY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_INY",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INY,
+        };
+        lookup[RLA_ZPX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_ZPX",
+            size: 2,
+            cycles: 6,
+            mode: AddressingMode::ZPX,
+        };
+        lookup[RLA_ABY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_ABY",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABY,
+        };
+        lookup[RLA_ABX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
+            name: "RLA_ABX",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABX,
+        };
+        lookup[SRE_INX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_INX",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INX,
+        };
+        lookup[SRE_ZP as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_ZP",
+            size: 2,
+            cycles: 5,
+            mode: AddressingMode::ZP,
+        };
+        lookup[SRE_ABS as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode))
+            name: "SRE_ABS",
+            size: 3,
+            cycles: 6,
+            mode: AddressingMode::ABS,
+        };
+        lookup[SRE_INY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_INY",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INY,
+        };
+        lookup[SRE_ZPX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_ZPX",
+            size: 2,
+            cycles: 6,
+            mode: AddressingMode::ZPX,
+        };
+        lookup[SRE_ABY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_ABY",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABY,
+        };
+        lookup[SRE_ABX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
+            name: "SRE_ABX",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABX,
+        };
+        lookup[RRA_INX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_INX",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INX,
+        };
+        lookup[RRA_ZP as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_ZP",
+            size: 2,
+            cycles: 5,
+            mode: AddressingMode::ZP,
+        };
+        lookup[RRA_ABS as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_ABS",
+            size: 3,
+            cycles: 6,
+            mode: AddressingMode::ABS,
+        };
+        lookup[RRA_INY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_INY",
+            size: 2,
+            cycles: 8,
+            mode: AddressingMode::INY,
+        };
+        lookup[RRA_ZPX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_ZPX",
+            size: 2,
+            cycles: 6,
+            mode: AddressingMode::ZPX,
+        };
+        lookup[RRA_ABY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_ABY",
+            size: 3,
+            cycles: 7,
+            mode: AddressingMode::ABY,
+        };
+        lookup[RRA_ABX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
+            name: "RRA_ABX",
             size: 3,
             cycles: 7,
             mode: AddressingMode::ABX,
