@@ -52,29 +52,29 @@ impl Cpu {
     }
 
     pub fn carry_flag(&self) -> bool {
-        (self.status & CARRY_BIT) == 1
+        (self.status & CARRY_BIT) == CARRY_BIT
     }
 
     #[allow(dead_code)] // only used in tests
     pub fn decimal_flag(&self) -> bool {
-        (self.status & DECIMAL_BIT) == 8
+        (self.status & DECIMAL_BIT) == DECIMAL_BIT
     }
 
     #[allow(dead_code)] // only used in tests
     pub fn interrupt_flag(&self) -> bool {
-        (self.status & INTERRUPT_BIT) == 4
+        (self.status & INTERRUPT_BIT) == INTERRUPT_BIT
     }
 
     pub fn negative_flag(&self) -> bool {
-        (self.status & NEGATIVE_BIT) == 128
+        (self.status & NEGATIVE_BIT) == NEGATIVE_BIT
     }
 
     pub fn overflow_flag(&self) -> bool {
-        (self.status & OVERFLOW_BIT) == 64
+        (self.status & OVERFLOW_BIT) == OVERFLOW_BIT
     }
 
     pub fn zero_flag(&self) -> bool {
-        (self.status & ZERO_BIT) == 2
+        (self.status & ZERO_BIT) == ZERO_BIT
     }
 
     pub fn set_status_flag(&mut self, flag: u8) {

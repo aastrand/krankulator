@@ -19,13 +19,23 @@ fn main() {
         (@arg INPUT: +required "Sets the input file to use")
     )
     .get_matches();
+    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+        emu::Emulator::new()
+    } else {
+        emu::Emulator::new_headless()
+    };
 
-    let loader: &dyn loader::Loader =  match matches.value_of("LOADER") {
-        Some("bin") => &loader::BinLoader{},
-        Some("ascii") => &loader::AsciiLoader{},
-        Some("nes") => &loader::InesLoader{},
+    let mut loader: Box<dyn loader::Loader> = match matches.value_of("LOADER") {
+        Some("bin") => Box::new(loader::BinLoader {}) as Box<dyn loader::Loader>,
+        Some("ascii") => Box::new(loader::AsciiLoader {}) as Box<dyn loader::Loader>,
+        Some("nes") => {
+            emu.cpu.status = 0x34;
+            emu.cpu.sp = 0xfd;
+            emu.toggle_should_trigger_nmi(true);
 
-        None => &loader::BinLoader{},
+            loader::InesLoader::new() as Box<dyn loader::Loader>
+        }
+        None => Box::new(loader::BinLoader {}) as Box<dyn loader::Loader>,
 
         _ => {
             println!("Invalid loader, see --help");
@@ -33,13 +43,6 @@ fn main() {
         }
     };
 
-    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
-        emu::Emulator::new()
-    } else {
-        emu::Emulator::new_headless()
-    };
-
-    emu.cpu.pc = loader.code_start();
     emu.install_mapper(loader.load(matches.value_of("INPUT").unwrap()));
 
     if matches.is_present("BREAKPOINT") {
@@ -250,8 +253,10 @@ mod tests {
     #[test]
     fn test_klaus_2m5() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_mapper(loader::load_bin(&String::from("input/6502_functional_test.bin")));
-        emu.cpu.pc = 0x400;
+        emu.install_mapper(loader::load_bin(&String::from(
+            "input/6502_functional_test.bin",
+        )));
+        emu.toggle_should_trigger_nmi(false);
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
         emu.toggle_verbose_mode(false);
@@ -294,9 +299,8 @@ mod tests {
 
                     assert_eq!(util::hex_str_to_u16(expected_addr).ok().unwrap(), pc);
                     assert_eq!(util::hex_str_to_u8(expected_status).ok().unwrap(), status);
-                    // TODO: look into this
-                    //assert_eq!(expected_cycles.parse::<u64>().unwrap(), cycles);
-
+                // TODO: look into this
+                //assert_eq!(expected_cycles.parse::<u64>().unwrap(), cycles);
                 } else {
                     panic!("Error iterating over nesttest.log");
                 }

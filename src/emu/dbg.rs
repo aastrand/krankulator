@@ -18,7 +18,7 @@ pub fn debug(emu: &mut Emulator) {
                 )?;
 
                 if w.len() > 1 {
-                    match util::hex_str_to_u8(w[0]) {
+                    match util::hex_str_to_u8(w[1]) {
                         Ok(v) => {
                             emu.mem.write_bus(addr, v);
                             writeln!(io, "wrote self.mem.ram[0x{:x}] = 0x{:x}", addr, v)?;

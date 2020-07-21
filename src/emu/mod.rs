@@ -2,6 +2,7 @@ pub mod cpu;
 pub mod dbg;
 pub mod io;
 pub mod memory;
+pub mod ppu;
 
 use cpu::opcodes;
 use memory::mapper;
@@ -25,6 +26,7 @@ pub struct Emulator {
     pub instructions: u64,
     pub cycles: u64,
     addr_mode_lookup: [Box<dyn Fn(&cpu::Cpu, &memory::Memory) -> u16>; 9],
+    should_trigger_nmi: bool,
 }
 
 impl Emulator {
@@ -73,10 +75,12 @@ impl Emulator {
             instructions: 0,
             cycles: 0,
             addr_mode_lookup: addr_mode_lookup,
+            should_trigger_nmi: false,
         }
     }
 
     pub fn install_mapper(&mut self, mapper: Box<dyn mapper::MemoryMapper>) {
+        self.cpu.pc = mapper.code_start();
         self.mem.install_mapper(mapper);
     }
 
@@ -93,36 +97,60 @@ impl Emulator {
         self.should_debug_on_infinite_loop = debug
     }
 
+    #[allow(dead_code)] // only used in tests
+    pub fn toggle_should_trigger_nmi(&mut self, trigger: bool) {
+        self.should_trigger_nmi = trigger;
+    }
+
     pub fn run(&mut self) {
         let mut last: u16 = 0xffff;
 
         self.iohandler.init();
         let start_time = SystemTime::now();
+        let mut cpu_cycles: u64 = 0;
+        let mut system_cycles: u64 = 0;
+
         loop {
-            if self.stepping
-                || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
-            {
-                self.debug();
-            }
-            if self.cpu.pc == last {
-                if self.mem.read_bus(last) != opcodes::BRK {
-                    self.iohandler.log(&format!(
-                        "infite loop detected on addr 0x{:x}!",
-                        self.cpu.pc
-                    ));
-                    if self.should_debug_on_infinite_loop {
-                        self.debug();
+            if cpu_cycles == system_cycles {
+                if self.stepping
+                    || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
+                {
+                    self.debug();
+                }
+
+                if self.cpu.pc == last {
+                    if self.mem.read_bus(last) != opcodes::BRK {
+                        self.iohandler.log(&format!(
+                            "infite loop detected on addr 0x{:x}!",
+                            self.cpu.pc
+                        ));
+                        if self.should_debug_on_infinite_loop {
+                            self.debug();
+                        } else {
+                            break;
+                        }
                     } else {
+                        self.exit("reached probable end of code");
                         break;
                     }
-                } else {
-                    self.exit("reached probable end of code");
-                    break;
                 }
+                last = self.cpu.pc;
+                let opcode = self.execute_instruction();
+                cpu_cycles = cpu_cycles + self.lookup.cycles(opcode) as u64;
+                self.log(opcode, last);
             }
-            last = self.cpu.pc;
-            let opcode = self.execute_instruction();
-            self.log(opcode, last);
+
+            self.cycle_ppu();
+
+            if self.should_trigger_nmi
+                && system_cycles % 16666 == 0
+                && self.mem.read_bus(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE
+                    == ppu::CTRL_NMI_ENABLE
+            {
+                self.trigger_nmi();
+            }
+
+            system_cycles = system_cycles + 1;
         }
 
         self.iohandler.log(&format!(
@@ -150,6 +178,8 @@ impl Emulator {
             }
         }
     }
+
+    pub fn cycle_ppu(&self) {}
 
     pub fn execute_instruction(&mut self) -> u8 {
         self.logdata.clear();
@@ -197,73 +227,73 @@ impl Emulator {
 
             opcodes::BPL => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on PLus)
                 if !self.cpu.negative_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BMI => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on MInus
                 if self.cpu.negative_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BVC => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Clear
                 if !self.cpu.overflow_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BVS => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Set
                 if self.cpu.overflow_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BCC => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Clear
                 if !self.cpu.carry_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BCS => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Set
                 if self.cpu.carry_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BEQ => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on EQual
                 if self.cpu.zero_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
             opcodes::BNE => {
                 let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
-                self.logdata.push(operand as u16);
+                self.logdata.push((operand as u16) & 0xff);
                 // Branch on Not Equal
                 if !self.cpu.zero_flag() {
-                    self.cpu.pc = (self.cpu.pc as i16 + operand as i16) as u16;
+                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
                     self.logdata.push(self.cpu.pc + 2 as u16);
                 }
             }
@@ -323,8 +353,9 @@ impl Emulator {
             | opcodes::CMP_INY
             | opcodes::CMP_ZP
             | opcodes::CMP_ZPX => {
-                self.cpu
-                    .compare(self.cpu.a, self.mem.read_bus(self.addr(opcode)));
+                let addr = self.addr(opcode);
+                self.logdata.push(addr);
+                self.cpu.compare(self.cpu.a, self.mem.read_bus(addr));
             }
 
             opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {
@@ -668,16 +699,19 @@ impl Emulator {
             | opcodes::STA_ZP
             | opcodes::STA_ZPX => {
                 let addr = self.addr(opcode);
+                self.logdata.push(addr);
                 self.mem.write_bus(addr, self.cpu.a);
             }
 
             opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
                 let addr = self.addr(opcode);
+                self.logdata.push(addr);
                 self.mem.write_bus(addr, self.cpu.x);
             }
 
             opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
                 let addr = self.addr(opcode);
+                self.logdata.push(addr);
                 self.mem.write_bus(addr, self.cpu.y);
             }
 
@@ -727,7 +761,7 @@ impl Emulator {
         //self.iohandler.input(&mut self.mem);
         //self.iohandler.display(&self.mem);
 
-        self.cpu.pc += size;
+        self.cpu.pc = self.cpu.pc.wrapping_add(size);
         self.instructions = self.instructions + 1;
         self.cycles = self.cycles + self.lookup.cycles(opcode) as u64;
 
@@ -904,6 +938,7 @@ impl Emulator {
     }
 
     fn load(&mut self, addr: u16) -> u8 {
+        self.logdata.push(addr);
         let val: u8 = self.mem.read_bus(addr);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
@@ -912,6 +947,19 @@ impl Emulator {
 
     fn addr(&self, opcode: u8) -> u16 {
         self.addr_mode_lookup[self.lookup.mode(opcode)](&self.cpu, &self.mem)
+    }
+
+    fn trigger_nmi(&mut self) {
+        let addr: u16 = self.mem.get_16b_addr(memory::NMI_TARGET_ADDR);
+        self.push_pc_to_stack(2);
+        self.logdata.push(addr);
+        // hardware interrupts IRQ & NMI will push the B flag as being 0.
+        self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
+
+        // we set the I flag
+        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+
+        self.cpu.pc = addr;
     }
 
     pub fn log_str(&self) -> String {

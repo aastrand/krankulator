@@ -1,5 +1,6 @@
 pub mod mapper;
 
+pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
 pub const STACK_BASE_OFFSET: u16 = 0x100;
@@ -16,7 +17,7 @@ pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
 impl Memory {
     pub fn new() -> Memory {
         Memory {
-            mapper: Box::new(mapper::IdentityMapper::new()),
+            mapper: Box::new(mapper::IdentityMapper::new(0)),
         }
     }
 
@@ -26,11 +27,11 @@ impl Memory {
     }
 
     pub fn addr_absolute(&self, pc: u16) -> u16 {
-        self.get_16b_addr(pc + 1) as u16
+        self.get_16b_addr(pc.wrapping_add(1)) as u16
     }
 
     pub fn addr_absolute_idx(&self, pc: u16, idx: u8) -> u16 {
-        self.get_16b_addr(pc + 1).wrapping_add(idx as u16)
+        self.get_16b_addr(pc.wrapping_add(1)).wrapping_add(idx as u16)
     }
 
     pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
@@ -58,7 +59,7 @@ impl Memory {
     }
 
     pub fn get_16b_addr(&self, offset: u16) -> u16 {
-        to_16b_addr(self.read_bus(offset + 1), self.read_bus(offset))
+        to_16b_addr(self.read_bus(offset.wrapping_add(1)), self.read_bus(offset))
     }
 
     pub fn read_bus(&self, addr: u16) -> u8 {
@@ -81,7 +82,7 @@ impl Memory {
     }
 
     pub fn raw_opcode(&self, addr: u16) -> [u8; 3] {
-        [self.read_bus(addr), self.read_bus(addr+1), self.read_bus(addr+2)]
+        [self.read_bus(addr), self.read_bus(addr.wrapping_add(1)), self.read_bus(addr.wrapping_add(2))]
     }
 }
 
