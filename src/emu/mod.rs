@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
-    pub mem: memory::Memory,
+    pub mem: Box<memory::Memory>,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
     logformatter: io::log::LogFormatter,
@@ -22,26 +22,45 @@ pub struct Emulator {
     should_log: bool,
     should_debug_on_infinite_loop: bool,
     verbose: bool,
-    instruction_count: u64,
+    pub instructions: u64,
     pub cycles: u64,
+    addr_mode_lookup: [Box<dyn Fn(&cpu::Cpu, &memory::Memory) -> u16>; 9],
 }
 
 impl Emulator {
     pub fn new() -> Emulator {
-        Emulator::new_base(Box::new(io::CursesIOHandler::new()))
+        Emulator::new_base(
+            Box::new(io::CursesIOHandler::new()),
+            Box::new(memory::Memory::new()),
+        )
     }
 
     #[allow(dead_code)] // Only used by tests
     pub fn new_headless() -> Emulator {
-        Emulator::new_base(Box::new(io::HeadlessIOHandler {}))
+        Emulator::new_base(
+            Box::new(io::HeadlessIOHandler {}),
+            Box::new(memory::Memory::new()),
+        )
     }
 
-    fn new_base(iohandler: Box<dyn io::IOHandler>) -> Emulator {
+    fn new_base(iohandler: Box<dyn io::IOHandler>, mem: Box<memory::Memory>) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
+
+        let addr_mode_lookup: [Box<(dyn Fn(&cpu::Cpu, &memory::Memory) -> u16 + 'static)>; 9] = [
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute(cpu.pc)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.x)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.y)),
+            Box::new(|cpu: &cpu::Cpu, _mem: &memory::Memory| cpu.pc + 1),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_idx_indirect(cpu.pc, cpu.x)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_indirect_idx(cpu.pc, cpu.y)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage(cpu.pc)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage_idx(cpu.pc, cpu.x)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage_idx(cpu.pc, cpu.y)),
+        ];
 
         Emulator {
             cpu: cpu::Cpu::new(),
-            mem: memory::Memory::new(),
+            mem: mem,
             lookup: lookup,
             iohandler: iohandler,
             logformatter: io::log::LogFormatter::new(30),
@@ -51,8 +70,9 @@ impl Emulator {
             should_log: true,
             should_debug_on_infinite_loop: false,
             verbose: true,
-            instruction_count: 0,
+            instructions: 0,
             cycles: 0,
+            addr_mode_lookup: addr_mode_lookup,
         }
     }
 
@@ -107,7 +127,7 @@ impl Emulator {
 
         self.iohandler.log(&format!(
             "Exiting after {} instructions, {} cycles ({:.1} MHz)",
-            self.instruction_count,
+            self.instructions,
             self.cycles,
             (self.cycles as f64 / start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
         ));
@@ -647,15 +667,18 @@ impl Emulator {
             | opcodes::STA_INY
             | opcodes::STA_ZP
             | opcodes::STA_ZPX => {
-                self.mem.write_bus(self.addr(opcode), self.cpu.a);
+                let addr = self.addr(opcode);
+                self.mem.write_bus(addr, self.cpu.a);
             }
 
             opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
-                self.mem.write_bus(self.addr(opcode), self.cpu.x);
+                let addr = self.addr(opcode);
+                self.mem.write_bus(addr, self.cpu.x);
             }
 
             opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
-                self.mem.write_bus(self.addr(opcode), self.cpu.y);
+                let addr = self.addr(opcode);
+                self.mem.write_bus(addr, self.cpu.y);
             }
 
             opcodes::TAX => {
@@ -705,7 +728,7 @@ impl Emulator {
         //self.iohandler.display(&self.mem);
 
         self.cpu.pc += size;
-        self.instruction_count = self.instruction_count + 1;
+        self.instructions = self.instructions + 1;
         self.cycles = self.cycles + self.lookup.cycles(opcode) as u64;
 
         opcode
@@ -888,20 +911,7 @@ impl Emulator {
     }
 
     fn addr(&self, opcode: u8) -> u16 {
-        match self.lookup.mode(opcode) {
-            opcodes::AddressingMode::ABS => self.mem.addr_absolute(self.cpu.pc),
-            opcodes::AddressingMode::ABX => self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x),
-            opcodes::AddressingMode::ABY => self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y),
-            opcodes::AddressingMode::IMM => self.cpu.pc + 1,
-            opcodes::AddressingMode::INX => self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x),
-            opcodes::AddressingMode::INY => self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y),
-            opcodes::AddressingMode::ZP => self.mem.addr_zeropage(self.cpu.pc),
-            opcodes::AddressingMode::ZPX => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
-            opcodes::AddressingMode::ZPY => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
-            _ => {
-                panic!("Unknown addressig mode for opcode: {}", opcode);
-            }
-        }
+        self.addr_mode_lookup[self.lookup.mode(opcode)](&self.cpu, &self.mem)
     }
 
     pub fn log_str(&self) -> String {
@@ -921,7 +931,7 @@ impl Emulator {
     fn debug(&mut self) {
         self.iohandler.log(&format!(
             "entering debug mode after {} instructions ({} cycles)!",
-            self.instruction_count, self.cycles
+            self.instructions, self.cycles
         ));
 
         if !self.verbose {
@@ -942,7 +952,7 @@ impl Emulator {
 
         let s = format!(
             "\nexited after {} instructions at cpu.pc=0x{:x}",
-            self.instruction_count, self.cpu.pc
+            self.instructions, self.cpu.pc
         );
         self.iohandler.exit(&s);
     }
