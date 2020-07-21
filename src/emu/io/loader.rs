@@ -27,7 +27,8 @@ impl Loader for AsciiLoader {
             }
         }
 
-        let mut mapper: Box<dyn mapper::MemoryMapper> = Box::new(mapper::IdentityMapper::new(0x600));
+        let mut mapper: Box<dyn mapper::MemoryMapper> =
+            Box::new(mapper::IdentityMapper::new(0x600));
         let mut i: u32 = 0;
         for b in code.iter() {
             mapper.write_bus(0x600 + i as u16, *b);
@@ -44,7 +45,8 @@ impl Loader for BinLoader {
     fn load(&mut self, path: &str) -> Box<dyn mapper::MemoryMapper> {
         let bytes = util::read_bytes(path);
 
-        let mut mapper: Box<dyn mapper::MemoryMapper> = Box::new(mapper::IdentityMapper::new(0x400));
+        let mut mapper: Box<dyn mapper::MemoryMapper> =
+            Box::new(mapper::IdentityMapper::new(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
             mapper.write_bus(i as u16, *b);
@@ -59,7 +61,7 @@ pub struct InesLoader {}
 
 impl InesLoader {
     pub fn new() -> Box<InesLoader> {
-        Box::new(InesLoader { })
+        Box::new(InesLoader {})
     }
 }
 
@@ -100,8 +102,16 @@ impl Loader for InesLoader {
             prg_banks.push(code);
         }
 
-        // TODO: read mapper byte and get correct one
-        Box::new(mapper::NROMMapper::new(**prg_banks.get(0).unwrap(), Some(*prg_banks.pop().unwrap())))
+        let result: Box<dyn mapper::MemoryMapper> = match mapper {
+            0 => Box::new(mapper::nrom::NROMMapper::new(
+                **prg_banks.get(0).unwrap(),
+                Some(*prg_banks.pop().unwrap()),
+            )),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks)),
+            _ => panic!("Mapper {:X} not implemented!", mapper),
+        };
+
+        result
     }
 }
 
