@@ -355,7 +355,9 @@ impl Emulator {
             | opcodes::CMP_ZPX => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.cpu.compare(self.cpu.a, self.mem.read_bus(addr));
+                let value = self.mem.read_bus(addr);
+                self.logdata.push(value as u16);
+                self.cpu.compare(self.cpu.a, value);
             }
 
             opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {

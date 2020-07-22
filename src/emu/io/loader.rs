@@ -31,7 +31,7 @@ impl Loader for AsciiLoader {
             Box::new(mapper::IdentityMapper::new(0x600));
         let mut i: u32 = 0;
         for b in code.iter() {
-            mapper.write_bus(0x600 + i as u16, *b);
+            mapper.write_bus(0x600 + i as usize, *b);
             i += 1;
         }
 
@@ -49,7 +49,7 @@ impl Loader for BinLoader {
             Box::new(mapper::IdentityMapper::new(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
-            mapper.write_bus(i as u16, *b);
+            mapper.write_bus(i as usize, *b);
             i += 1;
         }
 

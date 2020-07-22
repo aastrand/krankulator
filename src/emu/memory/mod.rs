@@ -63,10 +63,10 @@ impl Memory {
     }
 
     pub fn read_bus(&self, addr: u16) -> u8 {
-        self.mapper.read_bus(addr)
+        self.mapper.read_bus(addr as usize)
     }
     pub fn write_bus(&mut self, addr: u16, value: u8) {
-        self.mapper.write_bus(addr, value)
+        self.mapper.write_bus(addr as usize, value)
     }
 
     pub fn stack_addr(&self, sp: u8) -> u16 {
@@ -74,11 +74,11 @@ impl Memory {
     }
 
     pub fn push_to_stack(&mut self, sp: u8, value: u8) {
-        self.mapper.write_bus(self.stack_addr(sp), value);
+        self.mapper.write_bus(self.stack_addr(sp) as usize, value);
     }
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
-        self.mapper.read_bus(self.stack_addr(sp))
+        self.mapper.read_bus(self.stack_addr(sp) as usize)
     }
 
     pub fn raw_opcode(&self, addr: u16) -> [u8; 3] {

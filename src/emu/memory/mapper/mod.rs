@@ -2,9 +2,9 @@ pub mod mmc1;
 pub mod nrom;
 
 pub const MAX_RAM_SIZE: usize = 65536;
-pub const RESET_TARGET_ADDR: u16 = 0xfffc;
+pub const RESET_TARGET_ADDR: usize = 0xfffc;
 
-pub fn mirror_addr(addr: u16) -> u16 {
+pub fn mirror_addr(addr: usize) -> usize {
     // System memory at $0000-$07FF is mirrored at $0800-$0FFF, $1000-$17FF, and $1800-$1FFF
     // - attempting to access memory at, for example, $0173 is the same as accessing memory at $0973, $1173, or $1973.
     if addr < 0x2000 {
@@ -17,8 +17,8 @@ pub fn mirror_addr(addr: u16) -> u16 {
 }
 
 pub trait MemoryMapper {
-    fn read_bus(&self, addr: u16) -> u8;
-    fn write_bus(&mut self, addr: u16, value: u8);
+    fn read_bus(&self, addr: usize) -> u8;
+    fn write_bus(&mut self, addr: usize, value: u8);
     fn code_start(&self) -> u16;
 }
 
@@ -37,11 +37,11 @@ impl IdentityMapper {
 }
 
 impl MemoryMapper for IdentityMapper {
-    fn read_bus(&self, addr: u16) -> u8 {
+    fn read_bus(&self, addr: usize) -> u8 {
         self.ram[addr as usize]
     }
 
-    fn write_bus(&mut self, addr: u16, value: u8) {
+    fn write_bus(&mut self, addr: usize, value: u8) {
         self.ram[addr as usize] = value
     }
 

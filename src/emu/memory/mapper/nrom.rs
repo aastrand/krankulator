@@ -39,12 +39,12 @@ impl NROMMapper {
 }
 
 impl super::MemoryMapper for NROMMapper {
-    fn read_bus(&self, mut addr: u16) -> u8 {
+    fn read_bus(&self, mut addr: usize) -> u8 {
         addr = super::mirror_addr(addr);
         self.addr_space[addr as usize]
     }
 
-    fn write_bus(&mut self, mut addr: u16, value: u8) {
+    fn write_bus(&mut self, mut addr: usize, value: u8) {
         addr = super::mirror_addr(addr);
 
         if addr >= 0x2000 && addr < 0x2008 {
