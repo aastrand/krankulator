@@ -16,6 +16,10 @@ pub fn mirror_addr(addr: usize) -> usize {
     }
 }
 
+pub fn addr_to_page(addr: usize) -> usize {
+    (addr >> 8) & 0xf0
+}
+
 pub trait MemoryMapper {
     fn read_bus(&self, addr: usize) -> u8;
     fn write_bus(&mut self, addr: usize, value: u8);
@@ -73,5 +77,13 @@ mod tests {
         assert_eq!(mirror_addr(0x973), 0x173);
         assert_eq!(mirror_addr(0x3002), 0x2002);
         assert_eq!(mirror_addr(0x8000), 0x8000);
+    }
+
+    #[test]
+    fn test_addr_to_page() {
+        assert_eq!(addr_to_page(0x80), 0x0);
+        assert_eq!(addr_to_page(0x8000), 0x80);
+        assert_eq!(addr_to_page(0x1234), 0x10);
+        assert_eq!(addr_to_page(0xffff), 0xf0);
     }
 }

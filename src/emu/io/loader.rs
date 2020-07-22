@@ -73,21 +73,12 @@ impl Loader for InesLoader {
         let bytes = util::read_bytes(path);
 
         // TODO: create header struct
-        for i in 0..INES_HEADER_SIZE {
-            println!("header byte {}: 0x{:x}", i, bytes.get(i as usize).unwrap());
-        }
-
         let num_prg_blocks = bytes.get(4).unwrap();
-        println!("num_prg_blocks: 0x{:x}", num_prg_blocks);
-
         let flags = bytes.get(6).unwrap();
-        println!("flags: {:#010b}", flags);
-
         let mapper = flags >> 4;
-        println!("mapper: 0x{:x}", mapper);
-
         let prg_offset: u32 = INES_HEADER_SIZE + (*flags & 0b0000_01000) as u32 * 64;
-        println!("prg_offset: 0x{:x}", prg_offset);
+
+        // TODO: read chr blocks
 
         let mut prg_banks: Vec<Box<[u8; PRG_BANK_SIZE]>> = vec![];
 

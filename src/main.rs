@@ -266,9 +266,9 @@ mod tests {
     }
 
     #[test]
-    fn test_nestest() {
+    fn test_nes_nestest() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_mapper(loader::load_nes(&String::from("input/nestest.nes")));
+        emu.install_mapper(loader::load_nes(&String::from("input/nes-test-roms/nestest.nes")));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
@@ -278,7 +278,7 @@ mod tests {
         emu.toggle_quiet_mode(true);
         emu.toggle_verbose_mode(false);
 
-        if let Ok(lines) = util::read_lines(&String::from("input/nestest.log")) {
+        if let Ok(lines) = util::read_lines(&String::from("input/nes-test-roms/nestest.log")) {
             for line in lines {
                 if let Ok(expected) = line {
                     //println!("{}", expected);
@@ -308,7 +308,32 @@ mod tests {
         } else {
             panic!("Could not read nestest.log");
         }
+    }
 
-        //assert_eq!(emu.cpu.pc, 0x3469);
+    #[test]
+    fn test_nes_instr_test() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless();
+        emu.install_mapper(loader::load_nes(&String::from("input/nes-test-roms/all_instrs.nes")));
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("All 16 tests passed");
+
+        let mut buf = String::new();
+        let mut idx = 0x6004;
+        for _ in 0..expected.len() {
+            let chr = emu.mem.read_bus(idx);
+            if chr == 0 {
+                break;
+            } else {
+                buf.push(chr as char);
+            }
+            idx += 1;
+        }
+
+        assert_eq!(expected, buf);
     }
 }
