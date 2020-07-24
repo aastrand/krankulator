@@ -8,12 +8,15 @@ use cpu::opcodes;
 use memory::mapper;
 
 extern crate shrust;
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::time::SystemTime;
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: Box<memory::Memory>,
+    pub ppu: Rc<RefCell<ppu::PPU>>,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
     logformatter: io::log::LogFormatter,
@@ -63,6 +66,7 @@ impl Emulator {
         Emulator {
             cpu: cpu::Cpu::new(),
             mem: mem,
+            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
             lookup: lookup,
             iohandler: iohandler,
             logformatter: io::log::LogFormatter::new(30),
@@ -79,9 +83,10 @@ impl Emulator {
         }
     }
 
-    pub fn install_mapper(&mut self, mapper: Box<dyn mapper::MemoryMapper>) {
-        self.cpu.pc = mapper.code_start();
-        self.mem.install_mapper(mapper);
+    pub fn install_cartridge(&mut self, mapper: Rc<RefCell<dyn mapper::MemoryMapper>>) {
+        self.cpu.pc = mapper.borrow().code_start();
+        self.mem.install_mapper(Rc::clone(&mapper));
+        self.ppu.borrow_mut().install_mapper(Rc::clone(&mapper));
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -140,11 +145,11 @@ impl Emulator {
                 self.log(opcode, last);
             }
 
-            self.cycle_ppu();
+            self.ppu.borrow_mut().cycle();
 
             if self.should_trigger_nmi
                 && system_cycles % 16666 == 0
-                && self.mem.read_bus(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE
+                && self.mem.read_bus(ppu::CTRL_REG_ADDR as u16) & ppu::CTRL_NMI_ENABLE
                     == ppu::CTRL_NMI_ENABLE
             {
                 self.trigger_nmi();
@@ -178,8 +183,6 @@ impl Emulator {
             }
         }
     }
-
-    pub fn cycle_ppu(&self) {}
 
     pub fn execute_instruction(&mut self) -> u8 {
         self.logdata.clear();
@@ -920,8 +923,8 @@ impl Emulator {
     }
 
     fn push_pc_to_stack(&mut self, offset: u16) {
-        let lb: u8 = ((self.cpu.pc + offset) & 0xff) as u8;
-        let hb: u8 = ((self.cpu.pc + offset) >> 8) as u8;
+        let lb: u8 = ((self.cpu.pc.wrapping_add(offset)) & 0xff) as u8;
+        let hb: u8 = ((self.cpu.pc.wrapping_add(offset)) >> 8) as u8;
 
         self.mem.push_to_stack(self.cpu.sp, hb);
         self.cpu.sp = self.cpu.sp.wrapping_sub(1);

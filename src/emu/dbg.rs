@@ -13,7 +13,7 @@ pub fn debug(emu: &mut Emulator) {
             Ok(addr) => {
                 writeln!(
                     io,
-                    "was self.mem.ram[0x{:x}] == 0x{:x}",
+                    "was self.mem.read_bus(0x{:x}) == 0x{:x}",
                     addr, emu.mem.read_bus(addr)
                 )?;
 
@@ -21,7 +21,7 @@ pub fn debug(emu: &mut Emulator) {
                     match util::hex_str_to_u8(w[1]) {
                         Ok(v) => {
                             emu.mem.write_bus(addr, v);
-                            writeln!(io, "wrote self.mem.ram[0x{:x}] = 0x{:x}", addr, v)?;
+                            writeln!(io, "self.mem.write_bus(0x{:x}, 0x{:x})", addr, v)?;
                         }
                         _ => {
                             writeln!(io, "invalid value: {}", w[1])?;

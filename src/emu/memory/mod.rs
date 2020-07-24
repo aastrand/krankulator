@@ -1,5 +1,8 @@
 pub mod mapper;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
@@ -7,7 +10,7 @@ pub const STACK_BASE_OFFSET: u16 = 0x100;
 pub const STACK_START_ADDR: u8 = 0xff;
 
 pub struct Memory {
-    mapper: Box<dyn mapper::MemoryMapper>,
+    mapper: Rc<RefCell<dyn mapper::MemoryMapper>>,
 }
 
 pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
@@ -17,12 +20,12 @@ pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
 impl Memory {
     pub fn new() -> Memory {
         Memory {
-            mapper: Box::new(mapper::IdentityMapper::new(0)),
+            mapper: Rc::new(RefCell::new(mapper::IdentityMapper::new(0))),
         }
     }
 
     // TODO: create with constructor instead?
-    pub fn install_mapper(&mut self, mapper: Box<dyn mapper::MemoryMapper>) {
+    pub fn install_mapper(&mut self, mapper: Rc<RefCell<dyn mapper::MemoryMapper>>) {
         self.mapper = mapper;
     }
 
@@ -31,12 +34,14 @@ impl Memory {
     }
 
     pub fn addr_absolute_idx(&self, pc: u16, idx: u8) -> u16 {
-        self.get_16b_addr(pc.wrapping_add(1)).wrapping_add(idx as u16)
+        self.get_16b_addr(pc.wrapping_add(1))
+            .wrapping_add(idx as u16)
     }
 
     pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
         let value: u8 = self.read_bus(pc + 1).wrapping_add(idx);
-        ((self.read_bus(((value as u8).wrapping_add(1)) as u16) as u16) << 8) + self.read_bus(value as u16) as u16
+        ((self.read_bus(((value as u8).wrapping_add(1)) as u16) as u16) << 8)
+            + self.read_bus(value as u16) as u16
     }
 
     pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
@@ -45,7 +50,9 @@ impl Memory {
         let lb = self.read_bus(base as u16);
         let lbidx = lb.wrapping_add(idx);
         let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
-        let hb = self.read_bus((base as u8).wrapping_add(1) as u16).wrapping_add(carry);
+        let hb = self
+            .read_bus((base as u8).wrapping_add(1) as u16)
+            .wrapping_add(carry);
 
         to_16b_addr(hb, lbidx)
     }
@@ -63,10 +70,10 @@ impl Memory {
     }
 
     pub fn read_bus(&self, addr: u16) -> u8 {
-        self.mapper.read_bus(addr as usize)
+        self.mapper.borrow().read_bus(addr as usize)
     }
     pub fn write_bus(&mut self, addr: u16, value: u8) {
-        self.mapper.write_bus(addr as usize, value)
+        self.mapper.borrow_mut().write_bus(addr as usize, value)
     }
 
     pub fn stack_addr(&self, sp: u8) -> u16 {
@@ -74,15 +81,19 @@ impl Memory {
     }
 
     pub fn push_to_stack(&mut self, sp: u8, value: u8) {
-        self.mapper.write_bus(self.stack_addr(sp) as usize, value);
+        self.mapper.borrow_mut().write_bus(self.stack_addr(sp) as usize, value);
     }
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
-        self.mapper.read_bus(self.stack_addr(sp) as usize)
+        self.mapper.borrow().read_bus(self.stack_addr(sp) as usize)
     }
 
     pub fn raw_opcode(&self, addr: u16) -> [u8; 3] {
-        [self.read_bus(addr), self.read_bus(addr.wrapping_add(1)), self.read_bus(addr.wrapping_add(2))]
+        [
+            self.read_bus(addr),
+            self.read_bus(addr.wrapping_add(1)),
+            self.read_bus(addr.wrapping_add(2)),
+        ]
     }
 }
 

@@ -1,5 +1,10 @@
 use std::cmp::max;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use super::ppu;
+
 const BANK_SIZE: usize = 16 * 1024;
 const CPU_RAM_SIZE: usize = 2 * 1024;
 const MMC_RAM_SIZE: usize = 8 * 1024;
@@ -9,10 +14,12 @@ const LOW_BANK_ADDR: usize = 0x8000;
 const HIGH_BANK_ADDR: usize = 0xc000;
 
 pub struct MMC1Mapper {
+    ppu: Rc<RefCell<ppu::PPU>>,
+
     cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
     mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
 
-    banks: Box<Vec<Box<[u8; BANK_SIZE]>>>,
+    banks: Vec<[u8; BANK_SIZE]>,
     low_bank: usize,
     high_bank: usize,
 
@@ -27,7 +34,7 @@ pub struct MMC1Mapper {
 }
 
 impl MMC1Mapper {
-    pub fn new(prg_banks: Vec<Box<[u8; BANK_SIZE]>>) -> MMC1Mapper {
+    pub fn new(prg_banks: Vec<[u8; BANK_SIZE]>) -> MMC1Mapper {
         if prg_banks.len() < 2 {
             panic!("Expected at least two PRG banks");
         }
@@ -36,13 +43,15 @@ impl MMC1Mapper {
         }
 
         let mut mapper = MMC1Mapper {
+            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
+
             // 0x0000-0x07FF + mirroring to 0x1FFF
             cpu_ram: Box::new([0; CPU_RAM_SIZE]),
 
             // 0x6000-0x7FFF
             mmc_ram: Box::new([0; MMC_RAM_SIZE]),
 
-            banks: Box::new(prg_banks),
+            banks: prg_banks,
 
             // 0x8000-0xBFFF
             low_bank: 0,
@@ -94,7 +103,14 @@ impl MMC1Mapper {
 
         match page {
             0x0 | 0x10 => self.cpu_ram[addr],
-            0x20 => 0, // PPU registers
+            0x20 => {
+                // PPU registers
+                if addr == 0x2002 {
+                    0x80
+                } else {
+                    0
+                }
+            }
             0x40 => {
                 // TODO: APU goes here, 0x40
                 if addr > 0x4017 {
@@ -126,6 +142,7 @@ impl MMC1Mapper {
                     panic!("Write at addr {:X} not mapped", addr);
                 }
             }
+            0x50 => {} // ??
             0x60 | 0x70 => {
                 self.mmc_ram[addr - MMC_RAM_ADDR] = value;
             }
@@ -201,6 +218,10 @@ impl super::MemoryMapper for MMC1Mapper {
         ((self.read_bus(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
             + self.read_bus(super::RESET_TARGET_ADDR) as u16
     }
+
+    fn install_ppu(&mut self, ppu: Rc<RefCell<ppu::PPU>>) {
+        self.ppu = ppu;
+    }
 }
 
 #[cfg(test)]
@@ -209,9 +230,9 @@ mod tests {
 
     #[test]
     fn test_code_start() {
-        let mut prg_banks: Vec<Box<[u8; BANK_SIZE]>> = vec![];
+        let mut prg_banks: Vec<[u8; BANK_SIZE]> = vec![];
         for _ in 0..16 {
-            prg_banks.push(Box::new([0; BANK_SIZE]));
+            prg_banks.push([0; BANK_SIZE]);
         }
 
         prg_banks[15][0x3ffc] = 0x11;
@@ -224,9 +245,9 @@ mod tests {
 
     #[test]
     fn test_ram() {
-        let mut prg_banks: Vec<Box<[u8; BANK_SIZE]>> = vec![];
+        let mut prg_banks: Vec<[u8; BANK_SIZE]> = vec![];
         for _ in 0..16 {
-            prg_banks.push(Box::new([0; BANK_SIZE]));
+            prg_banks.push([0; BANK_SIZE]);
         }
 
         let mut mapper = MMC1Mapper::new(prg_banks);
@@ -244,9 +265,9 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let mut prg_banks: Vec<Box<[u8; BANK_SIZE]>> = vec![];
+        let mut prg_banks: Vec<[u8; BANK_SIZE]> = vec![];
         for _ in 0..16 {
-            prg_banks.push(Box::new([0; BANK_SIZE]));
+            prg_banks.push([0; BANK_SIZE]);
         }
 
         let mut mapper = MMC1Mapper::new(prg_banks);
@@ -259,10 +280,10 @@ mod tests {
 
     #[test]
     fn test_write_reg0() {
-        let mut prg_banks: Vec<Box<[u8; BANK_SIZE]>> = vec![];
+        let mut prg_banks: Vec<[u8; BANK_SIZE]> = vec![];
         for _ in 0..16 {
             // Init with non-zero
-            prg_banks.push(Box::new([1; BANK_SIZE]));
+            prg_banks.push([1; BANK_SIZE]);
         }
 
         // TODO: initial reg0 value might change in the future

@@ -1,8 +1,16 @@
 pub mod mmc1;
 pub mod nrom;
 
+use super::super::ppu;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub const MAX_RAM_SIZE: usize = 65536;
 pub const RESET_TARGET_ADDR: usize = 0xfffc;
+
+pub fn addr_to_page(addr: usize) -> usize {
+    (addr >> 8) & 0xf0
+}
 
 pub fn mirror_addr(addr: usize) -> usize {
     // System memory at $0000-$07FF is mirrored at $0800-$0FFF, $1000-$17FF, and $1800-$1FFF
@@ -16,14 +24,11 @@ pub fn mirror_addr(addr: usize) -> usize {
     }
 }
 
-pub fn addr_to_page(addr: usize) -> usize {
-    (addr >> 8) & 0xf0
-}
-
 pub trait MemoryMapper {
     fn read_bus(&self, addr: usize) -> u8;
     fn write_bus(&mut self, addr: usize, value: u8);
     fn code_start(&self) -> u16;
+    fn install_ppu(&mut self, ppu: Rc<RefCell<ppu::PPU>>);
 }
 
 pub struct IdentityMapper {
@@ -51,6 +56,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn code_start(&self) -> u16 {
         self.code_start
+    }
+
+    fn install_ppu(&mut self, _ppu: Rc<RefCell<ppu::PPU>>) {
+
     }
 }
 
