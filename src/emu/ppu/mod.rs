@@ -95,6 +95,9 @@ pub struct PPU {
   ppu_addr: u8,
   ppu_data: u8,
   oam_dma: u8,
+
+  pub cycle: u16,
+  pub scanline: u16,
 }
 
 impl PPU {
@@ -118,6 +121,9 @@ impl PPU {
       ppu_addr: 0,
       ppu_data: 0,
       oam_dma: 0,
+
+      cycle: 0,
+      scanline: 0,
     }
   }
 
@@ -167,5 +173,18 @@ impl PPU {
     self.mapper = mapper;
   }
 
-  pub fn cycle(&mut self) {}
+  pub fn cycle(&mut self) {
+    for _ in 0..3 {
+      self.cycle = self.cycle.wrapping_add(1);
+
+      if self.cycle == 341 {
+        self.cycle = 0;
+        self.scanline = self.scanline.wrapping_add(1);
+
+        if self.scanline == 262 {
+          self.scanline = 0;
+        }
+      }
+    }
+  }
 }

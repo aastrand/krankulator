@@ -33,9 +33,13 @@ impl Memory {
         self.get_16b_addr(pc.wrapping_add(1)) as u16
     }
 
-    pub fn addr_absolute_idx(&self, pc: u16, idx: u8) -> u16 {
-        self.get_16b_addr(pc.wrapping_add(1))
-            .wrapping_add(idx as u16)
+    pub fn addr_absolute_idx(&self, pc: u16, idx: u8) -> (u16, bool) {
+        let lb = self.read_bus(pc.wrapping_add(1));
+        (
+            to_16b_addr(self.read_bus(pc.wrapping_add(2)), lb).wrapping_add(idx as u16),
+            // Did we cross the page boundary?
+            (lb & 0xff) as u16 + idx as u16 > 0xff,
+        )
     }
 
     pub fn addr_idx_indirect(&self, pc: u16, idx: u8) -> u16 {
@@ -44,7 +48,7 @@ impl Memory {
             + self.read_bus(value as u16) as u16
     }
 
-    pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> u16 {
+    pub fn addr_indirect_idx(&self, pc: u16, idx: u8) -> (u16, bool) {
         let base = self.read_bus(pc + 1) as u16;
 
         let lb = self.read_bus(base as u16);
@@ -54,7 +58,7 @@ impl Memory {
             .read_bus((base as u8).wrapping_add(1) as u16)
             .wrapping_add(carry);
 
-        to_16b_addr(hb, lbidx)
+        (to_16b_addr(hb, lbidx), carry != 0)
     }
 
     pub fn addr_zeropage(&self, pc: u16) -> u16 {
@@ -81,7 +85,9 @@ impl Memory {
     }
 
     pub fn push_to_stack(&mut self, sp: u8, value: u8) {
-        self.mapper.borrow_mut().write_bus(self.stack_addr(sp) as usize, value);
+        self.mapper
+            .borrow_mut()
+            .write_bus(self.stack_addr(sp) as usize, value);
     }
 
     pub fn pull_from_stack(&mut self, sp: u8) -> u8 {
@@ -120,7 +126,20 @@ mod tests {
 
         let value = memory.addr_absolute_idx(0x2000, 1);
 
-        assert_eq!(value, 0x4711);
+        assert_eq!(value.0, 0x4711);
+        assert_eq!(value.1, false);
+    }
+
+    #[test]
+    fn test_addr_absolute_idx_crossed_boundary() {
+        let mut memory: Memory = Memory::new();
+        memory.write_bus(0x2001, 0xff);
+        memory.write_bus(0x2002, 0x46);
+
+        let value = memory.addr_absolute_idx(0x2000, 0x12);
+
+        assert_eq!(value.0, 0x4711);
+        assert_eq!(value.1, true);
     }
 
     #[test]
@@ -168,7 +187,8 @@ mod tests {
 
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
-        assert_eq!(value, 0x4711);
+        assert_eq!(value.0, 0x4711);
+        assert_eq!(value.1, false);
     }
 
     #[test]
@@ -180,7 +200,8 @@ mod tests {
 
         let value = memory.addr_indirect_idx(0x2000, 0xff);
 
-        assert_eq!(value, 0x4711);
+        assert_eq!(value.0, 0x4711);
+        assert_eq!(value.1, true);
     }
 
     #[test]
@@ -192,7 +213,8 @@ mod tests {
 
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
-        assert_eq!(value, 0x4711);
+        assert_eq!(value.0, 0x4711);
+        assert_eq!(value.1, false);
     }
 
     #[test]
@@ -205,7 +227,8 @@ mod tests {
 
         let value = memory.addr_indirect_idx(0x2000, 0xff);
 
-        assert_eq!(value, 0x0245);
+        assert_eq!(value.0, 0x0245);
+        assert_eq!(value.1, true);
     }
 
     #[test]

@@ -13,6 +13,13 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::SystemTime;
 
+#[derive(PartialEq)]
+pub enum CycleState {
+    CpuAhead,
+    CpuExecuted,
+    Exiting,
+}
+
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: Box<memory::Memory>,
@@ -28,7 +35,8 @@ pub struct Emulator {
     verbose: bool,
     pub instructions: u64,
     pub cycles: u64,
-    addr_mode_lookup: [Box<dyn Fn(&cpu::Cpu, &memory::Memory) -> u16>; 9],
+    start_time: SystemTime,
+    addr_mode_lookup: [Box<dyn Fn(&cpu::Cpu, &memory::Memory) -> (u16, bool)>; 9],
     should_trigger_nmi: bool,
 }
 
@@ -51,16 +59,23 @@ impl Emulator {
     fn new_base(iohandler: Box<dyn io::IOHandler>, mem: Box<memory::Memory>) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
 
-        let addr_mode_lookup: [Box<(dyn Fn(&cpu::Cpu, &memory::Memory) -> u16 + 'static)>; 9] = [
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute(cpu.pc)),
+        let addr_mode_lookup: [Box<(dyn Fn(&cpu::Cpu, &memory::Memory) -> (u16, bool) + 'static)>;
+            9] = [
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| (mem.addr_absolute(cpu.pc), false)),
             Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.x)),
             Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.y)),
-            Box::new(|cpu: &cpu::Cpu, _mem: &memory::Memory| cpu.pc + 1),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_idx_indirect(cpu.pc, cpu.x)),
+            Box::new(|cpu: &cpu::Cpu, _mem: &memory::Memory| (cpu.pc + 1, false)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
+                (mem.addr_idx_indirect(cpu.pc, cpu.x), false)
+            }),
             Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_indirect_idx(cpu.pc, cpu.y)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage(cpu.pc)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage_idx(cpu.pc, cpu.x)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_zeropage_idx(cpu.pc, cpu.y)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| (mem.addr_zeropage(cpu.pc), false)),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
+                (mem.addr_zeropage_idx(cpu.pc, cpu.x), false)
+            }),
+            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
+                (mem.addr_zeropage_idx(cpu.pc, cpu.y), false)
+            }),
         ];
 
         Emulator {
@@ -78,6 +93,7 @@ impl Emulator {
             verbose: true,
             instructions: 0,
             cycles: 0,
+            start_time: SystemTime::now(),
             addr_mode_lookup: addr_mode_lookup,
             should_trigger_nmi: false,
         }
@@ -108,67 +124,67 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
-        let mut last: u16 = 0xffff;
-
         self.iohandler.init();
-        let start_time = SystemTime::now();
-        let mut cpu_cycles: u64 = 0;
-        let mut system_cycles: u64 = 0;
+        self.start_time = SystemTime::now();
 
         loop {
-            if cpu_cycles == system_cycles {
-                if self.stepping
-                    || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
-                {
-                    self.debug();
-                }
-
-                if self.cpu.pc == last {
-                    if self.mem.read_bus(last) != opcodes::BRK {
-                        self.iohandler.log(&format!(
-                            "infite loop detected on addr 0x{:x}!",
-                            self.cpu.pc
-                        ));
-                        if self.should_debug_on_infinite_loop {
-                            self.debug();
-                        } else {
-                            break;
-                        }
-                    } else {
-                        self.exit("reached probable end of code");
-                        break;
-                    }
-                }
-                last = self.cpu.pc;
-                let opcode = self.execute_instruction();
-                cpu_cycles = cpu_cycles + self.lookup.cycles(opcode) as u64;
-                self.log(opcode, last);
+            if self.cycle() == CycleState::Exiting {
+                break;
             }
+        }
+    }
 
-            self.ppu.borrow_mut().cycle();
+    pub fn cycle(&mut self) -> CycleState {
+        let mut state = CycleState::CpuAhead;
+        if self.cpu.cycle == self.cycles {
+            state = CycleState::CpuExecuted;
 
-            if self.should_trigger_nmi
-                && system_cycles % 16666 == 0
-                && self.mem.read_bus(ppu::CTRL_REG_ADDR as u16) & ppu::CTRL_NMI_ENABLE
-                    == ppu::CTRL_NMI_ENABLE
+            if self.stepping
+                || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
             {
-                self.trigger_nmi();
+                self.debug();
             }
 
-            system_cycles = system_cycles + 1;
+            if self.cpu.pc == self.cpu.last_instruction {
+                if self.mem.read_bus(self.cpu.last_instruction) != opcodes::BRK {
+                    let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
+                    self.iohandler.log(&msg);
+                    if self.should_debug_on_infinite_loop {
+                        self.debug();
+                    } else {
+                        self.exit("");
+                        state = CycleState::Exiting
+                    }
+                } else {
+                    let msg = format!("reached probable end of code");
+                    self.exit(&msg);
+                    state = CycleState::Exiting
+                }
+            }
+            let opcode = self.execute_instruction();
+            self.log(opcode, self.cpu.last_instruction);
         }
 
-        self.iohandler.log(&format!(
-            "Exiting after {} instructions, {} cycles ({:.1} MHz)",
-            self.instructions,
-            self.cycles,
-            (self.cycles as f64 / start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
-        ));
+        if self.should_trigger_nmi
+            && self.cycles % 16666 == 0
+            && self.mem.read_bus(ppu::CTRL_REG_ADDR as u16) & ppu::CTRL_NMI_ENABLE
+                == ppu::CTRL_NMI_ENABLE
+        {
+            self.trigger_nmi();
+        }
+
+        {
+            self.ppu.borrow_mut().cycle();
+        }
+
+        self.cycles += 1;
+
+        state
     }
 
     pub fn log(&mut self, opcode: u8, pc: u16) {
         if self.should_log {
-            let log_line: String = self.logformatter.log_instruction(
+            let log_line: String = self.logformatter.log(self.logformatter.log_str(
                 self.mem.raw_opcode(pc),
                 self.lookup.name(opcode),
                 self.lookup.size(opcode),
@@ -176,8 +192,10 @@ impl Emulator {
                 self.cpu.register_str(),
                 self.cycles,
                 self.cpu.status_str(),
+                self.ppu.borrow().scanline,
+                self.ppu.borrow().cycle,
                 &self.logdata,
-            );
+            ));
             if self.verbose {
                 self.iohandler.log(&log_line);
             }
@@ -187,6 +205,7 @@ impl Emulator {
     pub fn execute_instruction(&mut self) -> u8 {
         self.logdata.clear();
 
+        self.cpu.last_instruction = self.cpu.pc;
         let opcode = self.mem.read_bus(self.cpu.pc);
         let size: u16 = self.lookup.size(opcode);
 
@@ -200,7 +219,8 @@ impl Emulator {
             | opcodes::AND_ZP
             | opcodes::AND_ZPX => {
                 // Bitwise AND with accumulator
-                self.cpu.and(self.mem.read_bus(self.addr(opcode)));
+                let addr = self.addr(opcode);
+                self.cpu.and(self.mem.read_bus(addr));
             }
 
             opcodes::ADC_ABS
@@ -211,7 +231,8 @@ impl Emulator {
             | opcodes::ADC_INY
             | opcodes::ADC_ZP
             | opcodes::ADC_ZPX => {
-                self.adc(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.adc(addr);
             }
 
             opcodes::ASL => {
@@ -220,12 +241,14 @@ impl Emulator {
                 self.logdata.push(self.cpu.a as u16);
             }
             opcodes::ASL_ABS | opcodes::ASL_ABX | opcodes::ASL_ZP | opcodes::ASL_ZPX => {
-                self.asl(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.asl(addr);
             }
 
             opcodes::BIT_ABS | opcodes::BIT_ZP => {
                 // Test BITs
-                self.cpu.bit(self.mem.read_bus(self.addr(opcode)));
+                let addr = self.addr(opcode);
+                self.cpu.bit(self.mem.read_bus(addr));
             }
 
             opcodes::BPL => {
@@ -233,8 +256,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on PLus)
                 if !self.cpu.negative_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BMI => {
@@ -242,8 +264,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on MInus
                 if self.cpu.negative_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BVC => {
@@ -251,8 +272,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Clear
                 if !self.cpu.overflow_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BVS => {
@@ -260,8 +280,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Set
                 if self.cpu.overflow_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BCC => {
@@ -269,8 +288,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Clear
                 if !self.cpu.carry_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BCS => {
@@ -278,8 +296,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Set
                 if self.cpu.carry_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BEQ => {
@@ -287,8 +304,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on EQual
                 if self.cpu.zero_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
             opcodes::BNE => {
@@ -296,8 +312,7 @@ impl Emulator {
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Not Equal
                 if !self.cpu.zero_flag() {
-                    self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-                    self.logdata.push(self.cpu.pc + 2 as u16);
+                    self.branch(operand);
                 }
             }
 
@@ -364,17 +379,18 @@ impl Emulator {
             }
 
             opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {
-                self.cpu
-                    .compare(self.cpu.x, self.mem.read_bus(self.addr(opcode)));
+                let addr = self.addr(opcode);
+                self.cpu.compare(self.cpu.x, self.mem.read_bus(addr));
             }
 
             opcodes::CPY_ABS | opcodes::CPY_IMM | opcodes::CPY_ZP => {
-                self.cpu
-                    .compare(self.cpu.y, self.mem.read_bus(self.addr(opcode)));
+                let addr = self.addr(opcode);
+                self.cpu.compare(self.cpu.y, self.mem.read_bus(addr));
             }
 
             opcodes::DEC_ABS | opcodes::DEC_ABX | opcodes::DEC_ZP | opcodes::DEC_ZPX => {
-                self.dec(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.dec(addr);
             }
 
             opcodes::DEX => {
@@ -399,7 +415,8 @@ impl Emulator {
             | opcodes::DCP_INY
             | opcodes::DCP_ZP
             | opcodes::DCP_ZPX => {
-                self.dcp(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.dcp(addr);
             }
 
             opcodes::EOR_ABS
@@ -410,7 +427,8 @@ impl Emulator {
             | opcodes::EOR_INY
             | opcodes::EOR_ZP
             | opcodes::EOR_ZPX => {
-                self.eor(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.eor(addr);
             }
 
             opcodes::JMP_ABS => {
@@ -471,7 +489,8 @@ impl Emulator {
             }
 
             opcodes::INC_ABS | opcodes::INC_ABX | opcodes::INC_ZP | opcodes::INC_ZPX => {
-                self.inc(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.inc(addr);
             }
 
             opcodes::INX => {
@@ -496,7 +515,8 @@ impl Emulator {
             | opcodes::ISB_INY
             | opcodes::ISB_ZP
             | opcodes::ISB_ZPX => {
-                self.isb(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.isb(addr);
             }
 
             opcodes::LAX_ABS
@@ -505,7 +525,8 @@ impl Emulator {
             | opcodes::LAX_INY
             | opcodes::LAX_ZP
             | opcodes::LAX_ZPY => {
-                self.lax(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.lax(addr);
             }
 
             opcodes::LDA_ABS
@@ -516,7 +537,8 @@ impl Emulator {
             | opcodes::LDA_INY
             | opcodes::LDA_ZP
             | opcodes::LDA_ZPX => {
-                self.cpu.a = self.load(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.cpu.a = self.load(addr);
             }
 
             opcodes::LDX_ABS
@@ -524,7 +546,8 @@ impl Emulator {
             | opcodes::LDX_IMM
             | opcodes::LDX_ZP
             | opcodes::LDX_ZPY => {
-                self.cpu.x = self.load(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.cpu.x = self.load(addr);
             }
 
             opcodes::LDY_ABS
@@ -532,7 +555,8 @@ impl Emulator {
             | opcodes::LDY_IMM
             | opcodes::LDY_ZP
             | opcodes::LDY_ZPX => {
-                self.cpu.y = self.load(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.cpu.y = self.load(addr);
             }
 
             opcodes::LSR => {
@@ -541,7 +565,8 @@ impl Emulator {
                 self.logdata.push(self.cpu.a as u16);
             }
             opcodes::LSR_ABS | opcodes::LSR_ABX | opcodes::LSR_ZP | opcodes::LSR_ZPX => {
-                self.lsr(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.lsr(addr);
             }
 
             opcodes::NOP => {
@@ -556,7 +581,8 @@ impl Emulator {
             | opcodes::ORA_INY
             | opcodes::ORA_ZP
             | opcodes::ORA_ZPX => {
-                self.ora(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.ora(addr);
             }
 
             opcodes::PHA => {
@@ -595,7 +621,8 @@ impl Emulator {
             | opcodes::RRA_INY
             | opcodes::RRA_ZP
             | opcodes::RRA_ZPX => {
-                self.rra(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.rra(addr);
             }
 
             opcodes::RTI => {
@@ -628,7 +655,8 @@ impl Emulator {
             | opcodes::RLA_INY
             | opcodes::RLA_ZP
             | opcodes::RLA_ZPX => {
-                self.rla(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.rla(addr);
             }
 
             opcodes::ROL => {
@@ -637,7 +665,8 @@ impl Emulator {
                 self.logdata.push(self.cpu.a as u16);
             }
             opcodes::ROL_ABS | opcodes::ROL_ABX | opcodes::ROL_ZP | opcodes::ROL_ZPX => {
-                self.rol(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.rol(addr);
             }
 
             opcodes::ROR => {
@@ -646,11 +675,13 @@ impl Emulator {
                 self.logdata.push(self.cpu.a as u16);
             }
             opcodes::ROR_ABS | opcodes::ROR_ABX | opcodes::ROR_ZP | opcodes::ROR_ZPX => {
-                self.ror(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.ror(addr);
             }
 
             opcodes::SAX_ABS | opcodes::SAX_INX | opcodes::SAX_ZP | opcodes::SAX_ZPY => {
-                self.sax(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.sax(addr);
             }
 
             opcodes::SBC_ABS
@@ -663,7 +694,8 @@ impl Emulator {
             | opcodes::SBC_ZPX
             | opcodes::SNC_IMM => {
                 // Subtract Memory to Accumulator with Carry
-                self.sbc(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.sbc(addr);
             }
 
             opcodes::SEC => {
@@ -683,7 +715,8 @@ impl Emulator {
             | opcodes::SRE_INY
             | opcodes::SRE_ZP
             | opcodes::SRE_ZPX => {
-                self.sre(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.sre(addr);
             }
 
             opcodes::SLO_ABS
@@ -693,7 +726,8 @@ impl Emulator {
             | opcodes::SLO_INY
             | opcodes::SLO_ZP
             | opcodes::SLO_ZPX => {
-                self.slo(self.addr(opcode));
+                let addr = self.addr(opcode);
+                self.slo(addr);
             }
 
             opcodes::STA_ABS
@@ -703,7 +737,8 @@ impl Emulator {
             | opcodes::STA_INY
             | opcodes::STA_ZP
             | opcodes::STA_ZPX => {
-                let addr = self.addr(opcode);
+                // Store hides page crossing penalties
+                let addr = self.addr_with_penalty(opcode, false);
                 self.logdata.push(addr);
                 self.mem.write_bus(addr, self.cpu.a);
             }
@@ -756,7 +791,10 @@ impl Emulator {
                 // TSX sets NZ - TXS does not
             }
             _ => {
-                // NOP
+                // Infer page boundary penalty for certain unofficial NOPs
+                if opcode & 0xf == 0xc && self.lookup.mode(opcode) != 0xff {
+                    self.addr(opcode);
+                }
             }
         }
 
@@ -768,7 +806,7 @@ impl Emulator {
 
         self.cpu.pc = self.cpu.pc.wrapping_add(size);
         self.instructions = self.instructions + 1;
-        self.cycles = self.cycles + self.lookup.cycles(opcode) as u64;
+        self.cpu.cycle += self.lookup.cycles(opcode) as u64;
 
         opcode
     }
@@ -789,6 +827,17 @@ impl Emulator {
         self.mem.write_bus(addr, result);
 
         result
+    }
+
+    fn branch(&mut self, operand: i8) {
+        // Branching across page boundaries infers a cycle penalty
+        if (self.cpu.pc.wrapping_add(2) & 0xff).wrapping_add(operand as u16) > 0xff {
+            self.cpu.cycle += 1;
+        }
+        self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
+        self.logdata.push(self.cpu.pc + 2 as u16);
+        // Branch taken is infers a cycle penalty
+        self.cpu.cycle += 1;
     }
 
     fn dec(&mut self, addr: u16) {
@@ -945,13 +994,22 @@ impl Emulator {
     fn load(&mut self, addr: u16) -> u8 {
         self.logdata.push(addr);
         let val: u8 = self.mem.read_bus(addr);
+        self.logdata.push(val as u16);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
         val
     }
 
-    fn addr(&self, opcode: u8) -> u16 {
-        self.addr_mode_lookup[self.lookup.mode(opcode)](&self.cpu, &self.mem)
+    fn addr(&mut self, opcode: u8) -> u16 {
+        self.addr_with_penalty(opcode, true)
+    }
+
+    fn addr_with_penalty(&mut self, opcode: u8, infer_penalty: bool) -> u16 {
+        let lookup = self.addr_mode_lookup[self.lookup.mode(opcode)](&self.cpu, &self.mem);
+        if infer_penalty && lookup.1 {
+            self.cpu.cycle += 1;
+        }
+        lookup.0
     }
 
     fn trigger_nmi(&mut self) {
@@ -977,6 +1035,8 @@ impl Emulator {
             self.cpu.register_str(),
             self.cycles,
             self.cpu.status_str(),
+            self.ppu.borrow().scanline,
+            self.ppu.borrow().cycle,
             &vec![],
         )
     }
@@ -1003,11 +1063,12 @@ impl Emulator {
         self.iohandler.log(&"");
         self.iohandler.log(reason);
 
-        let s = format!(
-            "\nexited after {} instructions at cpu.pc=0x{:x}",
-            self.instructions, self.cpu.pc
-        );
-        self.iohandler.exit(&s);
+        self.iohandler.exit(&format!(
+            "Exiting after {} instructions, {} cycles ({:.1} MHz)",
+            self.instructions,
+            self.cycles,
+            (self.cycles as f64 / self.start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
+        ));
     }
 
     #[allow(dead_code)]

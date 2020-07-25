@@ -97,7 +97,6 @@ impl Loader for InesLoader {
         }
 
         let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-        println!("num_chr_blocks: {}", num_chr_blocks);
 
         for b in 0..*num_chr_blocks {
             let mut gfx = [0; CHR_BANK_SIZE];
