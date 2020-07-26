@@ -214,6 +214,18 @@ pub const RRA_INY: u8 = 0x73; // RRA = ROR + ADC (Unofficial opcode)
 pub const RRA_ZPX: u8 = 0x77; // RRA = ROR + ADC (Unofficial opcode)
 pub const RRA_ABY: u8 = 0x7b; // RRA = ROR + ADC (Unofficial opcode)
 pub const RRA_ABX: u8 = 0x7f; // RRA = ROR + ADC (Unofficial opcode)
+pub const N1C_ABX: u8 = 0x1c; // NOP (Unofficial opcode)
+pub const N3C_ABX: u8 = 0x3c; // NOP (Unofficial opcode)
+pub const N5C_ABX: u8 = 0x5c; // NOP (Unofficial opcode)
+pub const N7C_ABX: u8 = 0x7c; // NOP (Unofficial opcode)
+pub const NDC_ABX: u8 = 0xdc; // NOP (Unofficial opcode)
+pub const NFC_ABX: u8 = 0xfc; // NOP (Unofficial opcode)
+pub const NOP_14: u8 = 0x14; // NOP (Unofficial opcode)
+pub const NOP_34: u8 = 0x34; // NOP (Unofficial opcode)
+pub const NOP_54: u8 = 0x54; // NOP (Unofficial opcode)
+pub const NOP_74: u8 = 0x74; // NOP (Unofficial opcode)
+pub const NOP_D4: u8 = 0xd4; // NOP (Unofficial opcode)
+pub const NOP_F4: u8 = 0xf4; // NOP (Unofficial opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -1164,7 +1176,7 @@ impl Lookup {
         lookup[LAX_INY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_INY",
             size: 2,
-            cycles: 6,
+            cycles: 5,
             mode: ADDR_MODE_INY,
         };
         lookup[LAX_ZPY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
@@ -1230,7 +1242,7 @@ impl Lookup {
         lookup[DCP_INY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[DCP_ZPX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
@@ -1242,13 +1254,13 @@ impl Lookup {
         lookup[DCP_ABY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[DCP_ABX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
         };
         lookup[ISB_INX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
@@ -1272,7 +1284,7 @@ impl Lookup {
         lookup[ISB_INY as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[ISB_ZPX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
@@ -1284,13 +1296,13 @@ impl Lookup {
         lookup[ISB_ABY as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[ISB_ABX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
         };
         lookup[SLO_INX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
@@ -1314,7 +1326,7 @@ impl Lookup {
         lookup[SLO_INY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[SLO_ZPX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
@@ -1326,13 +1338,13 @@ impl Lookup {
         lookup[SLO_ABY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[SLO_ABX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
         };
         lookup[RLA_INX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
@@ -1356,7 +1368,7 @@ impl Lookup {
         lookup[RLA_INY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[RLA_ZPX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
@@ -1368,13 +1380,13 @@ impl Lookup {
         lookup[RLA_ABY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[RLA_ABX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
         };
         lookup[SRE_INX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
@@ -1398,7 +1410,7 @@ impl Lookup {
         lookup[SRE_INY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[SRE_ZPX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
@@ -1410,13 +1422,13 @@ impl Lookup {
         lookup[SRE_ABY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[SRE_ABX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
         };
         lookup[RRA_INX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
@@ -1440,7 +1452,7 @@ impl Lookup {
         lookup[RRA_INY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_INY",
             size: 2,
-            cycles: 8,
+            cycles: 7,
             mode: ADDR_MODE_INY,
         };
         lookup[RRA_ZPX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
@@ -1452,14 +1464,86 @@ impl Lookup {
         lookup[RRA_ABY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABY",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABY,
         };
         lookup[RRA_ABX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABX",
             size: 3,
-            cycles: 7,
+            cycles: 6,
             mode: ADDR_MODE_ABX,
+        };
+        lookup[N1C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "N1C_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[N3C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "N3C_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[N5C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "N5C_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[N7C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "N7C_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[NDC_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NDC_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[NFC_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NFC_ABX",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABX,
+        };
+        lookup[NOP_14 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_14",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
+        };
+        lookup[NOP_34 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_34",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
+        };
+        lookup[NOP_54 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_54",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
+        };
+        lookup[NOP_74 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_74",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
+        };
+        lookup[NOP_D4 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_D4",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
+        };
+        lookup[NOP_F4 as usize] = &Opcode { // NOP (Unofficial opcode)
+            name: "NOP_F4",
+            size: 2,
+            cycles: 4,
+            mode: 0xff,
         };
         Lookup { opcodes: lookup }
     }
@@ -1491,7 +1575,13 @@ impl Lookup {
         let cycles = self.opcodes[opcode as usize].cycles;
         if cycles == 0xff {
             // Handle NOPs
-            2 // TODO: make accurate
+            match opcode & 0xf {
+                0x0 => 2,
+                0x2 => 2,
+                0x4 => 3,
+                0xc => 4,
+                _ => 2,
+            }
         } else {
             cycles
         }

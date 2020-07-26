@@ -21,6 +21,9 @@ pub struct Cpu {
     pub sp: u8,
 
     pub status: u8,
+
+    pub last_instruction: u16,
+    pub cycle: u64,
 }
 
 impl Cpu {
@@ -33,7 +36,9 @@ impl Cpu {
             x: 0,
             y: 0,
             sp: memory::STACK_START_ADDR as u8,
-            status: 0b0010_0000, // ignored bits set
+            status: 0b0010_0000, // ignored bits set,
+            last_instruction: 0xffff,
+            cycle: 0,
         }
     }
 

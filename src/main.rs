@@ -268,10 +268,14 @@ mod tests {
     #[test]
     fn test_nes_nestest() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_nes(&String::from("input/nes-test-roms/nestest.nes")));
+        emu.install_cartridge(loader::load_nes(&String::from(
+            "input/nes-test-roms/nestest.nes",
+        )));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
+        emu.cpu.cycle = 7;
+        emu.ppu.borrow_mut().cycle = 21;
         emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
 
         emu.toggle_debug_on_infinite_loop(false);
@@ -281,26 +285,43 @@ mod tests {
         if let Ok(lines) = util::read_lines(&String::from("input/nes-test-roms/nestest.log")) {
             for line in lines {
                 if let Ok(expected) = line {
-                    //println!("{}", expected);
-
                     let expected_addr = &expected[0..4];
                     let pc = emu.cpu.pc;
 
                     let expected_status = &expected[65..67];
                     let status = emu.cpu.status;
 
-                    //let expected_cycles = &expected[90..];
-                    //let cycles = emu.cycles;
+                    let expected_ppu_cycles: String = (&expected[82..85])
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    let expected_ppu_scanline: String = (&expected[78..81])
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    let expected_cycles = &expected[90..];
 
-                    let last = emu.cpu.pc;
-                    emu.logdata.clear();
-                    emu.log(emu.mem.read_bus(emu.cpu.pc), last);
-                    emu.execute_instruction();
+                    let mut cycles: u64 = emu.cpu.cycle;
+                    let mut ppu_cycles: u16 = emu.ppu.borrow().cycle;
+                    let mut ppu_scanline: u16 = emu.ppu.borrow().scanline;
+
+                    'next_instr: loop {
+                        let state = emu.cycle();
+                        match state {
+                            emu::CycleState::CpuAhead => {
+                                cycles = emu.cpu.cycle;
+                                ppu_cycles = emu.ppu.borrow().cycle;
+                                ppu_scanline = emu.ppu.borrow().scanline;
+                            }
+                            _ => break 'next_instr,
+                        }
+                    }
 
                     assert_eq!(util::hex_str_to_u16(expected_addr).ok().unwrap(), pc);
                     assert_eq!(util::hex_str_to_u8(expected_status).ok().unwrap(), status);
-                // TODO: look into this
-                //assert_eq!(expected_cycles.parse::<u64>().unwrap(), cycles);
+                    assert_eq!(expected_cycles.parse::<u64>().unwrap(), cycles);
+                    assert_eq!(expected_ppu_cycles.parse::<u16>().unwrap(), ppu_cycles);
+                    assert_eq!(expected_ppu_scanline.parse::<u16>().unwrap(), ppu_scanline);
                 } else {
                     panic!("Error iterating over nesttest.log");
                 }
@@ -313,7 +334,9 @@ mod tests {
     #[test]
     fn test_nes_instr_test() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_nes(&String::from("input/nes-test-roms/all_instrs.nes")));
+        emu.install_cartridge(loader::load_nes(&String::from(
+            "input/nes-test-roms/all_instrs.nes",
+        )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
         emu.toggle_verbose_mode(false);
