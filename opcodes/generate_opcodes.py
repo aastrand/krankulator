@@ -33,9 +33,16 @@ ADDRESSING_MODES = set([
     "IMM",
     "INX",
     "INY",
+    "NA",
     "ZP",
     "ZPX",
     "ZPY"]
+)
+
+PAGE_BOUNDARY_PENALTY_MODES = set([
+    "ABX",
+    "ABY",
+    "INY"]
 )
 
 def main():
@@ -255,6 +262,7 @@ pub struct Opcode {
     #[allow(dead_code)]
     cycles: u8,
     mode: usize,
+    page_boundary_penalty: bool
 }
 
 pub struct Lookup {
@@ -265,21 +273,23 @@ static _SENTINEL: Opcode = Opcode {
     name: "NOP",
     size: 0xffff, // Inaccurate, will have to be adjusted
     cycles: 0xff, // Inaccurate, will have to be adjusted
-    mode: 0xff
+    mode: ADDR_MODE_NA,
+    page_boundary_penalty: false
 };
 
 impl Lookup {
     pub fn new() -> Lookup {
         let mut lookup: [&'static Opcode; 256] = [&_SENTINEL; 256];""")
-
     
     for key, (opcode, size, time, comment) in opcodes.items():
-        mode = "ADDR_MODE_" + key[4:] if len(key) > 3 and key[4:] in ADDRESSING_MODES else "0xff"
+        mode = "ADDR_MODE_" + key[4:] if len(key) > 3 and key[4:] in ADDRESSING_MODES else "ADDR_MODE_NA"
+        basename = key[:3]
         print("        lookup[" + key  + " as usize] = &Opcode { " + "// " + comment)
         print("            name: \"" + key + "\",")
         print("            size: " + str(size) + ",")
         print("            cycles: " + str(time) + ",")
         print("            mode: " + mode + ",")
+        print("            page_boundary_penalty: " + str(mode[-3:] in PAGE_BOUNDARY_PENALTY_MODES and basename != "STA").lower() + ",")
         print("        };")
 
     print("""        Lookup { opcodes: lookup }
@@ -326,6 +336,10 @@ impl Lookup {
 
     pub fn mode(&self, opcode: u8) -> usize {
         self.opcodes[opcode as usize].mode
+    }
+
+    pub fn page_boundary_penalty(&self, opcode: u8) -> bool {
+        self.opcodes[opcode as usize].page_boundary_penalty
     }
 }""")
 

@@ -36,7 +36,6 @@ pub struct Emulator {
     pub instructions: u64,
     pub cycles: u64,
     start_time: SystemTime,
-    addr_mode_lookup: [Box<dyn Fn(&cpu::Cpu, &memory::Memory) -> (u16, bool)>; 9],
     should_trigger_nmi: bool,
 }
 
@@ -59,25 +58,6 @@ impl Emulator {
     fn new_base(iohandler: Box<dyn io::IOHandler>, mem: Box<memory::Memory>) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
 
-        let addr_mode_lookup: [Box<(dyn Fn(&cpu::Cpu, &memory::Memory) -> (u16, bool) + 'static)>;
-            9] = [
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| (mem.addr_absolute(cpu.pc), false)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.x)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_absolute_idx(cpu.pc, cpu.y)),
-            Box::new(|cpu: &cpu::Cpu, _mem: &memory::Memory| (cpu.pc + 1, false)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
-                (mem.addr_idx_indirect(cpu.pc, cpu.x), false)
-            }),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| mem.addr_indirect_idx(cpu.pc, cpu.y)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| (mem.addr_zeropage(cpu.pc), false)),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
-                (mem.addr_zeropage_idx(cpu.pc, cpu.x), false)
-            }),
-            Box::new(|cpu: &cpu::Cpu, mem: &memory::Memory| {
-                (mem.addr_zeropage_idx(cpu.pc, cpu.y), false)
-            }),
-        ];
-
         Emulator {
             cpu: cpu::Cpu::new(),
             mem: mem,
@@ -94,7 +74,6 @@ impl Emulator {
             instructions: 0,
             cycles: 0,
             start_time: SystemTime::now(),
-            addr_mode_lookup: addr_mode_lookup,
             should_trigger_nmi: false,
         }
     }
@@ -161,6 +140,7 @@ impl Emulator {
                     state = CycleState::Exiting
                 }
             }
+
             let opcode = self.execute_instruction();
             self.log(opcode, self.cpu.last_instruction);
         }
@@ -218,7 +198,6 @@ impl Emulator {
             | opcodes::AND_INY
             | opcodes::AND_ZP
             | opcodes::AND_ZPX => {
-                // Bitwise AND with accumulator
                 let addr = self.addr(opcode);
                 self.cpu.and(self.mem.read_bus(addr));
             }
@@ -738,7 +717,7 @@ impl Emulator {
             | opcodes::STA_ZP
             | opcodes::STA_ZPX => {
                 // Store hides page crossing penalties
-                let addr = self.addr_with_penalty(opcode, false);
+                let addr = self.addr(opcode);
                 self.logdata.push(addr);
                 self.mem.write_bus(addr, self.cpu.a);
             }
@@ -1001,15 +980,37 @@ impl Emulator {
     }
 
     fn addr(&mut self, opcode: u8) -> u16 {
-        self.addr_with_penalty(opcode, true)
-    }
-
-    fn addr_with_penalty(&mut self, opcode: u8, infer_penalty: bool) -> u16 {
-        let lookup = self.addr_mode_lookup[self.lookup.mode(opcode)](&self.cpu, &self.mem);
-        if infer_penalty && lookup.1 {
-            self.cpu.cycle += 1;
+        match self.lookup.mode(opcode) {
+            opcodes::ADDR_MODE_ABS => self.mem.addr_absolute(self.cpu.pc),
+            opcodes::ADDR_MODE_ABX => {
+                let (addr, page_boundary_penalty) = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                    self.cpu.cycle += 1;
+                }
+                addr
+            },
+            opcodes::ADDR_MODE_ABY => {
+                let (addr, page_boundary_penalty) = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                    self.cpu.cycle += 1;
+                }
+                addr
+            },
+            opcodes::ADDR_MODE_IMM => self.cpu.pc + 1,
+            opcodes::ADDR_MODE_INX => self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x),
+            opcodes::ADDR_MODE_INY => {
+                let (addr, page_boundary_penalty) = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                    self.cpu.cycle += 1;
+                }
+                addr
+            },
+            opcodes::ADDR_MODE_NA => 0,
+            opcodes::ADDR_MODE_ZP => self.mem.addr_zeropage(self.cpu.pc),
+            opcodes::ADDR_MODE_ZPX => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
+            opcodes::ADDR_MODE_ZPY => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
+            _ => panic!("Addressing mode not found for opcode {:x}", opcode),
         }
-        lookup.0
     }
 
     fn trigger_nmi(&mut self) {
@@ -1059,7 +1060,7 @@ impl Emulator {
         dbg::debug(self);
     }
 
-    fn exit(&mut self, reason: &str) {
+    fn exit(&self, reason: &str) {
         self.iohandler.log(&"");
         self.iohandler.log(reason);
 
@@ -1101,6 +1102,8 @@ mod emu_tests {
         assert_eq!(0, emu.addr(opcodes::ADC_INX));
 
         assert_eq!(2, emu.addr(opcodes::ADC_INY));
+
+        assert_eq!(0, emu.addr(opcodes::NOP));
 
         assert_eq!(0x34, emu.addr(opcodes::ADC_ZP));
 
