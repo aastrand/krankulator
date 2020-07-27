@@ -6,9 +6,10 @@ pub const ADDR_MODE_ABY: usize = 2;
 pub const ADDR_MODE_IMM: usize = 3;
 pub const ADDR_MODE_INX: usize = 4;
 pub const ADDR_MODE_INY: usize = 5;
-pub const ADDR_MODE_ZP: usize = 6;
-pub const ADDR_MODE_ZPX: usize = 7;
-pub const ADDR_MODE_ZPY: usize = 8;
+pub const ADDR_MODE_NA: usize = 6;
+pub const ADDR_MODE_ZP: usize = 7;
+pub const ADDR_MODE_ZPX: usize = 8;
+pub const ADDR_MODE_ZPY: usize = 9;
 
 pub const ADC_IMM: u8 = 0x69; // (ADd with Carry)
 pub const ADC_ZP: u8 = 0x65; // (ADd with Carry)
@@ -233,6 +234,7 @@ pub struct Opcode {
     #[allow(dead_code)]
     cycles: u8,
     mode: usize,
+    page_boundary_penalty: bool
 }
 
 pub struct Lookup {
@@ -243,7 +245,8 @@ static _SENTINEL: Opcode = Opcode {
     name: "NOP",
     size: 0xffff, // Inaccurate, will have to be adjusted
     cycles: 0xff, // Inaccurate, will have to be adjusted
-    mode: 0xff
+    mode: ADDR_MODE_NA,
+    page_boundary_penalty: false
 };
 
 impl Lookup {
@@ -254,1296 +257,1512 @@ impl Lookup {
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[ADC_ZP as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ADC_ZPX as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ADC_ABS as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ADC_ABX as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[ADC_ABY as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[ADC_INX as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[ADC_INY as usize] = &Opcode { // (ADd with Carry)
             name: "ADC_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[AND_IMM as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[AND_ZP as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[AND_ZPX as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[AND_ABS as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[AND_ABX as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[AND_ABY as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[AND_INX as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[AND_INY as usize] = &Opcode { // (bitwise AND with accumulator)
             name: "AND_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[ASL as usize] = &Opcode { // (Arithmetic Shift Left)
             name: "ASL",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[ASL_ZP as usize] = &Opcode { // (Arithmetic Shift Left)
             name: "ASL_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ASL_ZPX as usize] = &Opcode { // (Arithmetic Shift Left)
             name: "ASL_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ASL_ABS as usize] = &Opcode { // (Arithmetic Shift Left)
             name: "ASL_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ASL_ABX as usize] = &Opcode { // (Arithmetic Shift Left)
             name: "ASL_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[BIT_ZP as usize] = &Opcode { // (test BITs)
             name: "BIT_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[BIT_ABS as usize] = &Opcode { // (test BITs)
             name: "BIT_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[BPL as usize] = &Opcode { // (Branch on PLus)          
             name: "BPL",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BMI as usize] = &Opcode { // (Branch on MInus)         
             name: "BMI",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BVC as usize] = &Opcode { // (Branch on oVerflow Clear)
             name: "BVC",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BVS as usize] = &Opcode { // (Branch on oVerflow Set)  
             name: "BVS",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BCC as usize] = &Opcode { // (Branch on Carry Clear)   
             name: "BCC",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BCS as usize] = &Opcode { // (Branch on Carry Set)     
             name: "BCS",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BNE as usize] = &Opcode { // (Branch on Not Equal)     
             name: "BNE",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BEQ as usize] = &Opcode { // (Branch on EQual)         
             name: "BEQ",
             size: 2,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[BRK as usize] = &Opcode { // (BReaK)
             name: "BRK",
             size: 1,
             cycles: 7,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[CMP_IMM as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[CMP_ZP as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[CMP_ZPX as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[CMP_ABS as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[CMP_ABX as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[CMP_ABY as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[CMP_INX as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[CMP_INY as usize] = &Opcode { // (CoMPare accumulator)
             name: "CMP_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[CPX_IMM as usize] = &Opcode { // (ComPare X register)
             name: "CPX_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[CPX_ZP as usize] = &Opcode { // (ComPare X register)
             name: "CPX_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[CPX_ABS as usize] = &Opcode { // (ComPare X register)
             name: "CPX_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[CPY_IMM as usize] = &Opcode { // (ComPare Y register)
             name: "CPY_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[CPY_ZP as usize] = &Opcode { // (ComPare Y register)
             name: "CPY_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[CPY_ABS as usize] = &Opcode { // (ComPare Y register)
             name: "CPY_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[DEC_ZP as usize] = &Opcode { // (DECrement memory)
             name: "DEC_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[DEC_ZPX as usize] = &Opcode { // (DECrement memory)
             name: "DEC_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[DEC_ABS as usize] = &Opcode { // (DECrement memory)
             name: "DEC_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[DEC_ABX as usize] = &Opcode { // (DECrement memory)
             name: "DEC_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[EOR_IMM as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[EOR_ZP as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[EOR_ZPX as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[EOR_ABS as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[EOR_ABX as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[EOR_ABY as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[EOR_INX as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[EOR_INY as usize] = &Opcode { // (bitwise Exclusive OR)
             name: "EOR_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[CLC as usize] = &Opcode { // (CLear Carry)             
             name: "CLC",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[SEC as usize] = &Opcode { // (SEt Carry)               
             name: "SEC",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[CLI as usize] = &Opcode { // (CLear Interrupt)         
             name: "CLI",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[SEI as usize] = &Opcode { // (SEt Interrupt)           
             name: "SEI",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[CLV as usize] = &Opcode { // (CLear oVerflow)          
             name: "CLV",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[CLD as usize] = &Opcode { // (CLear Decimal)           
             name: "CLD",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[SED as usize] = &Opcode { // (SEt Decimal)             
             name: "SED",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[INC_ZP as usize] = &Opcode { // (INCrement memory)
             name: "INC_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[INC_ZPX as usize] = &Opcode { // (INCrement memory)
             name: "INC_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[INC_ABS as usize] = &Opcode { // (INCrement memory)
             name: "INC_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[INC_ABX as usize] = &Opcode { // (INCrement memory)
             name: "INC_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[JMP_ABS as usize] = &Opcode { // (JuMP)
             name: "JMP_ABS",
             size: 3,
             cycles: 3,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[JMP_IND as usize] = &Opcode { // (JuMP)
             name: "JMP_IND",
             size: 3,
             cycles: 5,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[JSR_ABS as usize] = &Opcode { // (Jump to SubRoutine)
             name: "JSR_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LDA_IMM as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[LDA_ZP as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[LDA_ZPX as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[LDA_ABS as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LDA_ABX as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[LDA_ABY as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[LDA_INX as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[LDA_INY as usize] = &Opcode { // (LoaD Accumulator)
             name: "LDA_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[LDX_IMM as usize] = &Opcode { // (LoaD X register)
             name: "LDX_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[LDX_ZP as usize] = &Opcode { // (LoaD X register)
             name: "LDX_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[LDX_ZPY as usize] = &Opcode { // (LoaD X register)
             name: "LDX_ZPY",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPY,
+            page_boundary_penalty: false,
         };
         lookup[LDX_ABS as usize] = &Opcode { // (LoaD X register)
             name: "LDX_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LDX_ABY as usize] = &Opcode { // (LoaD X register)
             name: "LDX_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[LDY_IMM as usize] = &Opcode { // (LoaD Y register)
             name: "LDY_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[LDY_ZP as usize] = &Opcode { // (LoaD Y register)
             name: "LDY_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[LDY_ZPX as usize] = &Opcode { // (LoaD Y register)
             name: "LDY_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[LDY_ABS as usize] = &Opcode { // (LoaD Y register)
             name: "LDY_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LDY_ABX as usize] = &Opcode { // (LoaD Y register)
             name: "LDY_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[LSR as usize] = &Opcode { // (Logical Shift Right)
             name: "LSR",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[LSR_ZP as usize] = &Opcode { // (Logical Shift Right)
             name: "LSR_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[LSR_ZPX as usize] = &Opcode { // (Logical Shift Right)
             name: "LSR_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[LSR_ABS as usize] = &Opcode { // (Logical Shift Right)
             name: "LSR_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LSR_ABX as usize] = &Opcode { // (Logical Shift Right)
             name: "LSR_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[NOP as usize] = &Opcode { // (No OPeration)
             name: "NOP",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[ORA_IMM as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[ORA_ZP as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ORA_ZPX as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ORA_ABS as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ORA_ABX as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[ORA_ABY as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[ORA_INX as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[ORA_INY as usize] = &Opcode { // (bitwise OR with Accumulator)
             name: "ORA_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[TAX as usize] = &Opcode { // (Transfer A to X)   
             name: "TAX",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[TXA as usize] = &Opcode { // (Transfer X to A)   
             name: "TXA",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[DEX as usize] = &Opcode { // (DEcrement X)       
             name: "DEX",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[INX as usize] = &Opcode { // (INcrement X)       
             name: "INX",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[TAY as usize] = &Opcode { // (Transfer A to Y)   
             name: "TAY",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[TYA as usize] = &Opcode { // (Transfer Y to A)   
             name: "TYA",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[DEY as usize] = &Opcode { // (DEcrement Y)       
             name: "DEY",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[INY as usize] = &Opcode { // (INcrement Y)       
             name: "INY",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[ROL as usize] = &Opcode { // (ROtate Left)
             name: "ROL",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[ROL_ZP as usize] = &Opcode { // (ROtate Left)
             name: "ROL_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ROL_ZPX as usize] = &Opcode { // (ROtate Left)
             name: "ROL_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ROL_ABS as usize] = &Opcode { // (ROtate Left)
             name: "ROL_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ROL_ABX as usize] = &Opcode { // (ROtate Left)
             name: "ROL_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[ROR as usize] = &Opcode { // (ROtate Right)
             name: "ROR",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[ROR_ZP as usize] = &Opcode { // (ROtate Right)
             name: "ROR_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ROR_ZPX as usize] = &Opcode { // (ROtate Right)
             name: "ROR_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ROR_ABS as usize] = &Opcode { // (ROtate Right)
             name: "ROR_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ROR_ABX as usize] = &Opcode { // (ROtate Right)
             name: "ROR_ABX",
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[RTI as usize] = &Opcode { // (ReTurn from Interrupt)
             name: "RTI",
             size: 1,
             cycles: 6,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[RTS as usize] = &Opcode { // (ReTurn from Subroutine)
             name: "RTS",
             size: 1,
             cycles: 6,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[SBC_IMM as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[SBC_ZP as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[SBC_ZPX as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[SBC_ABS as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[SBC_ABX as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[SBC_ABY as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[SBC_INX as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[SBC_INY as usize] = &Opcode { // (SuBtract with Carry)
             name: "SBC_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[STA_ZP as usize] = &Opcode { // (STore Accumulator)
             name: "STA_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[STA_ZPX as usize] = &Opcode { // (STore Accumulator)
             name: "STA_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[STA_ABS as usize] = &Opcode { // (STore Accumulator)
             name: "STA_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[STA_ABX as usize] = &Opcode { // (STore Accumulator)
             name: "STA_ABX",
             size: 3,
             cycles: 5,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: false,
         };
         lookup[STA_ABY as usize] = &Opcode { // (STore Accumulator)
             name: "STA_ABY",
             size: 3,
             cycles: 5,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: false,
         };
         lookup[STA_INX as usize] = &Opcode { // (STore Accumulator)
             name: "STA_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[STA_INY as usize] = &Opcode { // (STore Accumulator)
             name: "STA_INY",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: false,
         };
         lookup[TXS as usize] = &Opcode { // (Transfer X to Stack ptr)  
             name: "TXS",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[TSX as usize] = &Opcode { // (Transfer Stack ptr to X)  
             name: "TSX",
             size: 1,
             cycles: 2,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[PHA as usize] = &Opcode { // (PusH Accumulator)         
             name: "PHA",
             size: 1,
             cycles: 3,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[PLA as usize] = &Opcode { // (PuLl Accumulator)         
             name: "PLA",
             size: 1,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[PHP as usize] = &Opcode { // (PusH Processor status)    
             name: "PHP",
             size: 1,
             cycles: 3,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[PLP as usize] = &Opcode { // (PuLl Processor status)    
             name: "PLP",
             size: 1,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[STX_ZP as usize] = &Opcode { // (STore X register)
             name: "STX_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[STX_ZPY as usize] = &Opcode { // (STore X register)
             name: "STX_ZPY",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPY,
+            page_boundary_penalty: false,
         };
         lookup[STX_ABS as usize] = &Opcode { // (STore X register)
             name: "STX_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[STY_ZP as usize] = &Opcode { // (STore Y register)
             name: "STY_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[STY_ZPX as usize] = &Opcode { // (STore Y register)
             name: "STY_ZPX",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[STY_ABS as usize] = &Opcode { // (STore Y register)
             name: "STY_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LAX_INX as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[LAX_ZP as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[LAX_ABS as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[LAX_INY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_INY",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[LAX_ZPY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ZPY",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPY,
+            page_boundary_penalty: false,
         };
         lookup[LAX_ABY as usize] = &Opcode { // LAX = LDA + LDX (Unofficial opcode)
             name: "LAX_ABY",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[SAX_INX as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
             name: "SAX_INX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[SAX_ZP as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
             name: "SAX_ZP",
             size: 2,
             cycles: 3,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[SAX_ABS as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
             name: "SAX_ABS",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[SAX_ZPY as usize] = &Opcode { // SAX = Store A&X (Unofficial opcode)
             name: "SAX_ZPY",
             size: 2,
             cycles: 4,
             mode: ADDR_MODE_ZPY,
+            page_boundary_penalty: false,
         };
         lookup[SNC_IMM as usize] = &Opcode { // SNC = SBC + NOP (Unofficial opcode)
             name: "SNC_IMM",
             size: 2,
             cycles: 2,
             mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
         };
         lookup[DCP_INX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[DCP_ZP as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[DCP_ABS as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[DCP_INY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[DCP_ZPX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[DCP_ABY as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[DCP_ABX as usize] = &Opcode { // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[ISB_INX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[ISB_ZP as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[ISB_ABS as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[ISB_INY as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[ISB_ZPX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[ISB_ABY as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[ISB_ABX as usize] = &Opcode { // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[SLO_INX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[SLO_ZP as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[SLO_ABS as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[SLO_INY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[SLO_ZPX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[SLO_ABY as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[SLO_ABX as usize] = &Opcode { // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[RLA_INX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[RLA_ZP as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[RLA_ABS as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[RLA_INY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[RLA_ZPX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[RLA_ABY as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[RLA_ABX as usize] = &Opcode { // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[SRE_INX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[SRE_ZP as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[SRE_ABS as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode))
             name: "SRE_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[SRE_INY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[SRE_ZPX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[SRE_ABY as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[SRE_ABX as usize] = &Opcode { // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[RRA_INX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_INX",
             size: 2,
             cycles: 8,
             mode: ADDR_MODE_INX,
+            page_boundary_penalty: false,
         };
         lookup[RRA_ZP as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ZP",
             size: 2,
             cycles: 5,
             mode: ADDR_MODE_ZP,
+            page_boundary_penalty: false,
         };
         lookup[RRA_ABS as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABS",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABS,
+            page_boundary_penalty: false,
         };
         lookup[RRA_INY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_INY",
             size: 2,
             cycles: 7,
             mode: ADDR_MODE_INY,
+            page_boundary_penalty: true,
         };
         lookup[RRA_ZPX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ZPX",
             size: 2,
             cycles: 6,
             mode: ADDR_MODE_ZPX,
+            page_boundary_penalty: false,
         };
         lookup[RRA_ABY as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABY",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         lookup[RRA_ABX as usize] = &Opcode { // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABX",
             size: 3,
             cycles: 6,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[N1C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "N1C_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[N3C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "N3C_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[N5C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "N5C_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[N7C_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "N7C_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[NDC_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NDC_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[NFC_ABX as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NFC_ABX",
             size: 3,
             cycles: 4,
             mode: ADDR_MODE_ABX,
+            page_boundary_penalty: true,
         };
         lookup[NOP_14 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_14",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[NOP_34 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_34",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[NOP_54 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_54",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[NOP_74 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_74",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[NOP_D4 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_D4",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         lookup[NOP_F4 as usize] = &Opcode { // NOP (Unofficial opcode)
             name: "NOP_F4",
             size: 2,
             cycles: 4,
-            mode: 0xff,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
         };
         Lookup { opcodes: lookup }
     }
@@ -1589,5 +1808,9 @@ impl Lookup {
 
     pub fn mode(&self, opcode: u8) -> usize {
         self.opcodes[opcode as usize].mode
+    }
+
+    pub fn page_boundary_penalty(&self, opcode: u8) -> bool {
+        self.opcodes[opcode as usize].page_boundary_penalty
     }
 }
