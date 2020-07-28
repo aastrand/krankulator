@@ -111,7 +111,7 @@ impl Loader for InesLoader {
 
         let result: Rc<RefCell<dyn mapper::MemoryMapper>> = match mapper {
             0 => Rc::new(RefCell::new(mapper::nrom::NROMMapper::new(
-                *prg_banks.get(0).unwrap(),
+                Box::new(*prg_banks.get(0).unwrap()),
                 prg_banks.pop(),
                 chr_banks.pop(),
             ))),

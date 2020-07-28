@@ -17,7 +17,8 @@ pub struct MMC1Mapper {
     ppu: Rc<RefCell<ppu::PPU>>,
 
     cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
-    mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
+    _mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
+    mmc_ram_ptr: *mut u8,
 
     banks: Vec<[u8; BANK_SIZE]>,
     low_bank: *mut [u8; BANK_SIZE],
@@ -42,6 +43,9 @@ impl MMC1Mapper {
             panic!("Expected an even amount of PRG banks");
         }
 
+        let mut mmc_ram = Box::new([0; MMC_RAM_SIZE]);
+        let mmc_ram_ptr = mmc_ram.as_mut_ptr();
+
         let low_bank_ptr: *mut [u8; BANK_SIZE] = unsafe { prg_banks.get_unchecked_mut(0) };
 
         let mut mapper = MMC1Mapper {
@@ -51,7 +55,8 @@ impl MMC1Mapper {
             cpu_ram: Box::new([0; CPU_RAM_SIZE]),
 
             // 0x6000-0x7FFF
-            mmc_ram: Box::new([0; MMC_RAM_SIZE]),
+            _mmc_ram: mmc_ram,
+            mmc_ram_ptr: mmc_ram_ptr,
 
             banks: prg_banks,
 
@@ -123,7 +128,7 @@ impl MMC1Mapper {
                 }
                 0
             }
-            0x60 | 0x70 => self.mmc_ram[addr - MMC_RAM_ADDR],
+            0x60 | 0x70 => unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) },
             0x80 | 0x90 | 0xa0 | 0xb0 => unsafe { (*self.low_bank)[addr - LOW_BANK_ADDR] },
             0xc0 | 0xd0 | 0xe0 | 0xf0 => unsafe { (*self.high_bank)[addr - HIGH_BANK_ADDR] },
             _ => panic!("Read at addr {:X} not mapped", addr),
@@ -148,9 +153,9 @@ impl MMC1Mapper {
                 }
             }
             0x50 => {} // ??
-            0x60 | 0x70 => {
-                self.mmc_ram[addr - MMC_RAM_ADDR] = value;
-            }
+            0x60 | 0x70 => unsafe {
+                *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) = value;
+            },
             0x80 | 0x90 => {
                 self.reg_write_count = self.reg_write_count + 1;
                 self.check_register_reset(value);
@@ -192,7 +197,8 @@ impl MMC1Mapper {
                         let base_bank = value & 0b110;
                         unsafe {
                             self.low_bank = self.banks.get_unchecked_mut((base_bank * 2) as usize);
-                            self.high_bank = self.banks.get_unchecked_mut(((base_bank * 2) + 1) as usize);
+                            self.high_bank =
+                                self.banks.get_unchecked_mut(((base_bank * 2) + 1) as usize);
                         }
                     //println!("Switched low bank to {:X} (32K mode)", self.low_bank);
                     //println!("Switched high bank to {:X} (32K mode)", self.high_bank);
@@ -271,7 +277,7 @@ mod tests {
         // PRG ram
         mapper._write_bus(0x6123, 0x11);
         assert_eq!(mapper._read_bus(0x6123), 0x11);
-        assert_eq!(mapper.mmc_ram[0x0123], 0x11);
+        assert_eq!(mapper._mmc_ram[0x0123], 0x11);
     }
 
     #[test]

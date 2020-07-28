@@ -18,31 +18,35 @@ const BANK_TWO_ADDR: usize = 0xC000;
 
 pub struct NROMMapper {
     ppu: Rc<RefCell<ppu::PPU>>,
-    addr_space: Box<[u8; super::MAX_RAM_SIZE]>,
+    _addr_space: Box<[u8; super::MAX_RAM_SIZE]>,
+    addr_space_ptr: *mut u8,
     _chr_bank: Box<[u8; NROM_CHR_BANK_SIZE]>,
 }
 
 impl NROMMapper {
     // TODO: PRG RAM
     pub fn new(
-        bank_one: [u8; NROM_PRG_BANK_SIZE],
+        bank_one: Box<[u8; NROM_PRG_BANK_SIZE]>,
         bank_two: Option<[u8; NROM_PRG_BANK_SIZE]>,
         chr_rom: Option<[u8; NROM_CHR_BANK_SIZE]>,
     ) -> NROMMapper {
         let mut mem: Box<[u8; super::MAX_RAM_SIZE]> = Box::new([0; super::MAX_RAM_SIZE]);
 
-        mem[BANK_ONE_ADDR..BANK_ONE_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&bank_one);
+        mem[BANK_ONE_ADDR..BANK_ONE_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&*bank_one);
 
         let second = if bank_two.is_some() {
             bank_two.unwrap()
         } else {
-            bank_one
+            *bank_one
         };
         mem[BANK_TWO_ADDR..BANK_TWO_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&second);
 
+        let addr_space_ptr = mem.as_mut_ptr();
+
         NROMMapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            addr_space: mem,
+            _addr_space: mem,
+            addr_space_ptr: addr_space_ptr,
             _chr_bank: Box::new(chr_rom.unwrap_or([0; NROM_CHR_BANK_SIZE])),
         }
     }
@@ -54,7 +58,7 @@ impl super::MemoryMapper for NROMMapper {
         if addr >= 0x2000 && addr < 0x2008 {
             self.ppu.borrow_mut().read(addr)
         } else {
-            self.addr_space[addr as usize]
+            unsafe { *self.addr_space_ptr.offset(addr as _) }
         }
     }
 
@@ -66,7 +70,9 @@ impl super::MemoryMapper for NROMMapper {
         }
 
         // TODO: check that we are within ram bounds
-        self.addr_space[addr as usize] = value
+        unsafe {
+            *self.addr_space_ptr.offset(addr as _) = value
+        }
     }
 
     fn code_start(&self) -> u16 {
@@ -86,7 +92,7 @@ mod tests {
     #[test]
     fn test_nrom_ram_mirroring() {
         let mut mapper: Box<dyn super::super::MemoryMapper> =
-            Box::new(NROMMapper::new([0; 16384], None, Some([0; 8192])));
+            Box::new(NROMMapper::new(Box::new([0; 16384]), None, Some([0; 8192])));
         mapper.write_bus(0x173, 0x42);
 
         assert_eq!(mapper.read_bus(0x173), 0x42);

@@ -32,35 +32,39 @@ pub trait MemoryMapper {
 }
 
 pub struct IdentityMapper {
-    ram: [u8; MAX_RAM_SIZE],
+    _ram: Box<[u8; MAX_RAM_SIZE]>,
+    ram_ptr: *mut u8,
     code_start: u16,
 }
 
 impl IdentityMapper {
     pub fn new(code_start: u16) -> IdentityMapper {
+        let mut ram = Box::new([0; MAX_RAM_SIZE]);
+        let ram_ptr = ram.as_mut_ptr();
         IdentityMapper {
-            ram: *Box::new([0; MAX_RAM_SIZE]),
+            _ram: ram,
+            ram_ptr,
             code_start: code_start,
         }
     }
 }
 
 impl MemoryMapper for IdentityMapper {
+    #[inline]
     fn read_bus(&self, addr: usize) -> u8 {
-        self.ram[addr as usize]
+        unsafe { *self.ram_ptr.offset(addr as _) }
     }
 
+    #[inline]
     fn write_bus(&mut self, addr: usize, value: u8) {
-        self.ram[addr as usize] = value
+        unsafe { *self.ram_ptr.offset(addr as _) = value }
     }
 
     fn code_start(&self) -> u16 {
         self.code_start
     }
 
-    fn install_ppu(&mut self, _ppu: Rc<RefCell<ppu::PPU>>) {
-
-    }
+    fn install_ppu(&mut self, _ppu: Rc<RefCell<ppu::PPU>>) {}
 }
 
 #[cfg(test)]
@@ -70,7 +74,7 @@ mod tests {
     #[test]
     fn test_read_bus() {
         let mut mapper = IdentityMapper::new(0);
-        mapper.ram[0] = 42;
+        mapper._ram[0] = 42;
         assert_eq!(mapper.read_bus(0), 42);
     }
 
@@ -78,7 +82,7 @@ mod tests {
     fn test_write_bus() {
         let mut mapper = IdentityMapper::new(0);
         mapper.write_bus(1, 42);
-        assert_eq!(mapper.ram[1], 42);
+        assert_eq!(mapper._ram[1], 42);
     }
 
     #[test]
