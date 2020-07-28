@@ -20,8 +20,8 @@ pub struct MMC1Mapper {
     mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
 
     banks: Vec<[u8; BANK_SIZE]>,
-    low_bank: usize,
-    high_bank: usize,
+    low_bank: *mut [u8; BANK_SIZE],
+    high_bank: *mut [u8; BANK_SIZE],
 
     reg_write_count: u8,
 
@@ -34,13 +34,15 @@ pub struct MMC1Mapper {
 }
 
 impl MMC1Mapper {
-    pub fn new(prg_banks: Vec<[u8; BANK_SIZE]>) -> MMC1Mapper {
+    pub fn new(mut prg_banks: Vec<[u8; BANK_SIZE]>) -> MMC1Mapper {
         if prg_banks.len() < 2 {
             panic!("Expected at least two PRG banks");
         }
         if prg_banks.len() % 2 != 0 {
             panic!("Expected an even amount of PRG banks");
         }
+
+        let low_bank_ptr: *mut [u8; BANK_SIZE] = unsafe { prg_banks.get_unchecked_mut(0) };
 
         let mut mapper = MMC1Mapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
@@ -54,9 +56,9 @@ impl MMC1Mapper {
             banks: prg_banks,
 
             // 0x8000-0xBFFF
-            low_bank: 0,
+            low_bank: low_bank_ptr,
             //  0xC000-0xFFFF
-            high_bank: 0,
+            high_bank: low_bank_ptr,
 
             reg_write_count: 0,
 
@@ -74,7 +76,10 @@ impl MMC1Mapper {
             reg3: 0,
         };
 
-        mapper.high_bank = max(0, mapper.banks.len() - 1);
+        unsafe {
+            let len = mapper.banks.len();
+            mapper.high_bank = mapper.banks.get_unchecked_mut(max(0, len - 1));
+        }
 
         mapper
     }
@@ -119,8 +124,8 @@ impl MMC1Mapper {
                 0
             }
             0x60 | 0x70 => self.mmc_ram[addr - MMC_RAM_ADDR],
-            0x80 | 0x90 | 0xa0 | 0xb0 => self.banks[self.low_bank][addr - LOW_BANK_ADDR],
-            0xc0 | 0xd0 | 0xe0 | 0xf0 => self.banks[self.high_bank][addr - HIGH_BANK_ADDR],
+            0x80 | 0x90 | 0xa0 | 0xb0 => unsafe { (*self.low_bank)[addr - LOW_BANK_ADDR] },
+            0xc0 | 0xd0 | 0xe0 | 0xf0 => unsafe { (*self.high_bank)[addr - HIGH_BANK_ADDR] },
             _ => panic!("Read at addr {:X} not mapped", addr),
         }
     }
@@ -185,15 +190,21 @@ impl MMC1Mapper {
                     if self.reg3 & 0b100 == 0b100 {
                         // 32k bank switching
                         let base_bank = value & 0b110;
-                        self.low_bank = (base_bank * 2) as usize;
-                        self.high_bank = ((base_bank * 2) + 1) as usize;
+                        unsafe {
+                            self.low_bank = self.banks.get_unchecked_mut((base_bank * 2) as usize);
+                            self.high_bank = self.banks.get_unchecked_mut(((base_bank * 2) + 1) as usize);
+                        }
                     //println!("Switched low bank to {:X} (32K mode)", self.low_bank);
                     //println!("Switched high bank to {:X} (32K mode)", self.high_bank);
                     } else if self.reg3 & 0b10 == 0b10 {
-                        self.low_bank = (value & 0xf) as usize;
+                        unsafe {
+                            self.low_bank = self.banks.get_unchecked_mut((value & 0xf) as usize);
+                        }
                     //println!("Switched low bank to {:X}", self.low_bank)
                     } else {
-                        self.high_bank = (value & 0xf) as usize;
+                        unsafe {
+                            self.high_bank = self.banks.get_unchecked_mut((value & 0xf) as usize);
+                        }
                         //println!("Switched high bank to {:X}", self.high_bank);
                     }
 
