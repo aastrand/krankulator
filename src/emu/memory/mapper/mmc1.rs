@@ -16,13 +16,15 @@ const HIGH_BANK_ADDR: usize = 0xc000;
 pub struct MMC1Mapper {
     ppu: Rc<RefCell<ppu::PPU>>,
 
-    cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
+    _cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
+    cpu_ram_ptr: *mut u8,
+
     _mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
     mmc_ram_ptr: *mut u8,
 
     banks: Vec<[u8; BANK_SIZE]>,
-    low_bank: *mut [u8; BANK_SIZE],
-    high_bank: *mut [u8; BANK_SIZE],
+    low_bank: *mut u8,
+    high_bank: *mut u8,
 
     reg_write_count: u8,
 
@@ -43,16 +45,20 @@ impl MMC1Mapper {
             panic!("Expected an even amount of PRG banks");
         }
 
+        let mut cpu_ram = Box::new([0; CPU_RAM_SIZE]);
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         let mut mmc_ram = Box::new([0; MMC_RAM_SIZE]);
         let mmc_ram_ptr = mmc_ram.as_mut_ptr();
 
-        let low_bank_ptr: *mut [u8; BANK_SIZE] = unsafe { prg_banks.get_unchecked_mut(0) };
+        let low_bank_ptr: *mut u8 = unsafe { prg_banks.get_unchecked_mut(0).as_mut_ptr() };
 
         let mut mapper = MMC1Mapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
 
             // 0x0000-0x07FF + mirroring to 0x1FFF
-            cpu_ram: Box::new([0; CPU_RAM_SIZE]),
+            _cpu_ram: cpu_ram,
+            cpu_ram_ptr: cpu_ram_ptr,
 
             // 0x6000-0x7FFF
             _mmc_ram: mmc_ram,
@@ -83,7 +89,7 @@ impl MMC1Mapper {
 
         unsafe {
             let len = mapper.banks.len();
-            mapper.high_bank = mapper.banks.get_unchecked_mut(max(0, len - 1));
+            mapper.high_bank = mapper.banks.get_unchecked_mut(max(0, len - 1)).as_mut_ptr();
         }
 
         mapper
@@ -112,7 +118,7 @@ impl MMC1Mapper {
         let page = super::addr_to_page(addr);
 
         match page {
-            0x0 | 0x10 => self.cpu_ram[addr],
+            0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 => {
                 // PPU registers
                 if addr == 0x2002 {
@@ -129,8 +135,12 @@ impl MMC1Mapper {
                 0
             }
             0x60 | 0x70 => unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) },
-            0x80 | 0x90 | 0xa0 | 0xb0 => unsafe { (*self.low_bank)[addr - LOW_BANK_ADDR] },
-            0xc0 | 0xd0 | 0xe0 | 0xf0 => unsafe { (*self.high_bank)[addr - HIGH_BANK_ADDR] },
+            0x80 | 0x90 | 0xa0 | 0xb0 => unsafe {
+                *self.low_bank.offset((addr - LOW_BANK_ADDR) as _)
+            },
+            0xc0 | 0xd0 | 0xe0 | 0xf0 => unsafe {
+                *self.high_bank.offset((addr - HIGH_BANK_ADDR) as _)
+            },
             _ => panic!("Read at addr {:X} not mapped", addr),
         }
     }
@@ -140,7 +150,7 @@ impl MMC1Mapper {
         let page = super::addr_to_page(addr);
 
         match page {
-            0x0 | 0x10 => self.cpu_ram[addr] = value,
+            0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 => {
                 // TODO: PPU registers
                 //println!("Write to PPU reg {:X}: {:X}", addr, value);
@@ -196,20 +206,31 @@ impl MMC1Mapper {
                         // 32k bank switching
                         let base_bank = value & 0b110;
                         unsafe {
-                            self.low_bank = self.banks.get_unchecked_mut((base_bank * 2) as usize);
-                            self.high_bank =
-                                self.banks.get_unchecked_mut(((base_bank * 2) + 1) as usize);
+                            self.low_bank = self
+                                .banks
+                                .get_unchecked_mut((base_bank * 2) as usize)
+                                .as_mut_ptr();
+                            self.high_bank = self
+                                .banks
+                                .get_unchecked_mut(((base_bank * 2) + 1) as usize)
+                                .as_mut_ptr();
                         }
                     //println!("Switched low bank to {:X} (32K mode)", self.low_bank);
                     //println!("Switched high bank to {:X} (32K mode)", self.high_bank);
                     } else if self.reg3 & 0b10 == 0b10 {
                         unsafe {
-                            self.low_bank = self.banks.get_unchecked_mut((value & 0xf) as usize);
+                            self.low_bank = self
+                                .banks
+                                .get_unchecked_mut((value & 0xf) as usize)
+                                .as_mut_ptr();
                         }
                     //println!("Switched low bank to {:X}", self.low_bank)
                     } else {
                         unsafe {
-                            self.high_bank = self.banks.get_unchecked_mut((value & 0xf) as usize);
+                            self.high_bank = self
+                                .banks
+                                .get_unchecked_mut((value & 0xf) as usize)
+                                .as_mut_ptr();
                         }
                         //println!("Switched high bank to {:X}", self.high_bank);
                     }
@@ -272,7 +293,7 @@ mod tests {
         // CPU ram
         mapper._write_bus(0x1173, 0x42);
         assert_eq!(mapper._read_bus(0x1173), 0x42);
-        assert_eq!(mapper.cpu_ram[0x173], 0x42);
+        assert_eq!(mapper._cpu_ram[0x173], 0x42);
 
         // PRG ram
         mapper._write_bus(0x6123, 0x11);

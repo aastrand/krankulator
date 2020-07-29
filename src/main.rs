@@ -20,22 +20,21 @@ fn main() -> Result<(), String> {
     )
     .get_matches();
 
-    let sdl_context = sdl2::init()?;
-    let video_subsystem = sdl_context.video()?;
-    let window = video_subsystem
-        .window("Krankulator", 256, 240)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let canvas = window
-        .into_canvas()
-        .target_texture()
-        .present_vsync()
-        .build()
-        .map_err(|e| e.to_string())?;
-
     let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+        let sdl_context = sdl2::init()?;
+
+        let video_subsystem = sdl_context.video()?;
+        let window = video_subsystem
+            .window("Krankulator", 256, 240)
+            .position_centered()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let canvas = window
+            .into_canvas()
+            .target_texture()
+            .present_vsync()
+            .build()
+            .map_err(|e| e.to_string())?;
         emu::Emulator::new(sdl_context, canvas)
     } else {
         emu::Emulator::new_headless()

@@ -53,8 +53,8 @@ impl NROMMapper {
 }
 
 impl super::MemoryMapper for NROMMapper {
-    fn read_bus(&self, mut addr: usize) -> u8 {
-        addr = super::mirror_addr(addr);
+    fn read_bus(&self, addr: usize) -> u8 {
+        let addr = super::mirror_addr(addr);
         if addr >= 0x2000 && addr < 0x2008 {
             self.ppu.borrow_mut().read(addr)
         } else {
@@ -62,8 +62,8 @@ impl super::MemoryMapper for NROMMapper {
         }
     }
 
-    fn write_bus(&mut self, mut addr: usize, value: u8) {
-        addr = super::mirror_addr(addr);
+    fn write_bus(&mut self, addr: usize, value: u8) {
+        let addr = super::mirror_addr(addr);
 
         if addr >= 0x2000 && addr < 0x2008 {
             self.ppu.borrow_mut().write(addr, value);

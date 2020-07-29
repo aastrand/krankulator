@@ -165,7 +165,7 @@ impl Emulator {
         }
 
         {
-            self.ppu.borrow_mut().cycle();
+            //self.ppu.borrow_mut().cycle();
         }
 
         self.cycles += 1;

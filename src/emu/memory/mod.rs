@@ -14,7 +14,7 @@ pub struct Memory {
 }
 
 pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
-    ((hb as u16) << 8) + ((lb as u16) & 0xff)
+    ((hb as u16) << 8) + (lb as u16)
 }
 
 impl Memory {

@@ -8,11 +8,11 @@ use std::rc::Rc;
 pub const MAX_RAM_SIZE: usize = 65536;
 pub const RESET_TARGET_ADDR: usize = 0xfffc;
 
-pub fn addr_to_page(addr: usize) -> usize {
+fn addr_to_page(addr: usize) -> usize {
     (addr >> 8) & 0xf0
 }
 
-pub fn mirror_addr(addr: usize) -> usize {
+fn mirror_addr(addr: usize) -> usize {
     // System memory at $0000-$07FF is mirrored at $0800-$0FFF, $1000-$17FF, and $1800-$1FFF
     // - attempting to access memory at, for example, $0173 is the same as accessing memory at $0973, $1173, or $1973.
     if addr < 0x2000 {
