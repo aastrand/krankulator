@@ -14,8 +14,8 @@ use super::memory;
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: &str);
-    fn display(&mut self, mem: &memory::Memory);
-    fn input(&mut self, mem: &mut memory::Memory) -> Option<char>;
+    fn display(&mut self, mem: &dyn memory::MemoryMapper);
+    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char>;
     fn exit(&self, s: &str);
 }
 
@@ -31,12 +31,12 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem: &mut memory::Memory) -> Option<char> {
+    fn input(&mut self, mem:  &mut dyn memory::MemoryMapper) -> Option<char> {
         None
     }
 
     #[allow(unused_variables)]
-    fn display(&mut self, mem: &memory::Memory) {}
+    fn display(&mut self, mem: &dyn memory::MemoryMapper) {}
 
     fn exit(&self, s: &str) {
         self.log(s);
@@ -46,14 +46,12 @@ impl IOHandler for HeadlessIOHandler {
 pub struct SDLIOHandler {
     canvas: Canvas<Window>,
     event_pump: EventPump,
-    sdl_context: Sdl,
 }
 
 impl SDLIOHandler {
     pub fn new(sdl_context: Sdl, canvas: Canvas<Window>) -> SDLIOHandler {
         let event_pump = sdl_context.event_pump().unwrap();
         SDLIOHandler {
-            sdl_context: sdl_context,
             event_pump: event_pump,
             canvas: canvas,
         }
@@ -81,12 +79,12 @@ impl<'a> IOHandler for SDLIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem: &mut memory::Memory) -> Option<char> {
+    fn input(&mut self, mem:  &mut dyn memory::MemoryMapper) -> Option<char> {
         None
     }
 
     #[allow(unused_variables)]
-    fn display(&mut self, mem: &memory::Memory) {
+    fn display(&mut self, mem: &dyn memory::MemoryMapper) {
         self.event_pump.poll_event();
         self.canvas.present();
     }

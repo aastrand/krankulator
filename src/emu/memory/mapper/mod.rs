@@ -1,18 +1,13 @@
 pub mod mmc1;
 pub mod nrom;
 
-use super::super::ppu;
-use std::cell::RefCell;
-use std::rc::Rc;
+pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 
-pub const MAX_RAM_SIZE: usize = 65536;
-pub const RESET_TARGET_ADDR: usize = 0xfffc;
-
-pub fn addr_to_page(addr: usize) -> usize {
+fn addr_to_page(addr: u16) -> u16 {
     (addr >> 8) & 0xf0
 }
 
-pub fn mirror_addr(addr: usize) -> usize {
+fn mirror_addr(addr: u16) -> u16 {
     // System memory at $0000-$07FF is mirrored at $0800-$0FFF, $1000-$17FF, and $1800-$1FFF
     // - attempting to access memory at, for example, $0173 is the same as accessing memory at $0973, $1173, or $1973.
     if addr < 0x2000 {
@@ -24,66 +19,9 @@ pub fn mirror_addr(addr: usize) -> usize {
     }
 }
 
-pub trait MemoryMapper {
-    fn read_bus(&self, addr: usize) -> u8;
-    fn write_bus(&mut self, addr: usize, value: u8);
-    fn code_start(&self) -> u16;
-    fn install_ppu(&mut self, ppu: Rc<RefCell<ppu::PPU>>);
-}
-
-pub struct IdentityMapper {
-    _ram: Box<[u8; MAX_RAM_SIZE]>,
-    ram_ptr: *mut u8,
-    code_start: u16,
-}
-
-impl IdentityMapper {
-    pub fn new(code_start: u16) -> IdentityMapper {
-        let mut ram = Box::new([0; MAX_RAM_SIZE]);
-        let ram_ptr = ram.as_mut_ptr();
-        IdentityMapper {
-            _ram: ram,
-            ram_ptr,
-            code_start: code_start,
-        }
-    }
-}
-
-impl MemoryMapper for IdentityMapper {
-    #[inline]
-    fn read_bus(&self, addr: usize) -> u8 {
-        unsafe { *self.ram_ptr.offset(addr as _) }
-    }
-
-    #[inline]
-    fn write_bus(&mut self, addr: usize, value: u8) {
-        unsafe { *self.ram_ptr.offset(addr as _) = value }
-    }
-
-    fn code_start(&self) -> u16 {
-        self.code_start
-    }
-
-    fn install_ppu(&mut self, _ppu: Rc<RefCell<ppu::PPU>>) {}
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_read_bus() {
-        let mut mapper = IdentityMapper::new(0);
-        mapper._ram[0] = 42;
-        assert_eq!(mapper.read_bus(0), 42);
-    }
-
-    #[test]
-    fn test_write_bus() {
-        let mut mapper = IdentityMapper::new(0);
-        mapper.write_bus(1, 42);
-        assert_eq!(mapper._ram[1], 42);
-    }
 
     #[test]
     fn test_addr_mirroring() {

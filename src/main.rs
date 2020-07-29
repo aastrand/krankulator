@@ -20,46 +20,56 @@ fn main() -> Result<(), String> {
     )
     .get_matches();
 
-    let sdl_context = sdl2::init()?;
-    let video_subsystem = sdl_context.video()?;
-    let window = video_subsystem
-        .window("Krankulator", 256, 240)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let canvas = window
-        .into_canvas()
-        .target_texture()
-        .present_vsync()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
-        emu::Emulator::new(sdl_context, canvas)
-    } else {
-        emu::Emulator::new_headless()
-    };
-
-    let mut loader: Box<dyn loader::Loader> = match matches.value_of("LOADER") {
-        Some("bin") => Box::new(loader::BinLoader {}) as Box<dyn loader::Loader>,
-        Some("ascii") => Box::new(loader::AsciiLoader {}) as Box<dyn loader::Loader>,
+    let mut emu = match matches.value_of("LOADER") {
+        Some("bin") => {
+            let mut loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
+            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
+        }
+        Some("ascii") => {
+            let mut loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
+            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
+        }
         Some("nes") => {
+            let mut loader: Box<dyn loader::Loader> = loader::InesLoader::new();
+            let mapper = loader.load(matches.value_of("INPUT").unwrap());
+
+            let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+                let sdl_context = sdl2::init()?;
+
+                let video_subsystem = sdl_context.video()?;
+                let window = video_subsystem
+                    .window("Krankulator", 256, 240)
+                    .position_centered()
+                    .build()
+                    .map_err(|e| e.to_string())?;
+                let canvas = window
+                    .into_canvas()
+                    .target_texture()
+                    .present_vsync()
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                emu::Emulator::new(mapper, sdl_context, canvas)
+            } else {
+                emu::Emulator::new_headless(mapper)
+            };
+
             emu.cpu.status = 0x34;
             emu.cpu.sp = 0xfd;
             emu.toggle_should_trigger_nmi(true);
 
-            loader::InesLoader::new() as Box<dyn loader::Loader>
+            emu
         }
-        None => Box::new(loader::BinLoader {}) as Box<dyn loader::Loader>,
+        None => {
+            let mut loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
+            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
+        }
 
         _ => {
             println!("Invalid loader, see --help");
             std::process::exit(1);
         }
     };
-
-    emu.install_cartridge(loader.load(matches.value_of("INPUT").unwrap()));
 
     if matches.is_present("BREAKPOINT") {
         for breakpoint in matches.values_of("BREAKPOINT").unwrap() {
@@ -94,8 +104,8 @@ mod tests {
 
     #[test]
     fn test_adc_zeropage() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/adc_zeropage")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/adc_zeropage")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x0);
@@ -107,8 +117,8 @@ mod tests {
 
     #[test]
     fn test_instructions() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/instructions")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/instructions")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x84);
@@ -119,8 +129,8 @@ mod tests {
 
     #[test]
     fn test_lda_sta() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/ldasta")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ldasta")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 8);
@@ -131,8 +141,8 @@ mod tests {
 
     #[test]
     fn test_transfers() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/transfers")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/transfers")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -145,8 +155,7 @@ mod tests {
 
     #[test]
     fn test_subtract_with_carry() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/sbc")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/sbc")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0xfc);
@@ -156,8 +165,8 @@ mod tests {
 
     #[test]
     fn test_stores() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/stores")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/stores")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -173,8 +182,8 @@ mod tests {
 
     #[test]
     fn test_compares() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/compares")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/compares")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -188,8 +197,7 @@ mod tests {
 
     #[test]
     fn test_bne() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/bne")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/bne")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 3);
@@ -200,8 +208,7 @@ mod tests {
 
     #[test]
     fn test_beq() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/beq")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/beq")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 1);
@@ -212,8 +219,8 @@ mod tests {
 
     #[test]
     fn test_take_no_branch() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/take_no_branch")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/take_no_branch")));
         emu.run();
 
         assert_eq!(emu.cpu.y, 8);
@@ -221,8 +228,9 @@ mod tests {
 
     #[test]
     fn test_take_all_branches() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/take_all_branches")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(
+            "input/take_all_branches",
+        )));
         emu.run();
 
         assert_eq!(emu.cpu.x, 8);
@@ -230,8 +238,8 @@ mod tests {
 
     #[test]
     fn test_stackloop() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/stackloop")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/stackloop")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -248,8 +256,7 @@ mod tests {
 
     #[test]
     fn test_jmp() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/jmp")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/jmp")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x03);
@@ -258,8 +265,8 @@ mod tests {
 
     #[test]
     fn test_jsrrts() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_ascii(&String::from("input/jsrtrs")));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/jsrtrs")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -270,8 +277,7 @@ mod tests {
 
     #[test]
     fn test_klaus_2m5() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_bin(&String::from(
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_bin(&String::from(
             "input/6502_functional_test.bin",
         )));
         emu.toggle_should_trigger_nmi(false);
@@ -285,8 +291,7 @@ mod tests {
 
     #[test]
     fn test_nes_nestest() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_nes(&String::from(
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes-test-roms/nestest.nes",
         )));
         emu.cpu.pc = 0xc000;
@@ -351,8 +356,7 @@ mod tests {
 
     #[test]
     fn test_nes_instr_test() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless();
-        emu.install_cartridge(loader::load_nes(&String::from(
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes-test-roms/all_instrs.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);

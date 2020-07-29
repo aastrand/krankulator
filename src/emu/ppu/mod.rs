@@ -1,4 +1,4 @@
-use super::memory::mapper;
+use super::memory;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,19 +15,19 @@ PPUADDR	$2006	aaaa aaaa	PPU read/write address (two writes: most significant byt
 PPUDATA	$2007	dddd dddd	PPU data read/write
 OAMDMA	$4014	aaaa aaaa	OAM DMA high address
 */
-pub const CTRL_REG_ADDR: usize = 0x2000;
+pub const CTRL_REG_ADDR: u16 = 0x2000;
 pub const CTRL_NMI_ENABLE: u8 = 0b1000_0000;
 
-pub const MASK_REG_ADDR: usize = 0x2001;
-pub const STATUS_REG_ADDR: usize = 0x2002;
+pub const MASK_REG_ADDR: u16 = 0x2001;
+pub const STATUS_REG_ADDR: u16 = 0x2002;
 pub const VERTICAL_BLANK_BIT: u8 = 0b1000_0000;
 
-pub const OAM_ADDR: usize = 0x2003;
-pub const OAM_DATA_ADDR: usize = 0x2004;
-pub const SCROLL_ADDR: usize = 0x2005;
-pub const ADDR_ADDR: usize = 0x2006;
-pub const DATA_ADDR: usize = 0x2007;
-pub const _OAM_DMA: usize = 0x4014;
+pub const OAM_ADDR: u16 = 0x2003;
+pub const OAM_DATA_ADDR: u16 = 0x2004;
+pub const SCROLL_ADDR: u16 = 0x2005;
+pub const ADDR_ADDR: u16 = 0x2006;
+pub const DATA_ADDR: u16 = 0x2007;
+pub const _OAM_DMA: u16 = 0x4014;
 
 pub const VRAM_SIZE: usize = 2048;
 pub const OAM_DATA_SIZE: usize = 256;
@@ -70,7 +70,7 @@ pub const OAM_DATA_SIZE: usize = 256;
 */
 
 pub struct PPU {
-  mapper: Rc<RefCell<dyn mapper::MemoryMapper>>,
+  mapper: Rc<RefCell<dyn memory::MemoryMapper>>,
 
   vram: Box<[u8; VRAM_SIZE]>,
 
@@ -103,7 +103,7 @@ pub struct PPU {
 impl PPU {
   pub fn new() -> PPU {
     PPU {
-      mapper: Rc::new(RefCell::new(mapper::IdentityMapper::new(0))),
+      mapper: Rc::new(RefCell::new(memory::IdentityMapper::new(0))),
 
       vram: Box::new([0; VRAM_SIZE]),
 
@@ -127,7 +127,7 @@ impl PPU {
     }
   }
 
-  pub fn read(&mut self, addr: usize) -> u8 {
+  pub fn read(&mut self, addr: u16) -> u8 {
     match addr {
       CTRL_REG_ADDR => self.ppu_ctrl,
       MASK_REG_ADDR => self.ppu_mask,
@@ -156,7 +156,7 @@ impl PPU {
     }
   }
 
-  pub fn write(&mut self, addr: usize, value: u8) {
+  pub fn write(&mut self, addr: u16, value: u8) {
     match addr {
       CTRL_REG_ADDR => self.ppu_ctrl = value,
       MASK_REG_ADDR => self.ppu_mask = value,
@@ -169,7 +169,7 @@ impl PPU {
     }
   }
 
-  pub fn install_mapper(&mut self, mapper: Rc<RefCell<dyn mapper::MemoryMapper>>) {
+  pub fn install_mapper(&mut self, mapper: Rc<RefCell<dyn memory::MemoryMapper>>) {
     self.mapper = mapper;
   }
 
