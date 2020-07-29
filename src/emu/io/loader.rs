@@ -32,7 +32,7 @@ impl Loader for AsciiLoader {
             Box::new(memory::IdentityMapper::new(0x600));
         let mut i: u16 = 0;
         for b in code.iter() {
-            mapper.write_bus(0x600 + i as u16, *b);
+            mapper.cpu_write(0x600 + i as u16, *b);
             i += 1;
         }
 
@@ -49,7 +49,7 @@ impl Loader for BinLoader {
         let mut mapper: Box<dyn memory::MemoryMapper> = Box::new(memory::IdentityMapper::new(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
-            mapper.write_bus(i as u16, *b);
+            mapper.cpu_write(i as u16, *b);
             i += 1;
         }
 
@@ -76,6 +76,7 @@ impl Loader for InesLoader {
         let num_prg_blocks = bytes.get(4).unwrap();
         let num_chr_blocks = bytes.get(5).unwrap();
         let flags = bytes.get(6).unwrap();
+        let prg_ram_units = bytes.get(8).unwrap();
         let mapper = flags >> 4;
         let prg_offset: usize = INES_HEADER_SIZE + (*flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (*num_prg_blocks as usize * PRG_BANK_SIZE);
@@ -92,6 +93,9 @@ impl Loader for InesLoader {
 
             prg_banks.push(code);
         }
+
+        println!("Loaded {} PRG banks, with {} PRG RAM units", num_prg_blocks, prg_ram_units);
+
 
         let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
 
@@ -115,6 +119,8 @@ impl Loader for InesLoader {
             1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
+
+        println!("Loaded {} with mapper {}", path, mapper);
 
         result
     }

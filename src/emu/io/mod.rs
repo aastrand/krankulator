@@ -3,6 +3,7 @@ pub mod log;
 
 extern crate sdl2;
 
+use sdl2::event::Event;
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
@@ -10,13 +11,15 @@ use sdl2::EventPump;
 use sdl2::Sdl;
 
 use super::memory;
+use super::ppu;
 
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
-    fn log(&self, logline: &str);
-    fn display(&mut self, mem: &dyn memory::MemoryMapper);
+    fn log(&self, logline: String);
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper);
+    fn render(&mut self, ppu: &mut ppu::PPU);
     fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char>;
-    fn exit(&self, s: &str);
+    fn exit(&self, s: String);
 }
 
 pub struct HeadlessIOHandler {}
@@ -26,19 +29,21 @@ impl IOHandler for HeadlessIOHandler {
         Ok(())
     }
 
-    fn log(&self, logline: &str) {
+    fn log(&self, logline: String) {
         println!("{}", logline);
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem:  &mut dyn memory::MemoryMapper) -> Option<char> {
+    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char> {
         None
     }
 
     #[allow(unused_variables)]
-    fn display(&mut self, mem: &dyn memory::MemoryMapper) {}
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper) {}
 
-    fn exit(&self, s: &str) {
+    fn render(&mut self, ppu: &mut ppu::PPU) {}
+
+    fn exit(&self, s: String) {
         self.log(s);
     }
 }
@@ -66,6 +71,7 @@ impl<'a> IOHandler for SDLIOHandler {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         // clears the canvas with the color we set in `set_draw_color`.
         self.canvas.clear();
+        self.canvas.set_scale(2.0, 2.0);
         // However the canvas has not been updated to the window yet, everything has been processed to
         // an internal buffer, but if we want our buffer to be displayed on the window, we need to call
         // `present`. We need to call this everytime we want to render a new frame on the window.
@@ -74,22 +80,32 @@ impl<'a> IOHandler for SDLIOHandler {
         Ok(())
     }
 
-    fn log(&self, logline: &str) {
+    fn log(&self, logline: String) {
         println!("{}", logline);
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem:  &mut dyn memory::MemoryMapper) -> Option<char> {
+    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char> {
         None
     }
 
     #[allow(unused_variables)]
-    fn display(&mut self, mem: &dyn memory::MemoryMapper) {
-        self.event_pump.poll_event();
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper) {
+        //self.event_pump.poll_event();
+
+        for event in self.event_pump.poll_iter() {
+            if let Event::Quit { .. } = event {
+                std::process::exit(0);
+            };
+        }
+    }
+
+    fn render(&mut self, ppu: &mut ppu::PPU) {
+        ppu.render(&mut self.canvas);
         self.canvas.present();
     }
 
-    fn exit(&self, s: &str) {
+    fn exit(&self, s: String) {
         self.log(s);
     }
 }

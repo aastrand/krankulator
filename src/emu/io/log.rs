@@ -17,7 +17,7 @@ impl LogFormatter {
         }
     }
 
-    pub fn log_stack(&self, mem: &Box<dyn memory::MemoryMapper>, stack_ptr: u8) -> String {
+    pub fn log_stack(&self, mem: &mut Box<dyn memory::MemoryMapper>, stack_ptr: u8) -> String {
         let mut addr: u16 = 0x1ff;
         let mut buf = String::new();
         buf.push_str(&format!("stack contents:"));
@@ -30,7 +30,7 @@ impl LogFormatter {
             buf.push_str(&format!(
                 "0x{:x} = 0x{:x} \t",
                 addr,
-                mem.read_bus(addr)
+                mem.cpu_read(addr)
             ));
             cols += 1;
             addr = addr.wrapping_sub(1);
@@ -153,8 +153,8 @@ mod tests {
     #[test]
     fn test_log_stack() {
         let sut = LogFormatter::new(10);
-        let mem: Box<dyn memory::MemoryMapper> = Box::new(memory::IdentityMapper::new(0));
-        let s = sut.log_stack(&mem, 0xfa);
+        let mut mem: Box<dyn memory::MemoryMapper> = Box::new(memory::IdentityMapper::new(0));
+        let s = sut.log_stack(&mut mem, 0xfa);
 
         assert_eq!(s, "stack contents:0x1ff = 0x0 \t0x1fe = 0x0 \t0x1fd = 0x0 \t0x1fc = 0x0 \t0x1fb = 0x0 \t");
     }

@@ -14,13 +14,13 @@ pub fn debug(emu: &mut Emulator) {
                 writeln!(
                     io,
                     "was self.mem.read_bus(0x{:x}) == 0x{:x}",
-                    addr, emu.mem.read_bus(addr as _)
+                    addr, emu.mem.cpu_read(addr as _)
                 )?;
 
                 if w.len() > 1 {
                     match util::hex_str_to_u8(w[1]) {
                         Ok(v) => {
-                            emu.mem.write_bus(addr as _, v);
+                            emu.mem.cpu_write(addr as _, v);
                             writeln!(io, "self.mem.write_bus(0x{:x}, 0x{:x})", addr, v)?;
                         }
                         _ => {
@@ -107,7 +107,7 @@ pub fn debug(emu: &mut Emulator) {
                 io,
                 "0x{:x}: {}",
                 b,
-                emu.lookup.name(emu.mem.read_bus(*b as _)) // TODO: add arguments,
+                emu.lookup.name(emu.mem.cpu_read(*b as _)) // TODO: add arguments,
             )?;
         }
         Ok(())
