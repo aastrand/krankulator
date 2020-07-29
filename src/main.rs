@@ -4,7 +4,7 @@ mod util;
 use clap::clap_app;
 use emu::io::loader;
 
-fn main() {
+fn main() -> Result<(), String> {
     let matches = clap_app!(myapp =>
         (version: "0.1")
         (author: "Anders Å. <aastrand@gmail.com>")
@@ -19,8 +19,24 @@ fn main() {
         (@arg INPUT: +required "Sets the input file to use")
     )
     .get_matches();
+
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
+    let window = video_subsystem
+        .window("Krankulator", 256, 240)
+        .position_centered()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let canvas = window
+        .into_canvas()
+        .target_texture()
+        .present_vsync()
+        .build()
+        .map_err(|e| e.to_string())?;
+
     let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
-        emu::Emulator::new()
+        emu::Emulator::new(sdl_context, canvas)
     } else {
         emu::Emulator::new_headless()
     };
@@ -68,6 +84,8 @@ fn main() {
     emu.toggle_debug_on_infinite_loop(matches.is_present("DEBUG"));
 
     emu.run();
+
+    Ok(())
 }
 
 #[cfg(test)]
