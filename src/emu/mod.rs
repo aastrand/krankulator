@@ -7,6 +7,10 @@ pub mod ppu;
 use cpu::opcodes;
 use memory::mapper;
 
+use sdl2::render::Canvas;
+use sdl2::video::Window;
+use sdl2::Sdl;
+
 extern crate shrust;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -40,9 +44,9 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new() -> Emulator {
+    pub fn new(sdl_context: Sdl, canvas: Canvas<Window>) -> Emulator {
         Emulator::new_base(
-            Box::new(io::CursesIOHandler::new()),
+            Box::new(io::SDLIOHandler::new(sdl_context, canvas)),
             Box::new(memory::Memory::new()),
         )
     }
@@ -103,7 +107,10 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
-        self.iohandler.init();
+        match self.iohandler.init() {
+            Err(msg) => self.iohandler.log(&msg),
+            _ => {}
+        }
         self.start_time = SystemTime::now();
 
         loop {
@@ -151,6 +158,10 @@ impl Emulator {
                 == ppu::CTRL_NMI_ENABLE
         {
             self.trigger_nmi();
+        }
+
+        if self.cycles % 16666 == 0 {
+            self.iohandler.display(&self.mem);
         }
 
         {
@@ -777,12 +788,6 @@ impl Emulator {
             }
         }
 
-        // TODO: replace this with real memory mapping handlers
-        //self.rng();
-
-        //self.iohandler.input(&mut self.mem);
-        //self.iohandler.display(&self.mem);
-
         self.cpu.pc = self.cpu.pc.wrapping_add(size);
         self.instructions = self.instructions + 1;
         self.cpu.cycle += self.lookup.cycles(opcode) as u64;
@@ -983,28 +988,31 @@ impl Emulator {
         match self.lookup.mode(opcode) {
             opcodes::ADDR_MODE_ABS => self.mem.addr_absolute(self.cpu.pc),
             opcodes::ADDR_MODE_ABX => {
-                let (addr, page_boundary_penalty) = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                let (addr, page_boundary_penalty) =
+                    self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
-            },
+            }
             opcodes::ADDR_MODE_ABY => {
-                let (addr, page_boundary_penalty) = self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                let (addr, page_boundary_penalty) =
+                    self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
-            },
+            }
             opcodes::ADDR_MODE_IMM => self.cpu.pc + 1,
             opcodes::ADDR_MODE_INX => self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x),
             opcodes::ADDR_MODE_INY => {
-                let (addr, page_boundary_penalty) = self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                let (addr, page_boundary_penalty) =
+                    self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
-            },
+            }
             opcodes::ADDR_MODE_NA => 0,
             opcodes::ADDR_MODE_ZP => self.mem.addr_zeropage(self.cpu.pc),
             opcodes::ADDR_MODE_ZPX => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
