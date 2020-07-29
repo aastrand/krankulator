@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::ppu;
+use super::super::*;
 
 /*
 All Banks are fixed,
@@ -18,7 +18,7 @@ const BANK_TWO_ADDR: usize = 0xC000;
 
 pub struct NROMMapper {
     ppu: Rc<RefCell<ppu::PPU>>,
-    _addr_space: Box<[u8; super::MAX_RAM_SIZE]>,
+    _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
     _chr_bank: Box<[u8; NROM_CHR_BANK_SIZE]>,
 }
@@ -30,7 +30,7 @@ impl NROMMapper {
         bank_two: Option<[u8; NROM_PRG_BANK_SIZE]>,
         chr_rom: Option<[u8; NROM_CHR_BANK_SIZE]>,
     ) -> NROMMapper {
-        let mut mem: Box<[u8; super::MAX_RAM_SIZE]> = Box::new([0; super::MAX_RAM_SIZE]);
+        let mut mem: Box<[u8; MAX_RAM_SIZE]> = Box::new([0; MAX_RAM_SIZE]);
 
         mem[BANK_ONE_ADDR..BANK_ONE_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&*bank_one);
 
@@ -52,8 +52,8 @@ impl NROMMapper {
     }
 }
 
-impl super::MemoryMapper for NROMMapper {
-    fn read_bus(&self, addr: usize) -> u8 {
+impl MemoryMapper for NROMMapper {
+    fn read_bus(&self, addr: u16) -> u8 {
         let addr = super::mirror_addr(addr);
         if addr >= 0x2000 && addr < 0x2008 {
             self.ppu.borrow_mut().read(addr)
@@ -62,7 +62,7 @@ impl super::MemoryMapper for NROMMapper {
         }
     }
 
-    fn write_bus(&mut self, addr: usize, value: u8) {
+    fn write_bus(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
 
         if addr >= 0x2000 && addr < 0x2008 {
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_nrom_ram_mirroring() {
-        let mut mapper: Box<dyn super::super::MemoryMapper> =
+        let mut mapper: Box<dyn MemoryMapper> =
             Box::new(NROMMapper::new(Box::new([0; 16384]), None, Some([0; 8192])));
         mapper.write_bus(0x173, 0x42);
 

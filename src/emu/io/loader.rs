@@ -1,18 +1,16 @@
+use super::super::memory;
 use super::super::{super::util, memory::mapper};
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 extern crate hex;
 
 pub trait Loader {
-    fn load(&mut self, path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>>;
+    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper>;
 }
 
 pub struct AsciiLoader {}
 
 impl Loader for AsciiLoader {
-    fn load(&mut self, path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
         let mut code: Vec<u8> = vec![];
 
         if let Ok(lines) = util::read_lines(path) {
@@ -30,11 +28,11 @@ impl Loader for AsciiLoader {
             }
         }
 
-        let mapper: Rc<RefCell<dyn mapper::MemoryMapper>> =
-            Rc::new(RefCell::new(mapper::IdentityMapper::new(0x600)));
-        let mut i: u32 = 0;
+        let mut mapper: Box<dyn memory::MemoryMapper> =
+            Box::new(memory::IdentityMapper::new(0x600));
+        let mut i: u16 = 0;
         for b in code.iter() {
-            mapper.borrow_mut().write_bus(0x600 + i as usize, *b);
+            mapper.write_bus(0x600 + i as u16, *b);
             i += 1;
         }
 
@@ -45,14 +43,13 @@ impl Loader for AsciiLoader {
 pub struct BinLoader {}
 
 impl Loader for BinLoader {
-    fn load(&mut self, path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
         let bytes = util::read_bytes(path);
 
-        let mapper: Rc<RefCell<dyn mapper::MemoryMapper>> =
-            Rc::new(RefCell::new(mapper::IdentityMapper::new(0x400)));
+        let mut mapper: Box<dyn memory::MemoryMapper> = Box::new(memory::IdentityMapper::new(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
-            mapper.borrow_mut().write_bus(i as usize, *b);
+            mapper.write_bus(i as u16, *b);
             i += 1;
         }
 
@@ -73,7 +70,7 @@ const PRG_BANK_SIZE: usize = 16384;
 const CHR_BANK_SIZE: usize = 8192;
 
 impl Loader for InesLoader {
-    fn load(&mut self, path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
         let bytes = util::read_bytes(path);
 
         let num_prg_blocks = bytes.get(4).unwrap();
@@ -109,13 +106,13 @@ impl Loader for InesLoader {
             chr_banks.push(gfx);
         }
 
-        let result: Rc<RefCell<dyn mapper::MemoryMapper>> = match mapper {
-            0 => Rc::new(RefCell::new(mapper::nrom::NROMMapper::new(
+        let result: Box<dyn memory::MemoryMapper> = match mapper {
+            0 => Box::new(mapper::nrom::NROMMapper::new(
                 Box::new(*prg_banks.get(0).unwrap()),
                 prg_banks.pop(),
                 chr_banks.pop(),
-            ))),
-            1 => Rc::new(RefCell::new(mapper::mmc1::MMC1Mapper::new(prg_banks))),
+            )),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 
@@ -124,19 +121,19 @@ impl Loader for InesLoader {
 }
 
 #[allow(dead_code)] // only used in tests
-pub fn load_ascii(path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+pub fn load_ascii(path: &str) -> Box<dyn memory::MemoryMapper> {
     let mut l: Box<dyn Loader> = Box::new(AsciiLoader {});
     l.load(path)
 }
 
 #[allow(dead_code)] // only used in tests
-pub fn load_bin(path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+pub fn load_bin(path: &str) -> Box<dyn memory::MemoryMapper> {
     let mut l: Box<dyn Loader> = Box::new(BinLoader {});
     l.load(path)
 }
 
 #[allow(dead_code)] // only used in tests
-pub fn load_nes(path: &str) -> Rc<RefCell<dyn mapper::MemoryMapper>> {
+pub fn load_nes(path: &str) -> Box<dyn memory::MemoryMapper> {
     let mut l: Box<dyn Loader> = InesLoader::new();
     l.load(path)
 }

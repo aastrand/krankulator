@@ -3,15 +3,16 @@ use std::cmp::max;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::ppu;
+use super::super::ppu;
+use super::super::*;
 
 const BANK_SIZE: usize = 16 * 1024;
 const CPU_RAM_SIZE: usize = 2 * 1024;
 const MMC_RAM_SIZE: usize = 8 * 1024;
 
-const MMC_RAM_ADDR: usize = 0x6000;
-const LOW_BANK_ADDR: usize = 0x8000;
-const HIGH_BANK_ADDR: usize = 0xc000;
+const MMC_RAM_ADDR: u16 = 0x6000;
+const LOW_BANK_ADDR: u16 = 0x8000;
+const HIGH_BANK_ADDR: u16 = 0xc000;
 
 pub struct MMC1Mapper {
     ppu: Rc<RefCell<ppu::PPU>>,
@@ -113,8 +114,8 @@ impl MMC1Mapper {
         }
     }
 
-    fn _read_bus(&self, mut addr: usize) -> u8 {
-        addr = super::mirror_addr(addr);
+    fn _read_bus(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
         let page = super::addr_to_page(addr);
 
         match page {
@@ -145,8 +146,8 @@ impl MMC1Mapper {
         }
     }
 
-    fn _write_bus(&mut self, mut addr: usize, value: u8) {
-        addr = super::mirror_addr(addr);
+    fn _write_bus(&mut self, addr: u16, value: u8) {
+        let addr = super::mirror_addr(addr);
         let page = super::addr_to_page(addr);
 
         match page {
@@ -243,12 +244,12 @@ impl MMC1Mapper {
     }
 }
 
-impl super::MemoryMapper for MMC1Mapper {
-    fn read_bus(&self, addr: usize) -> u8 {
+impl MemoryMapper for MMC1Mapper {
+    fn read_bus(&self, addr: u16) -> u8 {
         self._read_bus(addr)
     }
 
-    fn write_bus(&mut self, addr: usize, value: u8) {
+    fn write_bus(&mut self, addr: u16, value: u8) {
         self._write_bus(addr, value);
     }
 
@@ -276,7 +277,7 @@ mod tests {
         prg_banks[15][0x3ffc] = 0x11;
         prg_banks[15][0x3ffd] = 0x47;
 
-        let mapper: Box<dyn super::super::MemoryMapper> = Box::new(MMC1Mapper::new(prg_banks));
+        let mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(prg_banks));
 
         assert_eq!(mapper.code_start(), 0x4711);
     }
