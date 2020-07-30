@@ -11,9 +11,7 @@ use sdl2::video::Window;
 use sdl2::Sdl;
 
 extern crate shrust;
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::time::SystemTime;
 
 #[derive(PartialEq)]
@@ -26,7 +24,6 @@ pub enum CycleState {
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: Box<dyn memory::MemoryMapper>,
-    pub ppu: Rc<RefCell<ppu::PPU>>,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
     logformatter: io::log::LogFormatter,
@@ -52,10 +49,7 @@ impl Emulator {
     }
 
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
-        Emulator::new_base(
-            Box::new(io::HeadlessIOHandler {}),
-            mapper,
-        )
+        Emulator::new_base(Box::new(io::HeadlessIOHandler {}), mapper)
     }
 
     pub fn _new() -> Emulator {
@@ -67,7 +61,7 @@ impl Emulator {
 
     fn new_base(
         iohandler: Box<dyn io::IOHandler>,
-        mapper: Box<dyn memory::MemoryMapper>,
+        mut mapper: Box<dyn memory::MemoryMapper>,
     ) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
 
@@ -77,7 +71,6 @@ impl Emulator {
         Emulator {
             cpu: cpu,
             mem: mapper,
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
             lookup: lookup,
             iohandler: iohandler,
             logformatter: io::log::LogFormatter::new(30),
@@ -114,7 +107,7 @@ impl Emulator {
 
     pub fn run(&mut self) {
         match self.iohandler.init() {
-            Err(msg) => self.iohandler.log(&msg),
+            Err(msg) => self.iohandler.log(msg),
             _ => {}
         }
         self.start_time = SystemTime::now();
@@ -138,18 +131,18 @@ impl Emulator {
             }
 
             if self.cpu.pc == self.cpu.last_instruction {
-                if self.mem.read_bus(self.cpu.last_instruction as _) != opcodes::BRK {
+                if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
                     let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
-                    self.iohandler.log(&msg);
+                    self.iohandler.log(msg);
                     if self.should_debug_on_infinite_loop {
                         self.debug();
                     } else {
-                        self.exit("");
+                        self.exit("".to_owned());
                         state = CycleState::Exiting
                     }
                 } else {
                     let msg = format!("reached probable end of code");
-                    self.exit(&msg);
+                    self.exit(msg);
                     state = CycleState::Exiting
                 }
             }
@@ -160,17 +153,18 @@ impl Emulator {
 
         if self.should_trigger_nmi
             && self.cycles % 16666 == 0
-            && self.mem.read_bus(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE == ppu::CTRL_NMI_ENABLE
+            && self.mem.cpu_read(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE == ppu::CTRL_NMI_ENABLE
         {
             self.trigger_nmi();
         }
 
         if self.cycles % 16666 == 0 {
-            self.iohandler.display(&*self.mem);
+            self.iohandler.poll(&*self.mem);
+            self.iohandler.render(self.mem.ppu());
         }
 
         {
-            self.ppu.borrow_mut().cycle();
+            self.mem.ppu().cycle();
         }
 
         self.cycles += 1;
@@ -188,12 +182,12 @@ impl Emulator {
                 self.cpu.register_str(),
                 self.cycles,
                 self.cpu.status_str(),
-                self.ppu.borrow().scanline,
-                self.ppu.borrow().cycle,
+                self.mem.ppu().scanline,
+                self.mem.ppu().cycle,
                 &self.logdata,
             ));
             if self.verbose {
-                self.iohandler.log(&log_line);
+                self.iohandler.log(log_line);
             }
         }
     }
@@ -202,8 +196,10 @@ impl Emulator {
         self.logdata.clear();
 
         self.cpu.last_instruction = self.cpu.pc;
-        let opcode = self.mem.read_bus(self.cpu.pc as _);
+        let opcode = self.mem.cpu_read(self.cpu.pc as _);
         let size: u16 = self.lookup.size(opcode);
+
+        //println!("Executing {}", self.lookup.name(opcode));
 
         match opcode {
             opcodes::AND_ABS
@@ -215,7 +211,7 @@ impl Emulator {
             | opcodes::AND_ZP
             | opcodes::AND_ZPX => {
                 let addr = self.addr(opcode);
-                self.cpu.and(self.mem.read_bus(addr));
+                self.cpu.and(self.mem.cpu_read(addr));
             }
 
             opcodes::ADC_ABS
@@ -243,11 +239,11 @@ impl Emulator {
             opcodes::BIT_ABS | opcodes::BIT_ZP => {
                 // Test BITs
                 let addr = self.addr(opcode);
-                self.cpu.bit(self.mem.read_bus(addr));
+                self.cpu.bit(self.mem.cpu_read(addr));
             }
 
             opcodes::BPL => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on PLus)
                 if !self.cpu.negative_flag() {
@@ -255,7 +251,7 @@ impl Emulator {
                 }
             }
             opcodes::BMI => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on MInus
                 if self.cpu.negative_flag() {
@@ -263,7 +259,7 @@ impl Emulator {
                 }
             }
             opcodes::BVC => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Clear
                 if !self.cpu.overflow_flag() {
@@ -271,7 +267,7 @@ impl Emulator {
                 }
             }
             opcodes::BVS => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on oVerflow Set
                 if self.cpu.overflow_flag() {
@@ -279,7 +275,7 @@ impl Emulator {
                 }
             }
             opcodes::BCC => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Clear
                 if !self.cpu.carry_flag() {
@@ -287,7 +283,7 @@ impl Emulator {
                 }
             }
             opcodes::BCS => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Carry Set
                 if self.cpu.carry_flag() {
@@ -295,7 +291,7 @@ impl Emulator {
                 }
             }
             opcodes::BEQ => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on EQual
                 if self.cpu.zero_flag() {
@@ -303,7 +299,7 @@ impl Emulator {
                 }
             }
             opcodes::BNE => {
-                let operand: i8 = self.mem.read_bus(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
                 self.logdata.push((operand as u16) & 0xff);
                 // Branch on Not Equal
                 if !self.cpu.zero_flag() {
@@ -368,19 +364,19 @@ impl Emulator {
             | opcodes::CMP_ZPX => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                let value = self.mem.read_bus(addr);
+                let value = self.mem.cpu_read(addr);
                 self.logdata.push(value as u16);
                 self.cpu.compare(self.cpu.a, value);
             }
 
             opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {
                 let addr = self.addr(opcode);
-                self.cpu.compare(self.cpu.x, self.mem.read_bus(addr));
+                self.cpu.compare(self.cpu.x, self.mem.cpu_read(addr));
             }
 
             opcodes::CPY_ABS | opcodes::CPY_IMM | opcodes::CPY_ZP => {
                 let addr = self.addr(opcode);
-                self.cpu.compare(self.cpu.y, self.mem.read_bus(addr));
+                self.cpu.compare(self.cpu.y, self.mem.cpu_read(addr));
             }
 
             opcodes::DEC_ABS | opcodes::DEC_ABX | opcodes::DEC_ZP | opcodes::DEC_ZPX => {
@@ -449,8 +445,8 @@ impl Emulator {
                     addr + 1
                 };
 
-                let hb = self.mem.read_bus(adjusted_addr);
-                let lb = self.mem.read_bus(addr);
+                let hb = self.mem.cpu_read(adjusted_addr);
+                let lb = self.mem.cpu_read(addr);
 
                 self.logdata.push(addr);
 
@@ -735,19 +731,19 @@ impl Emulator {
                 // Store hides page crossing penalties
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.write_bus(addr, self.cpu.a);
+                self.mem.cpu_write(addr, self.cpu.a);
             }
 
             opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.write_bus(addr, self.cpu.x);
+                self.mem.cpu_write(addr, self.cpu.x);
             }
 
             opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.write_bus(addr, self.cpu.y);
+                self.mem.cpu_write(addr, self.cpu.y);
             }
 
             opcodes::TAX => {
@@ -803,17 +799,17 @@ impl Emulator {
     fn adc(&mut self, addr: u16) {
         // Add Memory to Accumulator with Carry
         self.logdata.push(addr);
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         self.cpu.add_to_a_with_carry(operand);
     }
 
     fn asl(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.read_bus(addr);
+        let value: u8 = self.mem.cpu_read(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.asl(value);
         self.logdata.push(result as u16);
-        self.mem.write_bus(addr, result);
+        self.mem.cpu_write(addr, result);
 
         result
     }
@@ -831,20 +827,20 @@ impl Emulator {
 
     fn dec(&mut self, addr: u16) {
         // DECrement memory
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
-        self.mem.write_bus(addr, value);
+        self.mem.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
     }
 
     fn dcp(&mut self, addr: u16) {
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
-        self.mem.write_bus(addr, value);
+        self.mem.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -854,28 +850,28 @@ impl Emulator {
 
     fn eor(&mut self, addr: u16) {
         // bitwise Exclusive OR
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         self.cpu.eor(operand);
     }
 
     fn inc(&mut self, addr: u16) {
         // INCrement memory
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_add(1);
-        self.mem.write_bus(addr, value);
+        self.mem.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
     }
 
     fn isb(&mut self, addr: u16) {
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
 
         let value: u8 = operand.wrapping_add(1);
-        self.mem.write_bus(addr, value);
+        self.mem.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -891,11 +887,11 @@ impl Emulator {
     }
 
     fn lsr(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.read_bus(addr);
+        let value: u8 = self.mem.cpu_read(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.lsr(value);
         self.logdata.push(result as u16);
-        self.mem.write_bus(addr, result);
+        self.mem.cpu_write(addr, result);
 
         result
     }
@@ -903,7 +899,7 @@ impl Emulator {
     fn ora(&mut self, addr: u16) {
         // Bitwise OR with Accumulator
         self.logdata.push(addr);
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         self.cpu.ora(operand);
     }
@@ -914,21 +910,21 @@ impl Emulator {
     }
 
     fn rol(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.read_bus(addr);
+        let value: u8 = self.mem.cpu_read(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.rol(value);
         self.logdata.push(result as u16);
-        self.mem.write_bus(addr, result);
+        self.mem.cpu_write(addr, result);
 
         result
     }
 
     fn ror(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.read_bus(addr);
+        let value: u8 = self.mem.cpu_read(addr);
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.ror(value);
         self.logdata.push(result as u16);
-        self.mem.write_bus(addr, result);
+        self.mem.cpu_write(addr, result);
 
         result
     }
@@ -940,12 +936,12 @@ impl Emulator {
 
     fn sax(&mut self, addr: u16) {
         self.logdata.push(addr);
-        self.mem.write_bus(addr, self.cpu.a & self.cpu.x);
+        self.mem.cpu_write(addr, self.cpu.a & self.cpu.x);
     }
 
     fn sbc(&mut self, addr: u16) {
         self.logdata.push(addr);
-        let operand: u8 = self.mem.read_bus(addr);
+        let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         self.cpu.sub_from_a_with_carry(operand);
     }
@@ -982,7 +978,7 @@ impl Emulator {
 
     fn load(&mut self, addr: u16) -> u8 {
         self.logdata.push(addr);
-        let val: u8 = self.mem.read_bus(addr);
+        let val: u8 = self.mem.cpu_read(addr);
         self.logdata.push(val as u16);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
@@ -1039,8 +1035,8 @@ impl Emulator {
         self.cpu.pc = addr;
     }
 
-    pub fn log_str(&self) -> String {
-        let opcode: u8 = self.mem.read_bus(self.cpu.pc);
+    pub fn log_str(&mut self) -> String {
+        let opcode: u8 = self.mem.cpu_read(self.cpu.pc);
         self.logformatter.log_str(
             self.mem.raw_opcode(self.cpu.pc),
             self.lookup.name(opcode),
@@ -1049,35 +1045,36 @@ impl Emulator {
             self.cpu.register_str(),
             self.cycles,
             self.cpu.status_str(),
-            self.ppu.borrow().scanline,
-            self.ppu.borrow().cycle,
+            self.mem.ppu().scanline,
+            self.mem.ppu().cycle,
             &vec![],
         )
     }
 
     fn debug(&mut self) {
-        self.iohandler.log(&format!(
+        self.iohandler.log(format!(
             "entering debug mode after {} instructions ({} cycles)!",
             self.instructions, self.cycles
         ));
 
         if !self.verbose {
-            self.iohandler.log(&self.logformatter.replay());
+            self.iohandler.log(self.logformatter.replay());
         }
 
         self.iohandler
-            .log(&self.logformatter.log_stack(&self.mem, self.cpu.sp));
+            .log(self.logformatter.log_stack(&mut self.mem, self.cpu.sp));
 
-        self.iohandler.log(&self.log_str());
+        let logline = self.log_str();
+        self.iohandler.log(logline);
 
         dbg::debug(self);
     }
 
-    fn exit(&self, reason: &str) {
-        self.iohandler.log(&"");
+    fn exit(&self, reason: String) {
+        self.iohandler.log("".to_owned());
         self.iohandler.log(reason);
 
-        self.iohandler.exit(&format!(
+        self.iohandler.exit(format!(
             "Exiting after {} instructions, {} cycles ({:.1} MHz)",
             self.instructions,
             self.cycles,
@@ -1087,7 +1084,7 @@ impl Emulator {
 
     #[allow(dead_code)]
     fn rng(&mut self) {
-        self.mem.write_bus(0xfe, rand::random::<u8>());
+        self.mem.cpu_write(0xfe, rand::random::<u8>());
     }
 }
 
@@ -1102,8 +1099,8 @@ mod emu_tests {
 
         assert_eq!(0x4712, emu.addr(opcodes::ADC_IMM));
 
-        emu.mem.write_bus(0x4712, 0x34);
-        emu.mem.write_bus(0x4713, 0x12);
+        emu.mem.cpu_write(0x4712, 0x34);
+        emu.mem.cpu_write(0x4713, 0x12);
         assert_eq!(0x1234, emu.addr(opcodes::ADC_ABS));
 
         emu.cpu.x = 1;
@@ -1127,8 +1124,8 @@ mod emu_tests {
     fn test_and_imm() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::AND_IMM);
-        emu.mem.write_bus(start + 1, 0b1000_0000);
+        emu.mem.cpu_write(start, opcodes::AND_IMM);
+        emu.mem.cpu_write(start + 1, 0b1000_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
@@ -1136,8 +1133,8 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::AND_IMM);
-        emu.mem.write_bus(start + 1, 0);
+        emu.mem.cpu_write(start, opcodes::AND_IMM);
+        emu.mem.cpu_write(start + 1, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -1148,11 +1145,11 @@ mod emu_tests {
     fn test_and_zpx() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::AND_ZPX);
-        emu.mem.write_bus(start + 1, 0x01);
-        emu.mem.write_bus(0x01, 0x01);
+        emu.mem.cpu_write(start, opcodes::AND_ZPX);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0x01);
         emu.cpu.x = 0x01;
-        emu.mem.write_bus(0x02, 0b1000_0000);
+        emu.mem.cpu_write(0x02, 0b1000_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
@@ -1160,8 +1157,8 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::AND_IMM);
-        emu.mem.write_bus(0x02, 0);
+        emu.mem.cpu_write(start, opcodes::AND_IMM);
+        emu.mem.cpu_write(0x02, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
         assert_eq!(emu.cpu.negative_flag(), false);
@@ -1172,11 +1169,11 @@ mod emu_tests {
     fn test_bit_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::BIT_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::BIT_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
 
-        emu.mem.write_bus(0x4711, 0b1100_0000);
+        emu.mem.cpu_write(0x4711, 0b1100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1185,7 +1182,7 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x4711, 0b0100_0000);
+        emu.mem.cpu_write(0x4711, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1198,9 +1195,9 @@ mod emu_tests {
     fn test_bit_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::BIT_ZP);
-        emu.mem.write_bus(start + 1, 0x01);
-        emu.mem.write_bus(0x01, 0b1100_0000);
+        emu.mem.cpu_write(start, opcodes::BIT_ZP);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0b1100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1209,7 +1206,7 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x01, 0b0100_0000);
+        emu.mem.cpu_write(0x01, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
@@ -1222,29 +1219,29 @@ mod emu_tests {
     fn test_brk() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::BRK);
+        emu.mem.cpu_write(start, opcodes::BRK);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), false);
         assert_eq!(emu.cpu.pc, 0x600);
 
-        emu.mem.write_bus(0xffff, 0x47);
-        emu.mem.write_bus(0xfffe, 0x11);
+        emu.mem.cpu_write(0xffff, 0x47);
+        emu.mem.cpu_write(0xfffe, 0x11);
         emu.cpu.set_status_flag(cpu::NEGATIVE_BIT);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), true);
         assert_eq!(emu.cpu.pc, 0x4711);
-        assert_eq!(emu.mem.read_bus(0x1ff), 0x6);
-        assert_eq!(emu.mem.read_bus(0x1fe), 0x2);
-        assert_eq!(emu.mem.read_bus(0x1fd), 0b1011_0000);
+        assert_eq!(emu.mem.cpu_read(0x1ff), 0x6);
+        assert_eq!(emu.mem.cpu_read(0x1fe), 0x2);
+        assert_eq!(emu.mem.cpu_read(0x1fd), 0b1011_0000);
     }
 
     #[test]
     fn test_clc() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::CLC);
+        emu.mem.cpu_write(start, opcodes::CLC);
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
         emu.run();
 
@@ -1255,7 +1252,7 @@ mod emu_tests {
     fn test_cld() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::CLD);
+        emu.mem.cpu_write(start, opcodes::CLD);
         emu.cpu.set_status_flag(cpu::DECIMAL_BIT);
         emu.run();
 
@@ -1266,7 +1263,7 @@ mod emu_tests {
     fn test_cli() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::CLI);
+        emu.mem.cpu_write(start, opcodes::CLI);
         emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         emu.run();
 
@@ -1277,7 +1274,7 @@ mod emu_tests {
     fn test_clv() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::CLV);
+        emu.mem.cpu_write(start, opcodes::CLV);
         emu.cpu.set_status_flag(cpu::OVERFLOW_BIT);
         emu.run();
 
@@ -1289,10 +1286,10 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
-        emu.mem.write_bus(start, opcodes::CMP_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1302,10 +1299,10 @@ mod emu_tests {
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1315,10 +1312,10 @@ mod emu_tests {
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
-        emu.mem.write_bus(start, opcodes::CMP_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 1);
 
         emu.run();
 
@@ -1333,10 +1330,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1347,10 +1344,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1361,10 +1358,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 1);
 
         emu.run();
 
@@ -1379,10 +1376,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1393,10 +1390,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1407,10 +1404,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 1);
 
         emu.run();
 
@@ -1425,8 +1422,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_IMM);
-        emu.mem.write_bus(start + 1, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_IMM);
+        emu.mem.cpu_write(start + 1, 0);
 
         emu.run();
 
@@ -1437,8 +1434,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_IMM);
-        emu.mem.write_bus(start + 1, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_IMM);
+        emu.mem.cpu_write(start + 1, 0);
 
         emu.run();
 
@@ -1449,8 +1446,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_IMM);
-        emu.mem.write_bus(start + 1, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_IMM);
+        emu.mem.cpu_write(start + 1, 1);
 
         emu.run();
 
@@ -1465,11 +1462,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x11);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_INX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x11);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -1479,11 +1476,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x11);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_INX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x11);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1494,11 +1491,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x11);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_INX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x11);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 1);
 
         emu.run();
 
@@ -1513,11 +1510,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INY);
-        emu.mem.write_bus(start + 1, 0x42);
-        emu.mem.write_bus(0x42, 0x10);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_INY);
+        emu.mem.cpu_write(start + 1, 0x42);
+        emu.mem.cpu_write(0x42, 0x10);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -1527,11 +1524,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INY);
-        emu.mem.write_bus(start + 1, 0x42);
-        emu.mem.write_bus(0x42, 0x10);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_INY);
+        emu.mem.cpu_write(start + 1, 0x42);
+        emu.mem.cpu_write(0x42, 0x10);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 0);
 
         emu.run();
 
@@ -1542,11 +1539,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::CMP_INY);
-        emu.mem.write_bus(start + 1, 0x42);
-        emu.mem.write_bus(0x42, 0x10);
-        emu.mem.write_bus(0x43, 0x47);
-        emu.mem.write_bus(0x4711, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_INY);
+        emu.mem.cpu_write(start + 1, 0x42);
+        emu.mem.cpu_write(0x42, 0x10);
+        emu.mem.cpu_write(0x43, 0x47);
+        emu.mem.cpu_write(0x4711, 1);
 
         emu.run();
 
@@ -1561,9 +1558,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ZPX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ZPX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0);
 
         emu.run();
 
@@ -1574,9 +1571,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ZPX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0);
+        emu.mem.cpu_write(start, opcodes::CMP_ZPX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0);
 
         emu.run();
 
@@ -1587,9 +1584,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::CMP_ZPX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 1);
+        emu.mem.cpu_write(start, opcodes::CMP_ZPX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 1);
 
         emu.run();
 
@@ -1602,20 +1599,20 @@ mod emu_tests {
     fn test_dec_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::DEC_ZP);
-        emu.mem.write_bus(start + 1, 0x01);
-        emu.mem.write_bus(0x01, 0x00);
+        emu.mem.cpu_write(start, opcodes::DEC_ZP);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0x00);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0xff);
+        assert_eq!(emu.mem.cpu_read(0x01), 0xff);
         assert_eq!(emu.cpu.negative_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x01, 1);
+        emu.mem.cpu_write(0x01, 1);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0);
+        assert_eq!(emu.mem.cpu_read(0x01), 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
     }
@@ -1624,33 +1621,33 @@ mod emu_tests {
     fn test_dcp_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::DCP_ZP);
-        emu.mem.write_bus(start + 1, 0x01);
-        emu.mem.write_bus(0x01, 0x00);
+        emu.mem.cpu_write(start, opcodes::DCP_ZP);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0x00);
         emu.cpu.a = 0xff;
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0xff);
+        assert_eq!(emu.mem.cpu_read(0x01), 0xff);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
         assert_eq!(emu.cpu.carry_flag(), true);
 
         emu.cpu.pc = start;
         emu.cpu.a = 0;
-        emu.mem.write_bus(0x01, 0x00);
+        emu.mem.cpu_write(0x01, 0x00);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0xff);
+        assert_eq!(emu.mem.cpu_read(0x01), 0xff);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), false);
         assert_eq!(emu.cpu.carry_flag(), false);
 
         emu.cpu.pc = start;
         emu.cpu.a = 1;
-        emu.mem.write_bus(0x01, 0x01);
+        emu.mem.cpu_write(0x01, 0x01);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0);
+        assert_eq!(emu.mem.cpu_read(0x01), 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), false);
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -1660,8 +1657,8 @@ mod emu_tests {
     fn test_eor_imm() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::EOR_IMM);
-        emu.mem.write_bus(start + 1, 0b1000_1000);
+        emu.mem.cpu_write(start, opcodes::EOR_IMM);
+        emu.mem.cpu_write(start + 1, 0b1000_1000);
         emu.cpu.a = 0b0000_1000;
         emu.run();
 
@@ -1674,20 +1671,20 @@ mod emu_tests {
     fn test_inc_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::INC_ZP);
-        emu.mem.write_bus(start + 1, 0x01);
-        emu.mem.write_bus(0x01, 0xff);
+        emu.mem.cpu_write(start, opcodes::INC_ZP);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0xff);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 0);
+        assert_eq!(emu.mem.cpu_read(0x01), 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), true);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x01, 127);
+        emu.mem.cpu_write(0x01, 127);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x01), 128);
+        assert_eq!(emu.mem.cpu_read(0x01), 128);
         assert_eq!(emu.cpu.negative_flag(), true);
         assert_eq!(emu.cpu.zero_flag(), false);
     }
@@ -1696,27 +1693,27 @@ mod emu_tests {
     fn test_isb() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::ISB_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::ISB_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
 
         emu.cpu.a = 0x20;
-        emu.mem.write_bus(0x4711, 0x10);
+        emu.mem.cpu_write(0x4711, 0x10);
 
         emu.run();
 
         // carry = false => sub 1 extra
         assert_eq!(emu.cpu.a, 0xe);
-        assert_eq!(emu.mem.read_bus(0x4711), 0x11);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0x11);
     }
 
     #[test]
     fn test_jmp_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::JMP_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::JMP_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x4711);
@@ -1726,10 +1723,10 @@ mod emu_tests {
     fn test_jmp_ind() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::JMP_IND);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::JMP_IND);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
 
         emu.run();
 
@@ -1740,14 +1737,14 @@ mod emu_tests {
     fn test_jmp_ind_last_byte() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::JMP_IND);
-        emu.mem.write_bus(start + 1, 0xff);
-        emu.mem.write_bus(start + 2, 0x30);
-        emu.mem.write_bus(0x3000, 0x47);
-        emu.mem.write_bus(0x30ff, 0x12);
+        emu.mem.cpu_write(start, opcodes::JMP_IND);
+        emu.mem.cpu_write(start + 1, 0xff);
+        emu.mem.cpu_write(start + 2, 0x30);
+        emu.mem.cpu_write(0x3000, 0x47);
+        emu.mem.cpu_write(0x30ff, 0x12);
 
         // should not be used
-        emu.mem.write_bus(0x3100, 0x11);
+        emu.mem.cpu_write(0x3100, 0x11);
 
         emu.run();
 
@@ -1758,29 +1755,29 @@ mod emu_tests {
     fn test_jsr() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::JSR_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::JSR_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
 
         emu.run();
 
         assert_eq!(emu.cpu.pc, 0x4711);
         assert_eq!(emu.cpu.sp, 0xfd);
         assert_eq!(
-            emu.mem.read_bus(0x1ff),
+            emu.mem.cpu_read(0x1ff),
             (memory::CODE_START_ADDR >> 8) as u8
         );
-        assert_eq!(emu.mem.read_bus(0x1fe), 0x02);
+        assert_eq!(emu.mem.cpu_read(0x1fe), 0x02);
     }
 
     #[test]
     fn test_lda_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDA_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::LDA_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
@@ -1792,10 +1789,10 @@ mod emu_tests {
     fn test_lax_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LAX_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::LAX_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
@@ -1808,10 +1805,10 @@ mod emu_tests {
     fn test_lda_abs_flags() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDA_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 255);
+        emu.mem.cpu_write(start, opcodes::LDA_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 255);
         emu.run();
 
         assert_eq!(emu.cpu.a, 255);
@@ -1819,7 +1816,7 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x4711, 0);
+        emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -1832,10 +1829,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDA_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::LDA_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
@@ -1846,10 +1843,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::LDA_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::LDA_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -1860,10 +1857,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::LAX_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x42);
+        emu.mem.cpu_write(start, opcodes::LAX_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -1874,8 +1871,8 @@ mod emu_tests {
     fn test_lda_imm() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDA_IMM);
-        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.cpu_write(start, opcodes::LDA_IMM);
+        emu.mem.cpu_write(start + 1, 0x42);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -1886,10 +1883,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDA_INX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x15);
-        emu.mem.write_bus(0x15, 0x12);
+        emu.mem.cpu_write(start, opcodes::LDA_INX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x15);
+        emu.mem.cpu_write(0x15, 0x12);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x12);
@@ -1900,10 +1897,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LAX_INX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x15);
-        emu.mem.write_bus(0x15, 0x12);
+        emu.mem.cpu_write(start, opcodes::LAX_INX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x15);
+        emu.mem.cpu_write(0x15, 0x12);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x12);
@@ -1915,11 +1912,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::LDA_INY);
-        emu.mem.write_bus(start + 1, 0x16);
-        emu.mem.write_bus(0x16, 0x10);
-        emu.mem.write_bus(0x17, 0x42);
-        emu.mem.write_bus(0x4211, 0x11);
+        emu.mem.cpu_write(start, opcodes::LDA_INY);
+        emu.mem.cpu_write(start + 1, 0x16);
+        emu.mem.cpu_write(0x16, 0x10);
+        emu.mem.cpu_write(0x17, 0x42);
+        emu.mem.cpu_write(0x4211, 0x11);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x11);
@@ -1930,11 +1927,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::LAX_INY);
-        emu.mem.write_bus(start + 1, 0x16);
-        emu.mem.write_bus(0x16, 0x10);
-        emu.mem.write_bus(0x17, 0x42);
-        emu.mem.write_bus(0x4211, 0x11);
+        emu.mem.cpu_write(start, opcodes::LAX_INY);
+        emu.mem.cpu_write(start + 1, 0x16);
+        emu.mem.cpu_write(0x16, 0x10);
+        emu.mem.cpu_write(0x17, 0x42);
+        emu.mem.cpu_write(0x4211, 0x11);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x11);
@@ -1946,11 +1943,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 0x1;
-        emu.mem.write_bus(start, opcodes::LDA_INY);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x41, 0xff);
-        emu.mem.write_bus(0x42, 0x41);
-        emu.mem.write_bus(0x4200, 0x47);
+        emu.mem.cpu_write(start, opcodes::LDA_INY);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x41, 0xff);
+        emu.mem.cpu_write(0x42, 0x41);
+        emu.mem.cpu_write(0x4200, 0x47);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x47);
@@ -1960,9 +1957,9 @@ mod emu_tests {
     fn test_lda_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDA_ZP);
-        emu.mem.write_bus(start + 1, 0x42);
-        emu.mem.write_bus(0x42, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDA_ZP);
+        emu.mem.cpu_write(start + 1, 0x42);
+        emu.mem.cpu_write(0x42, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -1972,9 +1969,9 @@ mod emu_tests {
     fn test_lax_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LAX_ZP);
-        emu.mem.write_bus(start + 1, 0x42);
-        emu.mem.write_bus(0x42, 0x15);
+        emu.mem.cpu_write(start, opcodes::LAX_ZP);
+        emu.mem.cpu_write(start + 1, 0x42);
+        emu.mem.cpu_write(0x42, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -1986,9 +1983,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 8;
-        emu.mem.write_bus(start, opcodes::LAX_ZPY);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x41 + 8, 0x15);
+        emu.mem.cpu_write(start, opcodes::LAX_ZPY);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x41 + 8, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -2000,9 +1997,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDA_ZPX);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x42, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDA_ZPX);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x42, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x15);
@@ -2013,10 +2010,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::LDX_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDX_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2027,9 +2024,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDX_ZP);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x41, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDX_ZP);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x41, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2040,9 +2037,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDX_ZP);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x41, 255);
+        emu.mem.cpu_write(start, opcodes::LDX_ZP);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x41, 255);
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
@@ -2050,7 +2047,7 @@ mod emu_tests {
         assert_eq!(emu.cpu.zero_flag(), false);
 
         emu.cpu.pc = memory::CODE_START_ADDR;
-        emu.mem.write_bus(0x41, 0);
+        emu.mem.cpu_write(0x41, 0);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
@@ -2064,9 +2061,9 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
         emu.cpu.y = 8;
-        emu.mem.write_bus(start, opcodes::LDX_ZPY);
-        emu.mem.write_bus(start + 1, 0x41);
-        emu.mem.write_bus(0x41 + 8, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDX_ZPY);
+        emu.mem.cpu_write(start + 1, 0x41);
+        emu.mem.cpu_write(0x41 + 8, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -2076,10 +2073,10 @@ mod emu_tests {
     fn test_ldy_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDY_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDY_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2090,10 +2087,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::LDY_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDY_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2103,9 +2100,9 @@ mod emu_tests {
     fn test_ldy_zp() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDY_ZP);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x10, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDY_ZP);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x10, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2116,9 +2113,9 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 8;
-        emu.mem.write_bus(start, opcodes::LDY_ZPX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x18, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDY_ZPX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x18, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2128,8 +2125,8 @@ mod emu_tests {
     fn test_ldy_imm() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::LDY_IMM);
-        emu.mem.write_bus(start + 1, 0x15);
+        emu.mem.cpu_write(start, opcodes::LDY_IMM);
+        emu.mem.cpu_write(start + 1, 0x15);
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);
@@ -2140,7 +2137,7 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 3;
-        emu.mem.write_bus(start, opcodes::LSR);
+        emu.mem.cpu_write(start, opcodes::LSR);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x1);
@@ -2162,7 +2159,7 @@ mod emu_tests {
     fn test_nop() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::NOP);
+        emu.mem.cpu_write(start, opcodes::NOP);
 
         emu.run();
 
@@ -2179,8 +2176,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1000_0000;
-        emu.mem.write_bus(start, opcodes::ORA_IMM);
-        emu.mem.write_bus(start + 1, 0b0000_0001);
+        emu.mem.cpu_write(start, opcodes::ORA_IMM);
+        emu.mem.cpu_write(start + 1, 0b0000_0001);
 
         emu.run();
         assert_eq!(emu.cpu.a, 129);
@@ -2189,8 +2186,8 @@ mod emu_tests {
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.cpu.a = 0;
-        emu.mem.write_bus(start, opcodes::ORA_IMM);
-        emu.mem.write_bus(start + 1, 0);
+        emu.mem.cpu_write(start, opcodes::ORA_IMM);
+        emu.mem.cpu_write(start + 1, 0);
 
         emu.run();
         assert_eq!(emu.cpu.a, 0);
@@ -2203,10 +2200,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
-        emu.mem.write_bus(start, opcodes::PHA);
+        emu.mem.cpu_write(start, opcodes::PHA);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x1ff), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x1ff), 0x42);
         assert_eq!(emu.cpu.sp, 0xfe);
     }
 
@@ -2215,8 +2212,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp -= 1;
-        emu.mem.write_bus(0x1ff, 0x42);
-        emu.mem.write_bus(start, opcodes::PLA);
+        emu.mem.cpu_write(0x1ff, 0x42);
+        emu.mem.cpu_write(start, opcodes::PLA);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -2228,10 +2225,10 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
-        emu.mem.write_bus(start, opcodes::PHP);
+        emu.mem.cpu_write(start, opcodes::PHP);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x1ff), 0b0011_0001);
+        assert_eq!(emu.mem.cpu_read(0x1ff), 0b0011_0001);
         assert_eq!(emu.cpu.sp, 0xfe);
     }
 
@@ -2240,8 +2237,8 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp -= 1;
-        emu.mem.write_bus(0x1ff, 0x1);
-        emu.mem.write_bus(start, opcodes::PLP);
+        emu.mem.cpu_write(0x1ff, 0x1);
+        emu.mem.cpu_write(start, opcodes::PLP);
         emu.run();
 
         assert_eq!(emu.cpu.status, 0b0010_0001);
@@ -2252,8 +2249,8 @@ mod emu_tests {
     fn test_plp_overflow() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::PLP);
-        emu.mem.write_bus(0x100, 0x2);
+        emu.mem.cpu_write(start, opcodes::PLP);
+        emu.mem.cpu_write(0x100, 0x2);
 
         emu.run();
 
@@ -2267,14 +2264,14 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b0000_1110;
-        emu.mem.write_bus(start, opcodes::RLA_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0b0111_1000);
+        emu.mem.cpu_write(start, opcodes::RLA_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0b0111_1000);
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x4711), 0b1111_0001);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0b1111_0001);
         assert_eq!(emu.cpu.a, 0b0000_0000);
     }
 
@@ -2282,27 +2279,27 @@ mod emu_tests {
     fn test_rra() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::RRA_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::RRA_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
 
         emu.cpu.a = 0x20;
-        emu.mem.write_bus(0x4711, 0b0000_0010);
+        emu.mem.cpu_write(0x4711, 0b0000_0010);
 
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x21);
-        assert_eq!(emu.mem.read_bus(0x4711), 0x1);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0x1);
     }
 
     #[test]
     fn test_rti() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::RTI);
-        emu.mem.write_bus(0x1ff, 0x6);
-        emu.mem.write_bus(0x1fe, 0x8);
-        emu.mem.write_bus(0x1fd, 0b1011_0000);
+        emu.mem.cpu_write(start, opcodes::RTI);
+        emu.mem.cpu_write(0x1ff, 0x6);
+        emu.mem.cpu_write(0x1fe, 0x8);
+        emu.mem.cpu_write(0x1fd, 0b1011_0000);
         emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         emu.cpu.sp = 0xfc;
         emu.run();
@@ -2315,11 +2312,11 @@ mod emu_tests {
     fn test_rts() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::RTS);
+        emu.mem.cpu_write(start, opcodes::RTS);
         emu.cpu.sp = 0xfd;
         emu.mem
-            .write_bus(0x1ff, (memory::CODE_START_ADDR >> 8) as u8);
-        emu.mem.write_bus(0x1fe, 0x01);
+            .cpu_write(0x1ff, (memory::CODE_START_ADDR >> 8) as u8);
+        emu.mem.cpu_write(0x1fe, 0x01);
 
         emu.run();
         assert_eq!(emu.cpu.pc, 0x0602);
@@ -2332,12 +2329,12 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1111_0000;
         emu.cpu.x = 0b0001_1111;
-        emu.mem.write_bus(start, opcodes::SAX_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::SAX_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x4711), 0b0001_0000);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0b0001_0000);
     }
 
     #[test]
@@ -2346,12 +2343,12 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1111_0001;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::SAX_INX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x11, 0x42);
+        emu.mem.cpu_write(start, opcodes::SAX_INX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x11, 0x42);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x42), 0b0000_0001);
+        assert_eq!(emu.mem.cpu_read(0x42), 0b0000_0001);
     }
 
     #[test]
@@ -2360,11 +2357,11 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1111_0000;
         emu.cpu.x = 0b0001_1111;
-        emu.mem.write_bus(start, opcodes::SAX_ZP);
-        emu.mem.write_bus(start + 1, 0x42);
+        emu.mem.cpu_write(start, opcodes::SAX_ZP);
+        emu.mem.cpu_write(start + 1, 0x42);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x42), 0b0001_0000);
+        assert_eq!(emu.mem.cpu_read(0x42), 0b0001_0000);
     }
 
     #[test]
@@ -2374,11 +2371,11 @@ mod emu_tests {
         emu.cpu.a = 0b1111_0000;
         emu.cpu.x = 0b0001_1111;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::SAX_ZPY);
-        emu.mem.write_bus(start + 1, 0x41);
+        emu.mem.cpu_write(start, opcodes::SAX_ZPY);
+        emu.mem.cpu_write(start + 1, 0x41);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x42), 0b0001_0000);
+        assert_eq!(emu.mem.cpu_read(0x42), 0b0001_0000);
     }
 
     #[test]
@@ -2386,15 +2383,15 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b0000_1111;
-        emu.mem.write_bus(start, opcodes::SLO_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0b0111_1000);
+        emu.mem.cpu_write(start, opcodes::SLO_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0b0111_1000);
 
         emu.run();
 
         assert_eq!(emu.cpu.a, 0b1111_1111);
-        assert_eq!(emu.mem.read_bus(0x4711), 0b1111_0000);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0b1111_0000);
     }
 
     #[test]
@@ -2402,13 +2399,13 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0b1111_1111;
-        emu.mem.write_bus(start, opcodes::SRE_ABS);
-        emu.mem.write_bus(start + 1, 0x11);
-        emu.mem.write_bus(start + 2, 0x47);
-        emu.mem.write_bus(0x4711, 0b0001_1110);
+        emu.mem.cpu_write(start, opcodes::SRE_ABS);
+        emu.mem.cpu_write(start + 1, 0x11);
+        emu.mem.cpu_write(start + 2, 0x47);
+        emu.mem.cpu_write(0x4711, 0b0001_1110);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x4711), 0b0000_1111);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0b0000_1111);
         assert_eq!(emu.cpu.a, 0b1111_0000);
     }
 
@@ -2418,12 +2415,12 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::STA_ABX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::STA_ABX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x4711), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0x42);
     }
 
     #[test]
@@ -2432,12 +2429,12 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::STA_ABY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(start + 2, 0x47);
+        emu.mem.cpu_write(start, opcodes::STA_ABY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(start + 2, 0x47);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x4711), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x4711), 0x42);
     }
 
     #[test]
@@ -2446,13 +2443,13 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.x = 1;
-        emu.mem.write_bus(start, opcodes::STA_INX);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x11, 0x42);
+        emu.mem.cpu_write(start, opcodes::STA_INX);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x11, 0x42);
 
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x42), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x42), 0x42);
     }
 
     #[test]
@@ -2461,13 +2458,13 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::STA_INY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x10, 0x41);
+        emu.mem.cpu_write(start, opcodes::STA_INY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x10, 0x41);
 
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x42), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x42), 0x42);
     }
 
     #[test]
@@ -2476,14 +2473,14 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.a = 0x42;
         emu.cpu.y = 1;
-        emu.mem.write_bus(start, opcodes::STA_INY);
-        emu.mem.write_bus(start + 1, 0x10);
-        emu.mem.write_bus(0x10, 0xff);
-        emu.mem.write_bus(0x11, 0x0);
+        emu.mem.cpu_write(start, opcodes::STA_INY);
+        emu.mem.cpu_write(start + 1, 0x10);
+        emu.mem.cpu_write(0x10, 0xff);
+        emu.mem.cpu_write(0x11, 0x0);
 
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x100), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x100), 0x42);
     }
 
     #[test]
@@ -2492,11 +2489,11 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 0x01;
         emu.cpu.a = 0x42;
-        emu.mem.write_bus(start, opcodes::STA_ZPX);
-        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.cpu_write(start, opcodes::STA_ZPX);
+        emu.mem.cpu_write(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x11), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x11), 0x42);
     }
 
     #[test]
@@ -2504,11 +2501,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 0x42;
-        emu.mem.write_bus(start, opcodes::STX_ZP);
-        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.cpu_write(start, opcodes::STX_ZP);
+        emu.mem.cpu_write(start + 1, 0x11);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x11), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x11), 0x42);
     }
 
     #[test]
@@ -2518,11 +2515,11 @@ mod emu_tests {
         emu.cpu.x = 0x42;
         emu.cpu.y = 0x1;
 
-        emu.mem.write_bus(start, opcodes::STX_ZPY);
-        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.cpu_write(start, opcodes::STX_ZPY);
+        emu.mem.cpu_write(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x11), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x11), 0x42);
     }
 
     #[test]
@@ -2530,11 +2527,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.y = 0x42;
-        emu.mem.write_bus(start, opcodes::STY_ZP);
-        emu.mem.write_bus(start + 1, 0x11);
+        emu.mem.cpu_write(start, opcodes::STY_ZP);
+        emu.mem.cpu_write(start + 1, 0x11);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x11), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x11), 0x42);
     }
 
     #[test]
@@ -2544,18 +2541,18 @@ mod emu_tests {
         emu.cpu.y = 0x42;
         emu.cpu.x = 0x1;
 
-        emu.mem.write_bus(start, opcodes::STY_ZPX);
-        emu.mem.write_bus(start + 1, 0x10);
+        emu.mem.cpu_write(start, opcodes::STY_ZPX);
+        emu.mem.cpu_write(start + 1, 0x10);
         emu.run();
 
-        assert_eq!(emu.mem.read_bus(0x11), 0x42);
+        assert_eq!(emu.mem.cpu_read(0x11), 0x42);
     }
 
     #[test]
     fn test_sec() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::SEC);
+        emu.mem.cpu_write(start, opcodes::SEC);
         emu.run();
 
         assert_eq!(emu.cpu.carry_flag(), true);
@@ -2565,7 +2562,7 @@ mod emu_tests {
     fn test_sed() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::SED);
+        emu.mem.cpu_write(start, opcodes::SED);
         emu.run();
 
         assert_eq!(emu.cpu.decimal_flag(), true);
@@ -2575,7 +2572,7 @@ mod emu_tests {
     fn test_sei() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
-        emu.mem.write_bus(start, opcodes::SEI);
+        emu.mem.cpu_write(start, opcodes::SEI);
         emu.run();
 
         assert_eq!(emu.cpu.interrupt_flag(), true);
@@ -2586,7 +2583,7 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.sp = 255;
-        emu.mem.write_bus(start, opcodes::TSX);
+        emu.mem.cpu_write(start, opcodes::TSX);
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
@@ -2595,7 +2592,7 @@ mod emu_tests {
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.sp = 0;
-        emu.mem.write_bus(start, opcodes::TSX);
+        emu.mem.cpu_write(start, opcodes::TSX);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
@@ -2608,7 +2605,7 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 255;
-        emu.mem.write_bus(start, opcodes::TXS);
+        emu.mem.cpu_write(start, opcodes::TXS);
         emu.run();
 
         assert_eq!(emu.cpu.sp, 255);
