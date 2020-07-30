@@ -41,7 +41,7 @@ impl IOHandler for HeadlessIOHandler {
     #[allow(unused_variables)]
     fn poll(&mut self, mem: &dyn memory::MemoryMapper) {}
 
-    fn render(&mut self, ppu: &mut ppu::PPU) {}
+    fn render(&mut self, _ppu: &mut ppu::PPU) {}
 
     fn exit(&self, s: String) {
         self.log(s);
@@ -71,7 +71,7 @@ impl<'a> IOHandler for SDLIOHandler {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         // clears the canvas with the color we set in `set_draw_color`.
         self.canvas.clear();
-        self.canvas.set_scale(2.0, 2.0);
+        let _ = self.canvas.set_scale(2.0, 2.0);
         // However the canvas has not been updated to the window yet, everything has been processed to
         // an internal buffer, but if we want our buffer to be displayed on the window, we need to call
         // `present`. We need to call this everytime we want to render a new frame on the window.

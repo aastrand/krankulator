@@ -256,7 +256,7 @@ impl PPU {
       for x in 0..0x20 as usize {
         let val = self.vram[(y * 0x20) + x];
         canvas.set_draw_color(Color::RGB(val, val, val));
-        canvas.fill_rect(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8));
+        let _ = canvas.fill_rect(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8));
       }
     }
   }

@@ -283,7 +283,7 @@ impl MemoryMapper for MMC1Mapper {
         self._ppu_read(addr)
     }
 
-    fn ppu_write(&mut self, mut addr: u16, value: u8) {}
+    fn ppu_write(&mut self, mut _addr: u16, _value: u8) {}
 
     fn code_start(&mut self) -> u16 {
         ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
