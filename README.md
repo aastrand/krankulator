@@ -1,6 +1,6 @@
 # krankulator
 
-Naive 6502 emulator, written to learn Rust.
+Naive NES emulator, written to learn Rust.
 
 
 Resources: 
@@ -13,3 +13,4 @@ Resources:
 * [6502 addressing modes](https://slark.me/c64-downloads/6502-addressing-modes.pdf)
 * [nestest](http://www.qmtpro.com/~nes/misc/)
 * [nesdev](https://wiki.nesdev.com)
+* [nes rendering overview](https://austinmorlan.com/posts/nes_rendering_overview/)

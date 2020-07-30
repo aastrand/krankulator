@@ -1166,6 +1166,22 @@ mod emu_tests {
     }
 
     #[test]
+    fn test_adc_zp() {
+        let mut emu: Emulator = Emulator::_new();
+        let start: u16 = memory::CODE_START_ADDR;
+        emu.mem.cpu_write(start, opcodes::ADC_ZP);
+        emu.mem.cpu_write(start + 1, 0x01);
+        emu.mem.cpu_write(0x01, 0x80);
+        emu.cpu.a = 0x80;
+        emu.run();
+        assert_eq!(emu.cpu.a, 0x0);
+        assert_eq!(emu.mem.cpu_read(0x1), 0x80);
+        assert_eq!(emu.cpu.carry_flag(), true);
+        assert_eq!(emu.cpu.zero_flag(), true);
+        assert_eq!(emu.cpu.negative_flag(), false);
+    }
+
+    #[test]
     fn test_bit_abs() {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;

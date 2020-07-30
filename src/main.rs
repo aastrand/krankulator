@@ -9,7 +9,7 @@ fn main() -> Result<(), String> {
         (version: "0.1")
         (author: "Anders Å. <aastrand@gmail.com>")
         (@arg DISPLAY: --display "Use a mapped display")
-        (@arg LOADER: -l --loader +takes_value "Specify loader: bin (default), ascii, nes")
+        (@arg LOADER: -l --loader +takes_value "Specify loader: nes (default), ascii, bin")
         (@arg VERBOSE: -v --verbose "Verbose mode")
         (@arg QUIET_MODE: -q --quiet "Quiet mode, overrides verbose")
         (@arg DEBUG: -d --debg "Debug on infinite loop")
@@ -29,7 +29,7 @@ fn main() -> Result<(), String> {
             let mut loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
             emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
         }
-        Some("nes") => {
+        None | Some("nes") => {
             let mut loader: Box<dyn loader::Loader> = loader::InesLoader::new();
             let mapper = loader.load(matches.value_of("INPUT").unwrap());
 
@@ -60,11 +60,6 @@ fn main() -> Result<(), String> {
 
             emu
         }
-        None => {
-            let mut loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
-            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
-        }
-
         _ => {
             println!("Invalid loader, see --help");
             std::process::exit(1);
@@ -103,22 +98,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_adc_zeropage() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/adc_zeropage")));
-        emu.run();
-
-        assert_eq!(emu.cpu.a, 0x0);
-        assert_eq!(emu.mem.cpu_read(0x1), 0x80);
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-    }
-
-    #[test]
     fn test_instructions() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/instructions")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/instructions")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x84);
@@ -130,7 +112,7 @@ mod tests {
     #[test]
     fn test_lda_sta() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ldasta")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/ldasta")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 8);
@@ -142,7 +124,7 @@ mod tests {
     #[test]
     fn test_transfers() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/transfers")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/transfers")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -155,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_subtract_with_carry() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/sbc")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/sbc")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0xfc);
@@ -166,7 +148,7 @@ mod tests {
     #[test]
     fn test_stores() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/stores")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/stores")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -183,7 +165,7 @@ mod tests {
     #[test]
     fn test_compares() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/compares")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/compares")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -197,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_bne() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/bne")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/bne")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 3);
@@ -208,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_beq() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/beq")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/beq")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 1);
@@ -220,7 +202,7 @@ mod tests {
     #[test]
     fn test_take_no_branch() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/take_no_branch")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/take_no_branch")));
         emu.run();
 
         assert_eq!(emu.cpu.y, 8);
@@ -229,7 +211,7 @@ mod tests {
     #[test]
     fn test_take_all_branches() {
         let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(
-            "input/take_all_branches",
+            "input/ascii/take_all_branches",
         )));
         emu.run();
 
@@ -239,7 +221,7 @@ mod tests {
     #[test]
     fn test_stackloop() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/stackloop")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/stackloop")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -256,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_jmp() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/jmp")));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/jmp")));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x03);
@@ -266,7 +248,7 @@ mod tests {
     #[test]
     fn test_jsrrts() {
         let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/jsrtrs")));
+            emu::Emulator::new_headless(loader::load_ascii(&String::from("input/ascii/jsrtrs")));
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -278,7 +260,7 @@ mod tests {
     #[test]
     fn test_klaus_2m5() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_bin(&String::from(
-            "input/6502_functional_test.bin",
+            "input/bin/6502_functional_test.bin",
         )));
         emu.toggle_should_trigger_nmi(false);
         emu.toggle_debug_on_infinite_loop(false);
@@ -292,7 +274,7 @@ mod tests {
     #[test]
     fn test_nes_nestest() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes-test-roms/nestest.nes",
+            "input/nes/nestest.nes",
         )));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
@@ -305,7 +287,7 @@ mod tests {
         emu.toggle_quiet_mode(true);
         emu.toggle_verbose_mode(false);
 
-        if let Ok(lines) = util::read_lines(&String::from("input/nes-test-roms/nestest.log")) {
+        if let Ok(lines) = util::read_lines(&String::from("input/nes/nestest.log")) {
             for line in lines {
                 if let Ok(expected) = line {
                     let expected_addr = &expected[0..4];
@@ -357,7 +339,7 @@ mod tests {
     #[test]
     fn test_nes_instr_test() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes-test-roms/all_instrs.nes",
+            "input/nes/all_instrs.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
@@ -386,7 +368,7 @@ mod tests {
     /*#[test]
     fn test_nes_instr_timing_test() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes-test-roms/instr_timing.nes",
+            "input/nes/instr_timing.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
@@ -416,7 +398,7 @@ mod tests {
     #[test]
     fn test_nes_oam_read() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes-test-roms/ppu/oam_read.nes",
+            "input/nes/ppu/oam_read.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
@@ -448,7 +430,7 @@ mod tests {
     #[test]
     fn test_nes_vram_access() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes-test-roms/ppu/vram_access.nes",
+            "input/nes/ppu/vram_access.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
