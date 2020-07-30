@@ -73,17 +73,17 @@ impl Loader for InesLoader {
     fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
         let bytes = util::read_bytes(path);
 
-        let num_prg_blocks = bytes.get(4).unwrap();
-        let num_chr_blocks = bytes.get(5).unwrap();
+        let num_prg_blocks = bytes[4];
+        let num_chr_blocks = bytes[5];
         let flags = bytes.get(6).unwrap();
         let prg_ram_units = bytes.get(8).unwrap();
         let mapper = flags >> 4;
         let prg_offset: usize = INES_HEADER_SIZE + (*flags & 0b0000_0100) as usize * 512;
-        let chr_offset: usize = prg_offset + (*num_prg_blocks as usize * PRG_BANK_SIZE);
+        let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
         let mut prg_banks: Vec<[u8; PRG_BANK_SIZE]> = vec![];
 
-        for b in 0..*num_prg_blocks {
+        for b in 0..num_prg_blocks {
             let mut code = [0; PRG_BANK_SIZE];
 
             let block_offset: usize =
@@ -94,12 +94,12 @@ impl Loader for InesLoader {
             prg_banks.push(code);
         }
 
-        println!("Loaded {} PRG banks, with {} PRG RAM units", num_prg_blocks, prg_ram_units);
+        println!("Loaded {} PRG banks, {} CHR banks, with {} PRG RAM units", num_prg_blocks, num_chr_blocks, prg_ram_units);
 
 
         let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
 
-        for b in 0..*num_chr_blocks {
+        for b in 0..num_chr_blocks {
             let mut gfx = [0; CHR_BANK_SIZE];
 
             let block_offset: usize =
@@ -116,7 +116,7 @@ impl Loader for InesLoader {
                 prg_banks.pop(),
                 chr_banks.pop(),
             )),
-            1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks)),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 

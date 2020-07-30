@@ -11,7 +11,9 @@ use sdl2::video::Window;
 use sdl2::Sdl;
 
 extern crate shrust;
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::time::SystemTime;
 
 #[derive(PartialEq)]
@@ -24,6 +26,7 @@ pub enum CycleState {
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: Box<dyn memory::MemoryMapper>,
+    pub ppu: Rc<RefCell<ppu::PPU>>,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
     logformatter: io::log::LogFormatter,
@@ -45,7 +48,14 @@ impl Emulator {
         sdl_context: Sdl,
         canvas: Canvas<Window>,
     ) -> Emulator {
-        Emulator::new_base(Box::new(io::SDLIOHandler::new(sdl_context, canvas)), mapper)
+        Emulator::new_base(
+            Box::new(io::SDLIOHandler::new(
+                sdl_context,
+                canvas,
+                mapper.ppu(),
+            )),
+            mapper,
+        )
     }
 
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
@@ -68,9 +78,12 @@ impl Emulator {
         let mut cpu = cpu::Cpu::new();
         cpu.pc = mapper.code_start();
 
+        let ppu = mapper.ppu();
+
         Emulator {
             cpu: cpu,
             mem: mapper,
+            ppu: ppu,
             lookup: lookup,
             iohandler: iohandler,
             logformatter: io::log::LogFormatter::new(30),
@@ -156,15 +169,15 @@ impl Emulator {
             && self.mem.cpu_read(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE == ppu::CTRL_NMI_ENABLE
         {
             self.trigger_nmi();
+            self.iohandler.render(&mut *self.mem);
         }
 
         if self.cycles % 16666 == 0 {
             self.iohandler.poll(&*self.mem);
-            self.iohandler.render(self.mem.ppu());
         }
 
         {
-            self.mem.ppu().cycle();
+            self.ppu.borrow_mut().cycle();
         }
 
         self.cycles += 1;
@@ -174,6 +187,7 @@ impl Emulator {
 
     pub fn log(&mut self, opcode: u8, pc: u16) {
         if self.should_log {
+            let ppu = self.ppu.borrow_mut();
             let log_line: String = self.logformatter.log(self.logformatter.log_str(
                 self.mem.raw_opcode(pc as _),
                 self.lookup.name(opcode),
@@ -182,8 +196,8 @@ impl Emulator {
                 self.cpu.register_str(),
                 self.cycles,
                 self.cpu.status_str(),
-                self.mem.ppu().scanline,
-                self.mem.ppu().cycle,
+                ppu.scanline,
+                ppu.cycle,
                 &self.logdata,
             ));
             if self.verbose {
@@ -1037,6 +1051,7 @@ impl Emulator {
 
     pub fn log_str(&mut self) -> String {
         let opcode: u8 = self.mem.cpu_read(self.cpu.pc);
+        let ppu = self.ppu.borrow_mut();
         self.logformatter.log_str(
             self.mem.raw_opcode(self.cpu.pc),
             self.lookup.name(opcode),
@@ -1045,8 +1060,8 @@ impl Emulator {
             self.cpu.register_str(),
             self.cycles,
             self.cpu.status_str(),
-            self.mem.ppu().scanline,
-            self.mem.ppu().cycle,
+            ppu.scanline,
+            ppu.cycle,
             &vec![],
         )
     }

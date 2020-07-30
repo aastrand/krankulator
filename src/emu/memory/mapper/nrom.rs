@@ -1,5 +1,8 @@
 use super::super::*;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 /*
 All Banks are fixed,
 
@@ -14,7 +17,7 @@ const BANK_ONE_ADDR: usize = 0x8000;
 const BANK_TWO_ADDR: usize = 0xC000;
 
 pub struct NROMMapper {
-    ppu: ppu::PPU,
+    ppu: Rc<RefCell<ppu::PPU>>,
     _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
     _chr_bank: Box<[u8; NROM_CHR_BANK_SIZE]>,
@@ -45,7 +48,7 @@ impl NROMMapper {
         let chr_ptr = chr_bank.as_mut_ptr();
 
         NROMMapper {
-            ppu: ppu::PPU::new(),
+            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
             _addr_space: mem,
             addr_space_ptr: addr_space_ptr,
             _chr_bank: chr_bank,
@@ -58,7 +61,7 @@ impl MemoryMapper for NROMMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         let addr = super::mirror_addr(addr);
         if addr >= 0x2000 && addr < 0x2008 {
-            self.ppu.read(addr)
+            self.ppu.borrow_mut().read(addr, self.chr_ptr)
         } else {
             unsafe { *self.addr_space_ptr.offset(addr as _) }
         }
@@ -70,10 +73,12 @@ impl MemoryMapper for NROMMapper {
 
         match page {
             // Note: 0x60 is for PRG ram
-            0x0 | 0x10  | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as _) = value },
+            0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as _) = value },
             0x20 => {
                 //println!("Write to PPU reg {:X}: {:X}", addr, value);
-                self.ppu.write(addr, value, self.addr_space_ptr)
+                self.ppu
+                    .borrow_mut()
+                    .write(addr, value, self.addr_space_ptr)
             }
             0x40 => {
                 //println!("Write to APU   reg {:X}: {:X}", addr, value);
@@ -86,6 +91,10 @@ impl MemoryMapper for NROMMapper {
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
+        unsafe { *self.chr_ptr.offset(addr as _) }
+    }
+
+    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         /*
         $0000-1FFF is normally mapped by the cartridge to a CHR-ROM or CHR-RAM, often with a bank switching mechanism.
         $2000-2FFF is normally mapped to the 2kB NES internal VRAM, providing 2 nametables with a mirroring configuration controlled by the cartridge, but it can be partly or fully remapped to RAM on the cartridge, allowing up to 4 simultaneous nametables.
@@ -94,7 +103,8 @@ impl MemoryMapper for NROMMapper {
         */
         let page = addr_to_page(addr);
         match page {
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
+            //0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
+            0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
             _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
         }
     }
@@ -106,8 +116,8 @@ impl MemoryMapper for NROMMapper {
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 
-    fn ppu(&mut self) -> &mut ppu::PPU {
-        &mut self.ppu
+    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
+        Rc::clone(&self.ppu)
     }
 }
 
@@ -127,13 +137,13 @@ mod tests {
         assert_eq!(mapper.cpu_read(0x1973), 0x42);
 
         mapper.cpu_write(0x2001, 0x11);
-        assert_eq!(mapper.ppu().ppu_mask, 0x11);
+        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x11);
         mapper.cpu_write(0x2009, 0x42);
-        assert_eq!(mapper.ppu().ppu_mask, 0x42);
+        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x42);
 
         // a write to $3451 is the same as a write to $2001.
 
         mapper.cpu_write(0x3451, 0x32);
-        assert_eq!(mapper.ppu().ppu_mask, 0x32);
+        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x32);
     }
 }

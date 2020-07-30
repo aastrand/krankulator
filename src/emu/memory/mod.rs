@@ -1,6 +1,9 @@
 pub mod mapper;
 use super::ppu;
 
+use std::rc::Rc;
+use std::cell::RefCell;
+
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
@@ -21,10 +24,11 @@ pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
     fn ppu_read(&self, addr: u16) -> u8;
+    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize);
     fn ppu_write(&mut self, addr: u16, value: u8);
 
     fn code_start(&mut self) -> u16;
-    fn ppu(&mut self) -> &mut ppu::PPU;
+    fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
@@ -95,7 +99,6 @@ pub struct IdentityMapper {
     _ram: Box<[u8; MAX_RAM_SIZE]>,
     ram_ptr: *mut u8,
     code_start: u16,
-    ppu: ppu::PPU,
 }
 
 impl IdentityMapper {
@@ -106,7 +109,6 @@ impl IdentityMapper {
             _ram: ram,
             ram_ptr,
             code_start: code_start,
-            ppu: ppu::PPU::new(),
         }
     }
 }
@@ -126,14 +128,16 @@ impl MemoryMapper for IdentityMapper {
         0
     }
 
+    fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+
     fn ppu_write(&mut self, _addr: u16, _value: u8) {}
 
     fn code_start(&mut self) -> u16 {
         self.code_start
     }
 
-    fn ppu(&mut self) -> &mut ppu::PPU {
-        &mut self.ppu
+    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
+        Rc::new(RefCell::new(ppu::PPU::new()))
     }
 }
 

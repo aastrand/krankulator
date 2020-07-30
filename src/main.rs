@@ -280,7 +280,7 @@ mod tests {
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
         emu.cpu.cycle = 7;
-        emu.mem.ppu().cycle = 21;
+        emu.ppu.borrow_mut().cycle = 21;
         emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
 
         emu.toggle_debug_on_infinite_loop(false);
@@ -307,16 +307,16 @@ mod tests {
                     let expected_cycles = &expected[90..];
 
                     let mut cycles: u64 = emu.cpu.cycle;
-                    let mut ppu_cycles: u16 = emu.mem.ppu().cycle;
-                    let mut ppu_scanline: u16 = emu.mem.ppu().scanline;
+                    let mut ppu_cycles: u16 = emu.ppu.borrow_mut().cycle;
+                    let mut ppu_scanline: u16 = emu.ppu.borrow_mut().scanline;
 
                     'next_instr: loop {
                         let state = emu.cycle();
                         match state {
                             emu::CycleState::CpuAhead => {
                                 cycles = emu.cpu.cycle;
-                                ppu_cycles = emu.mem.ppu().cycle;
-                                ppu_scanline = emu.mem.ppu().scanline;
+                                ppu_cycles = emu.ppu.borrow_mut().cycle;
+                                ppu_scanline = emu.ppu.borrow_mut().scanline;
                             }
                             _ => break 'next_instr,
                         }
