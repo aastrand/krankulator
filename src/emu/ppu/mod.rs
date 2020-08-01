@@ -241,10 +241,10 @@ impl PPU {
                     }
                     0x20 | 0x30 => {
                         // nametable
-                        // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
+                        // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
                         let addr: usize = match self.vram_addr {
                             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10) as _,
-                            _ => self.vram_addr as _
+                            _ => self.vram_addr as _,
                         };
                         self.vram[addr % VRAM_SIZE]
                     }
@@ -260,7 +260,7 @@ impl PPU {
                 value
             }
             _ => {
-                println!("addr {:X} not mapped for read!", addr);
+                //println!("addr {:X} not mapped for read!", addr);
                 0
             }
         }
@@ -278,7 +278,20 @@ impl PPU {
         self.ppu_status |= value & 0b1110_0000;
 
         match addr {
-            CTRL_REG_ADDR => self.ppu_ctrl = value,
+            CTRL_REG_ADDR => {
+                // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
+                // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
+                /*println!("{}", unsafe { *self.nmi_trigger });
+
+                if (value & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
+                    && !self.vblank_is_enabled()
+                    && self.is_in_vblank()
+                {
+                    unsafe { std::ptr::write(self.nmi_trigger, true) };
+                }
+                println!("{}", unsafe { *self.nmi_trigger });*/
+                self.ppu_ctrl = value;
+            }
             MASK_REG_ADDR => self.ppu_mask = value,
             OAM_ADDR => self.oam_addr = value,
             OAM_DATA_ADDR => {
@@ -311,10 +324,10 @@ impl PPU {
                         // nametable
                         // TODO: some kind of nametable mirroring needs to be checked
 
-                        // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
+                        // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
                         let addr: usize = match self.vram_addr {
                             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10) as _,
-                            _ => self.vram_addr as _
+                            _ => self.vram_addr as _,
                         };
                         self.vram[addr % VRAM_SIZE] = value;
                     }
@@ -341,24 +354,17 @@ impl PPU {
                     panic!("Tried to OAM_DMA copy page {:X}", page);
                 }
             }
-            _ => println!("addr {:X} not mapped for write!", addr),
+            _ => {} //println!("addr {:X} not mapped for write!", addr),
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self) -> bool {
         // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
-        if self.cycle > 254 {
+        if self.scanline < 240 && self.cycle > 256 {
             self.oam_addr = 0;
         }
 
         for _ in 0..3 {
-            // TODO: pre-render scanline? -1
-            if self.scanline == 0 {
-                self.ppu_status &= !VERTICAL_BLANK_BIT;
-            } else if self.scanline == 241 {
-                self.ppu_status |= VERTICAL_BLANK_BIT;
-            }
-
             self.cycle = self.cycle.wrapping_add(1);
 
             if self.cycle == 341 {
@@ -366,6 +372,27 @@ impl PPU {
                 self.scanline = self.scanline.wrapping_add(1) % 262;
             }
         }
+
+        // TODO: pre-render scanline? -1
+        if self.scanline == 0 {
+            self.ppu_status &= !VERTICAL_BLANK_BIT;
+        } else if self.scanline == 241 {
+            self.ppu_status |= VERTICAL_BLANK_BIT;
+        }
+
+        // -2 => -1 0 1 => 01
+        // -1 =>  0 1 2 => 10
+        // 0  = > 1 2 3 => 11
+        // return vblank = true for scanline 241 and pixel *1*
+        return self.scanline == 241 && self.cycle > 0 && self.cycle < 4;
+    }
+
+    pub fn vblank_is_enabled(&self) -> bool {
+        (self.ppu_ctrl & CTRL_NMI_ENABLE) == CTRL_NMI_ENABLE
+    }
+
+    pub fn is_in_vblank(&self) -> bool {
+        (self.ppu_status & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
     }
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, mem: &dyn memory::MemoryMapper) {
@@ -386,7 +413,8 @@ impl PPU {
                 0
             };
 
-        let bg_color = PALETTE[self.vram[UNIVERSAL_BG_COLOR_ADDR % VRAM_SIZE] as usize % PALETTE_SIZE];
+        let bg_color =
+            PALETTE[self.vram[UNIVERSAL_BG_COLOR_ADDR % VRAM_SIZE] as usize % PALETTE_SIZE];
         canvas.set_draw_color(bg_color);
         //self.print_palette();
 
@@ -426,24 +454,7 @@ impl PPU {
                                 + pixel_value)
                                 % VRAM_SIZE] as usize;
 
-                            if palette > 63 {
-                                self._print_palette();
-                                // 0 28 0 1 239 3 2
-                                println!(
-                                    "x={} y={} xp={} yp={} palette={} pixel_value={} palette_offset={}  ",
-                                    x,
-                                    y,
-                                    xp,
-                                    yp,
-                                    palette,
-                                    pixel_value,
-                                    palette_offset
-                                );
-                            }
-
-                            let color = {
-                                PALETTE[palette % PALETTE_SIZE]
-                            };
+                            let color = { PALETTE[palette % PALETTE_SIZE] };
 
                             let offset = yp * pitch + (28 - (xp * 4));
                             buffer[offset] = color.r;
@@ -649,6 +660,45 @@ mod tests {
         // topright    = 0
         // topleft     = 3
         let attribute_byte = 0b0110_0011;
-        assert_eq!(ppu.tile_to_attribute_pos(0x04, 0x19, attribute_byte), 3)
+        assert_eq!(ppu.tile_to_attribute_pos(0x04, 0x19, attribute_byte), 3);
+    }
+
+    #[test]
+    fn test_cycle() {
+        let mut ppu = PPU::new();
+        ppu.oam_addr = 0x42;
+
+        let vblank = ppu.cycle();
+        assert_eq!(vblank, false);
+        assert_eq!(ppu.scanline, 0);
+        assert_eq!(ppu.cycle, 3);
+        assert_eq!(ppu.oam_addr, 0x42);
+        assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+
+        while ppu.cycle() == false {
+            assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+        }
+
+        assert_eq!(ppu.oam_addr, 0x0);
+
+        assert_eq!(ppu.scanline, 241);
+        match ppu.cycle {
+            1 | 2 | 3 => {}
+            _ => panic!("expected pixel 1 to have been hit in 3-pixel cycle"),
+        }
+
+        while ppu.scanline != 0 {
+            let vblank = ppu.cycle();
+            assert_eq!(vblank, false);
+        }
+        assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+    }
+
+    #[test]
+    pub fn vblank_is_enabled() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.vblank_is_enabled(), false);
+        ppu.ppu_ctrl |= VERTICAL_BLANK_BIT;
+        assert_eq!(ppu.vblank_is_enabled(), true);
     }
 }

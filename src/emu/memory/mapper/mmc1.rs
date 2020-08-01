@@ -50,10 +50,6 @@ impl MMC1Mapper {
         if prg_banks.len() < 2 {
             panic!("Expected at least two PRG banks");
         }
-        if prg_banks.len() % 2 != 0 {
-            panic!("Expected an even amount of PRG banks");
-        }
-
         let mut cpu_ram = Box::new([0; CPU_RAM_SIZE]);
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 

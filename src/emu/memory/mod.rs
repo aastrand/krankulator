@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
+#[allow(dead_code)] // only used in tests
+pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 pub const BRK_TARGET_ADDR: u16 = 0xfffe;
 pub const CODE_START_ADDR: u16 = 0x600;
 pub const STACK_START_ADDR: u16 = 0xff;
