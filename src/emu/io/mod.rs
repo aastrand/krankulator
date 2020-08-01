@@ -4,11 +4,15 @@ pub mod log;
 extern crate sdl2;
 
 use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::EventPump;
 use sdl2::Sdl;
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use super::memory;
 use super::ppu;
@@ -17,7 +21,7 @@ pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
     fn poll(&mut self, mem: &dyn memory::MemoryMapper);
-    fn render(&mut self, ppu: &mut ppu::PPU);
+    fn render(&mut self, mem: &dyn memory::MemoryMapper);
     fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char>;
     fn exit(&self, s: String);
 }
@@ -41,7 +45,7 @@ impl IOHandler for HeadlessIOHandler {
     #[allow(unused_variables)]
     fn poll(&mut self, mem: &dyn memory::MemoryMapper) {}
 
-    fn render(&mut self, _ppu: &mut ppu::PPU) {}
+    fn render(&mut self, _mem: &dyn memory::MemoryMapper) {}
 
     fn exit(&self, s: String) {
         self.log(s);
@@ -51,14 +55,22 @@ impl IOHandler for HeadlessIOHandler {
 pub struct SDLIOHandler {
     canvas: Canvas<Window>,
     event_pump: EventPump,
+    ppu: Rc<RefCell<ppu::PPU>>,
+    muted: bool,
 }
 
 impl SDLIOHandler {
-    pub fn new(sdl_context: Sdl, canvas: Canvas<Window>) -> SDLIOHandler {
+    pub fn new(
+        sdl_context: Sdl,
+        canvas: Canvas<Window>,
+        ppu: Rc<RefCell<ppu::PPU>>,
+    ) -> SDLIOHandler {
         let event_pump = sdl_context.event_pump().unwrap();
         SDLIOHandler {
             event_pump: event_pump,
             canvas: canvas,
+            ppu,
+            muted: false,
         }
     }
 }
@@ -81,7 +93,9 @@ impl<'a> IOHandler for SDLIOHandler {
     }
 
     fn log(&self, logline: String) {
-        println!("{}", logline);
+        if !self.muted {
+            println!("{}", logline);
+        }
     }
 
     #[allow(unused_variables)]
@@ -94,14 +108,27 @@ impl<'a> IOHandler for SDLIOHandler {
         //self.event_pump.poll_event();
 
         for event in self.event_pump.poll_iter() {
-            if let Event::Quit { .. } = event {
-                std::process::exit(0);
-            };
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                }  => {
+                    std::process::exit(0);
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::M),
+                    ..
+                } => {
+                    self.muted ^= true;
+                }
+                _ => {}
+            }
         }
     }
 
-    fn render(&mut self, ppu: &mut ppu::PPU) {
-        ppu.render(&mut self.canvas);
+    fn render(&mut self, mem: &dyn memory::MemoryMapper) {
+        self.ppu.borrow_mut().render(&mut self.canvas, mem);
         self.canvas.present();
     }
 

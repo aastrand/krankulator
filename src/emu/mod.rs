@@ -11,8 +11,10 @@ use sdl2::video::Window;
 use sdl2::Sdl;
 
 extern crate shrust;
+use std::cell::RefCell;
 use std::collections::HashSet;
-use std::time::SystemTime;
+use std::rc::Rc;
+use std::time::Instant;
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -24,6 +26,7 @@ pub enum CycleState {
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     pub mem: Box<dyn memory::MemoryMapper>,
+    pub ppu: Rc<RefCell<ppu::PPU>>,
     lookup: Box<opcodes::Lookup>,
     iohandler: Box<dyn io::IOHandler>,
     logformatter: io::log::LogFormatter,
@@ -35,8 +38,9 @@ pub struct Emulator {
     verbose: bool,
     pub instructions: u64,
     pub cycles: u64,
-    start_time: SystemTime,
+    start_time: Instant,
     should_trigger_nmi: bool,
+    nmi_triggered_countdown: i8,
 }
 
 impl Emulator {
@@ -45,7 +49,10 @@ impl Emulator {
         sdl_context: Sdl,
         canvas: Canvas<Window>,
     ) -> Emulator {
-        Emulator::new_base(Box::new(io::SDLIOHandler::new(sdl_context, canvas)), mapper)
+        Emulator::new_base(
+            Box::new(io::SDLIOHandler::new(sdl_context, canvas, mapper.ppu())),
+            mapper,
+        )
     }
 
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
@@ -68,9 +75,12 @@ impl Emulator {
         let mut cpu = cpu::Cpu::new();
         cpu.pc = mapper.code_start();
 
+        let ppu = mapper.ppu();
+
         Emulator {
             cpu: cpu,
             mem: mapper,
+            ppu: ppu,
             lookup: lookup,
             iohandler: iohandler,
             logformatter: io::log::LogFormatter::new(30),
@@ -82,8 +92,9 @@ impl Emulator {
             verbose: true,
             instructions: 0,
             cycles: 0,
-            start_time: SystemTime::now(),
+            start_time: Instant::now(),
             should_trigger_nmi: false,
+            nmi_triggered_countdown: -1,
         }
     }
 
@@ -105,12 +116,20 @@ impl Emulator {
         self.should_trigger_nmi = trigger;
     }
 
+    #[allow(dead_code)] // only used in tests
+    pub fn reset(&mut self) {
+        let addr: u16 = self.mem.get_16b_addr(memory::RESET_TARGET_ADDR);
+        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+        self.cpu.sp = self.cpu.sp.wrapping_sub(3);
+        self.cpu.pc = addr;
+    }
+
     pub fn run(&mut self) {
         match self.iohandler.init() {
             Err(msg) => self.iohandler.log(msg),
             _ => {}
         }
-        self.start_time = SystemTime::now();
+        self.start_time = Instant::now();
 
         loop {
             if self.cycle() == CycleState::Exiting {
@@ -149,22 +168,25 @@ impl Emulator {
 
             let opcode = self.execute_instruction();
             self.log(opcode, self.cpu.last_instruction);
+
+            if self.nmi_triggered_countdown > 0 {
+                self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
+            }
         }
 
-        if self.should_trigger_nmi
-            && self.cycles % 16666 == 0
-            && self.mem.cpu_read(ppu::CTRL_REG_ADDR) & ppu::CTRL_NMI_ENABLE == ppu::CTRL_NMI_ENABLE
-        {
-            self.trigger_nmi();
-        }
+        let is_vblank = {
+            let mut ppu = self.ppu.borrow_mut();
+            let vblank = ppu.cycle();
 
+            vblank & ppu.vblank_is_enabled()
+        };
+        if self.should_trigger_nmi && (is_vblank || self.nmi_triggered_countdown == 0) {
+            self.trigger_interrupt(memory::NMI_TARGET_ADDR);
+            self.nmi_triggered_countdown = -1;
+            self.iohandler.render(&mut *self.mem);
+        }
         if self.cycles % 16666 == 0 {
             self.iohandler.poll(&*self.mem);
-            self.iohandler.render(self.mem.ppu());
-        }
-
-        {
-            self.mem.ppu().cycle();
         }
 
         self.cycles += 1;
@@ -174,6 +196,8 @@ impl Emulator {
 
     pub fn log(&mut self, opcode: u8, pc: u16) {
         if self.should_log {
+            let scanline = self.ppu.borrow_mut().scanline;
+            let cycle = self.ppu.borrow_mut().cycle;
             let log_line: String = self.logformatter.log(self.logformatter.log_str(
                 self.mem.raw_opcode(pc as _),
                 self.lookup.name(opcode),
@@ -182,8 +206,8 @@ impl Emulator {
                 self.cpu.register_str(),
                 self.cycles,
                 self.cpu.status_str(),
-                self.mem.ppu().scanline,
-                self.mem.ppu().cycle,
+                scanline,
+                cycle,
                 &self.logdata,
             ));
             if self.verbose {
@@ -731,19 +755,19 @@ impl Emulator {
                 // Store hides page crossing penalties
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.cpu_write(addr, self.cpu.a);
+                self.cpu_write(addr, self.cpu.a);
             }
 
             opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.cpu_write(addr, self.cpu.x);
+                self.cpu_write(addr, self.cpu.x);
             }
 
             opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
                 let addr = self.addr(opcode);
                 self.logdata.push(addr);
-                self.mem.cpu_write(addr, self.cpu.y);
+                self.cpu_write(addr, self.cpu.y);
             }
 
             opcodes::TAX => {
@@ -809,7 +833,7 @@ impl Emulator {
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.asl(value);
         self.logdata.push(result as u16);
-        self.mem.cpu_write(addr, result);
+        self.cpu_write(addr, result);
 
         result
     }
@@ -825,12 +849,35 @@ impl Emulator {
         self.cpu.cycle += 1;
     }
 
+    fn cpu_write(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x2000 => {
+                // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
+                // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
+                let ppu = self.ppu.borrow();
+                if (value & ppu::VERTICAL_BLANK_BIT) == ppu::VERTICAL_BLANK_BIT
+                    && !ppu.vblank_is_enabled()
+                    && ppu.is_in_vblank()
+                {
+                    //TODO: fix this: self.nmi_triggered_countdown = 1;
+                }
+            }
+            0x4017 => {
+                if (value & 0b0100_0000) == 0 {
+                    //self.nmi_triggered = true;
+                }
+            }
+            _ => {}
+        }
+        self.mem.cpu_write(addr, value);
+    }
+
     fn dec(&mut self, addr: u16) {
         // DECrement memory
         let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
-        self.mem.cpu_write(addr, value);
+        self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -840,7 +887,7 @@ impl Emulator {
         let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
-        self.mem.cpu_write(addr, value);
+        self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -860,7 +907,7 @@ impl Emulator {
         let operand: u8 = self.mem.cpu_read(addr);
         self.logdata.push(operand as u16);
         let value: u8 = operand.wrapping_add(1);
-        self.mem.cpu_write(addr, value);
+        self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -871,7 +918,7 @@ impl Emulator {
         self.logdata.push(operand as u16);
 
         let value: u8 = operand.wrapping_add(1);
-        self.mem.cpu_write(addr, value);
+        self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
         self.cpu.check_zero(value);
@@ -891,7 +938,7 @@ impl Emulator {
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.lsr(value);
         self.logdata.push(result as u16);
-        self.mem.cpu_write(addr, result);
+        self.cpu_write(addr, result);
 
         result
     }
@@ -914,7 +961,7 @@ impl Emulator {
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.rol(value);
         self.logdata.push(result as u16);
-        self.mem.cpu_write(addr, result);
+        self.cpu_write(addr, result);
 
         result
     }
@@ -924,7 +971,7 @@ impl Emulator {
         self.logdata.push(value as u16);
         let result: u8 = self.cpu.ror(value);
         self.logdata.push(result as u16);
-        self.mem.cpu_write(addr, result);
+        self.cpu_write(addr, result);
 
         result
     }
@@ -936,7 +983,7 @@ impl Emulator {
 
     fn sax(&mut self, addr: u16) {
         self.logdata.push(addr);
-        self.mem.cpu_write(addr, self.cpu.a & self.cpu.x);
+        self.cpu_write(addr, self.cpu.a & self.cpu.x);
     }
 
     fn sbc(&mut self, addr: u16) {
@@ -1022,8 +1069,8 @@ impl Emulator {
         }
     }
 
-    fn trigger_nmi(&mut self) {
-        let addr: u16 = self.mem.get_16b_addr(memory::NMI_TARGET_ADDR);
+    pub fn trigger_interrupt(&mut self, addr: u16) {
+        let addr: u16 = self.mem.get_16b_addr(addr);
         self.push_pc_to_stack(2);
         self.logdata.push(addr);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
@@ -1033,10 +1080,12 @@ impl Emulator {
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
 
         self.cpu.pc = addr;
+        //self.cpu.cycle += 7;
     }
 
     pub fn log_str(&mut self) -> String {
         let opcode: u8 = self.mem.cpu_read(self.cpu.pc);
+        let ppu = self.ppu.borrow_mut();
         self.logformatter.log_str(
             self.mem.raw_opcode(self.cpu.pc),
             self.lookup.name(opcode),
@@ -1045,8 +1094,8 @@ impl Emulator {
             self.cpu.register_str(),
             self.cycles,
             self.cpu.status_str(),
-            self.mem.ppu().scanline,
-            self.mem.ppu().cycle,
+            ppu.scanline,
+            ppu.cycle,
             &vec![],
         )
     }
@@ -1078,13 +1127,8 @@ impl Emulator {
             "Exiting after {} instructions, {} cycles ({:.1} MHz)",
             self.instructions,
             self.cycles,
-            (self.cycles as f64 / self.start_time.elapsed().unwrap().as_secs_f64()) / 1_000_000.0
+            (self.cycles as f64 / self.start_time.elapsed().as_secs_f64()) / 1_000_000.0
         ));
-    }
-
-    #[allow(dead_code)]
-    fn rng(&mut self) {
-        self.mem.cpu_write(0xfe, rand::random::<u8>());
     }
 }
 
