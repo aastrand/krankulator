@@ -20,9 +20,12 @@ PPUDATA	$2007	dddd dddd	PPU data read/write
 OAMDMA	$4014	aaaa aaaa	OAM DMA high address
 */
 pub const CTRL_REG_ADDR: u16 = 0x2000;
+pub const CTRL_NAMETABLE_ADDR: u8 = 0b0000_0011;
 pub const CTRL_VRAM_ADDR_INC: u8 = 0b0000_0100;
 pub const CTRL_PATTERN_TABLE_OFFSET: u8 = 0b0001_0000;
 pub const CTRL_NMI_ENABLE: u8 = 0b1000_0000;
+
+pub const MASK_BACKGROUND_ENABLE: u8 = 0b0000_1000;
 
 pub const MASK_REG_ADDR: u16 = 0x2001;
 pub const STATUS_REG_ADDR: u16 = 0x2002;
@@ -35,11 +38,16 @@ pub const ADDR_ADDR: u16 = 0x2006;
 pub const DATA_ADDR: u16 = 0x2007;
 pub const OAM_DMA: u16 = 0x4014;
 
-pub const VRAM_SIZE: usize = 2048;
 pub const OAM_DATA_SIZE: usize = 256;
 
-pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
+pub const PRE_RENDER_SCANLINE: u16 = 261;
+pub const VBLANK_SCANLINE: u16 = 241;
+pub const CYCLES_PER_SCANLINE: u16 = 340;
+pub const NUM_SCANLINES: u16 = PRE_RENDER_SCANLINE + 1;
+
+pub const NAMETABLE_BASE_ADDR: usize = 0x2000;
 pub const ATTRIBUTE_TABLE_ADDR: usize = 0x23C0;
+pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
 
 pub const PALETTE_SIZE: usize = 64;
 pub const PALETTE: [Color; PALETTE_SIZE] = [
@@ -147,8 +155,6 @@ pub const PALETTE: [Color; PALETTE_SIZE] = [
 */
 
 pub struct PPU {
-    pub vram: Box<[u8; VRAM_SIZE]>,
-
     vram_addr: u16,
     _tmp_vram_addr: u16,
 
@@ -176,6 +182,8 @@ pub struct PPU {
 
     pub cycle: u16,
     pub scanline: u16,
+    pub frames: u64,
+    vblank_bit_race_condition: bool,
 }
 
 impl PPU {
@@ -184,8 +192,6 @@ impl PPU {
         let oam_ram_ptr = oam_ram.as_mut_ptr();
 
         PPU {
-            vram: Box::new([0; VRAM_SIZE]),
-
             vram_addr: 0,
             _tmp_vram_addr: 0,
 
@@ -194,7 +200,7 @@ impl PPU {
 
             ppu_ctrl: 0,
             ppu_mask: 0,
-            ppu_status: 0x80,
+            ppu_status: 0x0,
             oam_addr: 0,
 
             ppu_scroll_positions: [0; 2],
@@ -206,20 +212,48 @@ impl PPU {
 
             cycle: 0,
             scanline: 0,
+            frames: 0,
+            vblank_bit_race_condition: false,
         }
     }
 
-    pub fn read(&mut self, addr: u16, chr_ptr: *mut u8) -> u8 {
+    pub fn get_status_reg(&mut self) -> u8 {
+        let status = self.ppu_status;
+
+        // Reading PPUSTATUS within two cycles of the start of vertical blank will return 0 in bit 7 but clear the latch anyway,
+        // causing NMI to not occur that frame.
+        // 240, 0 => (239*340) == 81260 + next tick
+
+        // Reading one PPU clock before reads it as clear and never sets the flag or generates NMI for that frame.
+        /*if self.scanline == 240 && self.cycle == 0 {
+            //self.tick == 81260 {
+            status &= !VERTICAL_BLANK_BIT;
+            self.vblank_bit_race_condition = true;
+        }
+        // Reading on the same PPU clock or one later reads it as set, clears it, and suppresses the NMI for that frame.
+        else if self.scanline == 240 && (self.cycle == 1 || self.cycle == 2) {
+            //self.tick == 81261 || self.tick == 81262 {
+            status |= VERTICAL_BLANK_BIT;
+            self.vblank_bit_race_condition = true;
+        }*/
+
+        status
+    }
+
+    pub fn read(&mut self, addr: u16, mem: &dyn memory::MemoryMapper) -> u8 {
         match addr {
             CTRL_REG_ADDR => self.ppu_ctrl,
             MASK_REG_ADDR => self.ppu_mask,
             OAM_ADDR => self.oam_addr,
             STATUS_REG_ADDR => {
-                let status = self.ppu_status;
+                let status = self.get_status_reg();
+
                 // reading clears bit 7
                 self.ppu_status &= !VERTICAL_BLANK_BIT;
                 // reset address latches
                 self.ppu_addr_idx = 0;
+                self.ppu_addr[0] = 0;
+                self.ppu_addr[1] = 0;
                 self.ppu_scroll_idx = 0;
 
                 status
@@ -237,7 +271,8 @@ impl PPU {
                 let value = match page {
                     0x0 | 0x10 => {
                         // patterntble
-                        unsafe { *chr_ptr.offset(self.vram_addr as _) }
+                        //unsafe { *chr_ptr.offset(self.vram_addr as _) }
+                        mem.ppu_read(addr as _)
                     }
                     0x20 | 0x30 => {
                         // nametable
@@ -246,7 +281,8 @@ impl PPU {
                             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10) as _,
                             _ => self.vram_addr as _,
                         };
-                        self.vram[addr % VRAM_SIZE]
+                        //self.vram[addr % VRAM_SIZE]
+                        mem.ppu_read(addr as _)
                     }
                     _ => 0,
                 };
@@ -274,8 +310,9 @@ impl PPU {
         }
     }
 
-    pub fn write(&mut self, addr: u16, value: u8, cpu_ram: *mut u8) {
-        self.ppu_status |= value & 0b1110_0000;
+    pub fn write(&mut self, addr: u16, value: u8, cpu_ram: *mut u8) -> Option<(u16, u8)> {
+        //self.ppu_status |= value & 0b1110_0000;
+        let mut ret = None;
 
         match addr {
             CTRL_REG_ADDR => {
@@ -296,7 +333,7 @@ impl PPU {
             OAM_ADDR => self.oam_addr = value,
             OAM_DATA_ADDR => {
                 self.oam_ram[self.oam_addr as usize] = value;
-                if self.ppu_status & VERTICAL_BLANK_BIT != VERTICAL_BLANK_BIT {
+                if !self.is_in_vblank() {
                     self.oam_addr = self.oam_addr.wrapping_add(1)
                 }
             }
@@ -313,32 +350,32 @@ impl PPU {
                     self.ppu_data_valid = false;
                     //println!("Set vram_addr to {:X}", self.vram_addr);
                 }
-                self.ppu_addr_idx = (self.ppu_addr_idx + 1) % 2
+                self.ppu_addr_idx = (self.ppu_addr_idx + 1) % 2;
+                /*if self.ppu_addr_idx == 0 {
+                    self.ppu_addr[0] = 0;
+                    self.ppu_addr[1] = 0;
+                }*/
             }
             DATA_ADDR => {
                 let page = memory::addr_to_page(self.vram_addr);
 
                 match page {
                     0x20 | 0x30 => {
-                        // TODO: more than one nametable? this should be handled by the mapper most likely
-                        // nametable
-                        // TODO: some kind of nametable mirroring needs to be checked
-
                         // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
-                        let addr: usize = match self.vram_addr {
-                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10) as _,
-                            _ => self.vram_addr as _,
+                        let addr: u16 = match self.vram_addr {
+                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10),
+                            _ => self.vram_addr,
                         };
-                        self.vram[addr % VRAM_SIZE] = value;
+                        // This should be written by the mapper, bounce it back
+                        ret = Some((addr, value))
                     }
                     _ => {}
                 }
 
                 /*println!(
-                    "Wrote {:X} to vram[{:X}] ({:X})",
+                    "Wrote {:X} to vram[{:X}]",
                     value,
-                    (self.vram_addr as usize) % VRAM_SIZE,
-                    self.vram_addr
+                    (self.vram_addr as usize)
                 );*/
                 self.inc_vram_addr();
             }
@@ -346,6 +383,7 @@ impl PPU {
                 // Writing $XX will upload 256 bytes of data from CPU page $XX00-$XXFF to the internal PPU OAM.
                 // This page is typically located in internal RAM, commonly $0200-$02FF,
                 let page: u16 = (value as u16) << 8;
+                // TODO: move to mapper
                 if page < 0x20 {
                     unsafe {
                         std::ptr::copy(cpu_ram, self.oam_ram_ptr, 256);
@@ -356,27 +394,47 @@ impl PPU {
             }
             _ => {} //println!("addr {:X} not mapped for write!", addr),
         }
+
+        ret
     }
 
     pub fn cycle(&mut self) -> bool {
-        // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
-        if self.scanline < 240 && self.cycle > 256 {
-            self.oam_addr = 0;
-        }
+        // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
+        // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
+        // on the pre-render scanline to (0,0) on the first visible scanline and doing the last cycle of the last dummy nametable fetch there instead;
+        let num_cycles = if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
+            && self.frames % 2 == 1
+            && self.scanline == 261
+            && self.cycle > 336
+        {
+            4
+        } else {
+            3
+        };
 
-        for _ in 0..3 {
-            self.cycle = self.cycle.wrapping_add(1);
-
-            if self.cycle == 341 {
-                self.cycle = 0;
-                self.scanline = self.scanline.wrapping_add(1) % 262;
+        self.cycle = self.cycle.wrapping_add(num_cycles);
+        if self.cycle > CYCLES_PER_SCANLINE {
+            self.cycle = self.cycle % (CYCLES_PER_SCANLINE + 1);
+            self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
+            if self.scanline == 0 {
+                self.frames += 1;
             }
         }
 
-        // TODO: pre-render scanline? -1
-        if self.scanline == 0 {
+        // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
+        if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
+            && self.cycle > 256
+        {
+            self.oam_addr = 0;
+        }
+
+        let hit_pixel_1 = self.cycle > 0 && self.cycle < (1 + num_cycles);
+        let vblank =
+            self.scanline == VBLANK_SCANLINE && hit_pixel_1 && !self.vblank_bit_race_condition;
+
+        if self.scanline == PRE_RENDER_SCANLINE && hit_pixel_1 {
             self.ppu_status &= !VERTICAL_BLANK_BIT;
-        } else if self.scanline == 241 {
+        } else if vblank {
             self.ppu_status |= VERTICAL_BLANK_BIT;
         }
 
@@ -384,15 +442,15 @@ impl PPU {
         // -1 =>  0 1 2 => 10
         // 0  = > 1 2 3 => 11
         // return vblank = true for scanline 241 and pixel *1*
-        return self.scanline == 241 && self.cycle > 0 && self.cycle < 4;
+        return vblank;
     }
 
-    pub fn vblank_is_enabled(&self) -> bool {
+    pub fn vblank_nmi_is_enabled(&self) -> bool {
         (self.ppu_ctrl & CTRL_NMI_ENABLE) == CTRL_NMI_ENABLE
     }
 
-    pub fn is_in_vblank(&self) -> bool {
-        (self.ppu_status & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
+    pub fn is_in_vblank(&mut self) -> bool {
+        (self.get_status_reg() & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
     }
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, mem: &dyn memory::MemoryMapper) {
@@ -413,16 +471,19 @@ impl PPU {
                 0
             };
 
-        let bg_color =
-            PALETTE[self.vram[UNIVERSAL_BG_COLOR_ADDR % VRAM_SIZE] as usize % PALETTE_SIZE];
+        let bg_color = PALETTE[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
         canvas.set_draw_color(bg_color);
         //self.print_palette();
+
+        let nametable_addr =
+            NAMETABLE_BASE_ADDR + (0x400 * (self.ppu_ctrl & CTRL_NAMETABLE_ADDR) as usize);
 
         canvas.clear();
         for y in 0..0x1f as usize {
             for x in 0..0x20 as usize {
                 // what sprite # is written at this tile?
-                let pattern_table_index = self.vram[(y * 0x20) + x] as u16;
+                let pattern_table_index =
+                    mem.ppu_read((nametable_addr + (y * 0x20) + x) as _) as u16;
                 // where is the pixels for that tile?
                 let pattern_table_addr = (pattern_table_index * 16) + addr_offset;
                 // copy pixels
@@ -433,7 +494,7 @@ impl PPU {
                     self.tile_to_attribute_byte(x as u8, y as u8) as usize;
                 // fetch palette attributes for that grid
                 let attribute_byte =
-                    self.vram[(ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) % VRAM_SIZE];
+                    mem.ppu_read((ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) as _);
                 // find our position within grid and what palette to use
                 let palette_offset = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
 
@@ -449,10 +510,11 @@ impl PPU {
 
                             let transparency = if pixel_value == 0 { 0 } else { 0xff };
 
-                            let palette = self.vram[(UNIVERSAL_BG_COLOR_ADDR
-                                + ((palette_offset as usize) * 4)
-                                + pixel_value)
-                                % VRAM_SIZE] as usize;
+                            let palette = mem.ppu_read(
+                                (UNIVERSAL_BG_COLOR_ADDR
+                                    + ((palette_offset as usize) * 4)
+                                    + pixel_value) as _,
+                            ) as usize;
 
                             let color = { PALETTE[palette % PALETTE_SIZE] };
 
@@ -474,10 +536,10 @@ impl PPU {
         }
     }
 
-    fn _print_palette(&self) {
+    fn _print_palette(&self, mem: &dyn memory::MemoryMapper) {
         for i in 0..0x20 as usize {
             let addr = UNIVERSAL_BG_COLOR_ADDR + i;
-            println!("vram[{:X}] = {:X}", addr, self.vram[addr % VRAM_SIZE])
+            println!("vram[{:X}] = {:X}", addr, mem.ppu_read(addr as _))
         }
     }
 
@@ -562,16 +624,16 @@ mod tests {
     #[test]
     fn test_write_ppu_addr() {
         let mut ppu = PPU::new();
-        let mem = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
 
-        ppu.write(ADDR_ADDR, 0x32, mem);
+        ppu.write(ADDR_ADDR, 0x32, cpu_ram);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x11, mem);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
 
         assert_eq!(ppu.vram_addr, 0x3211);
 
-        ppu.write(ADDR_ADDR, 0x40, mem);
-        ppu.write(ADDR_ADDR, 0x1, mem);
+        ppu.write(ADDR_ADDR, 0x40, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x1, cpu_ram);
 
         assert_eq!(ppu.vram_addr, 0x1);
     }
@@ -579,14 +641,16 @@ mod tests {
     #[test]
     fn test_write_ppu_addr_reset() {
         let mut ppu = PPU::new();
-        let mem = Box::new([0; 2 * 1024]).as_mut_ptr();
-        ppu.write(ADDR_ADDR, 0x82, mem);
+        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
+
+        ppu.write(ADDR_ADDR, 0x82, cpu_ram);
 
         ppu.read(STATUS_REG_ADDR, mem);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x32, mem);
+        ppu.write(ADDR_ADDR, 0x32, cpu_ram);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x11, mem);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
 
         assert_eq!(ppu.vram_addr, 0x3211);
     }
@@ -594,19 +658,20 @@ mod tests {
     #[test]
     fn test_write_ppu_data() {
         let mut ppu = PPU::new();
-        let mem = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
 
         ppu.read(STATUS_REG_ADDR, mem);
-        ppu.write(ADDR_ADDR, 0x37, mem);
-        ppu.write(ADDR_ADDR, 0x11, mem);
+        ppu.write(ADDR_ADDR, 0x37, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
 
         for b in 0..10 {
-            ppu.write(DATA_ADDR, b, mem);
+            let should_write = ppu.write(DATA_ADDR, b, cpu_ram);
+            assert_eq!(should_write.unwrap().0, (0x3711 + b as u16));
+            assert_eq!(should_write.unwrap().1, b);
         }
 
         assert_eq!(ppu.vram_addr, 0x371b);
-        assert_eq!(ppu.vram[0x716], 5);
-        assert_eq!(ppu.vram[0x71a], 9);
     }
 
     #[test]
@@ -649,11 +714,12 @@ mod tests {
     #[test]
     fn test_tile_palette() {
         let mut ppu = PPU::new();
-        let mem = Box::new([0; 2 * 1024]).as_mut_ptr();
-        ppu.write((ATTRIBUTE_TABLE_ADDR + 49) as u16, 0b0110_0011, mem);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 3) as u16, 0x11, mem);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 4) as u16, 0x11, mem);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 5) as u16, 0x11, mem);
+        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+
+        ppu.write((ATTRIBUTE_TABLE_ADDR + 49) as u16, 0b0110_0011, cpu_ram);
+        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 3) as u16, 0x11, cpu_ram);
+        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 4) as u16, 0x11, cpu_ram);
+        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 5) as u16, 0x11, cpu_ram);
 
         // bottomright = 1
         // bottomleft  = 2
@@ -684,7 +750,10 @@ mod tests {
         assert_eq!(ppu.scanline, 241);
         match ppu.cycle {
             1 | 2 | 3 => {}
-            _ => panic!("expected pixel 1 to have been hit in 3-pixel cycle"),
+            _ => panic!(
+                "expected pixel 1 to have been hit in 3-pixel cycle, was {}",
+                ppu.cycle
+            ),
         }
 
         while ppu.scanline != 0 {
@@ -697,8 +766,8 @@ mod tests {
     #[test]
     pub fn vblank_is_enabled() {
         let mut ppu = PPU::new();
-        assert_eq!(ppu.vblank_is_enabled(), false);
+        assert_eq!(ppu.vblank_nmi_is_enabled(), false);
         ppu.ppu_ctrl |= VERTICAL_BLANK_BIT;
-        assert_eq!(ppu.vblank_is_enabled(), true);
+        assert_eq!(ppu.vblank_nmi_is_enabled(), true);
     }
 }

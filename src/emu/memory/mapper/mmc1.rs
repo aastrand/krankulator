@@ -1,5 +1,6 @@
 use super::super::ppu;
 use super::super::*;
+use super::*;
 
 use std::cell::RefCell;
 use std::cmp::max;
@@ -9,6 +10,7 @@ const BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: usize = 8 * 1024;
 const CPU_RAM_SIZE: usize = 2 * 1024;
 const MMC_RAM_SIZE: usize = 8 * 1024;
+const VRAM_SIZE: u16 = 2 * 1024;
 
 const MMC_RAM_ADDR: u16 = 0x6000;
 const LOW_BANK_ADDR: u16 = 0x8000;
@@ -32,6 +34,9 @@ pub struct MMC1Mapper {
     _chr_banks: Vec<[u8; CHR_BANK_SIZE]>,
     chr_ptr: *mut u8,
 
+    _vram: Box<[u8; VRAM_SIZE as usize]>,
+    vrm_ptr: *mut u8,
+
     reg_write_shift_register: u8,
 
     reg0: u8,
@@ -40,10 +45,13 @@ pub struct MMC1Mapper {
     #[allow(dead_code)]
     reg2: u8,
     reg3: u8,
+
+    nametable_alignment: u8,
 }
 
 impl MMC1Mapper {
     pub fn new(
+        flags: u8,
         mut prg_banks: Vec<[u8; BANK_SIZE]>,
         chr_banks: Vec<[u8; CHR_BANK_SIZE]>,
     ) -> MMC1Mapper {
@@ -60,6 +68,9 @@ impl MMC1Mapper {
 
         let chr_ptr: *mut u8 = std::mem::MaybeUninit::zeroed().as_mut_ptr();
         //*mut u8 = chr_banks[0].as_mut_ptr();
+
+        let mut vram = Box::new([0; VRAM_SIZE as usize]);
+        let vrm_ptr = vram.as_mut_ptr();
 
         let mut mapper = MMC1Mapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
@@ -84,6 +95,9 @@ impl MMC1Mapper {
             _chr_banks: chr_banks,
             chr_ptr: chr_ptr,
 
+            _vram: vram,
+            vrm_ptr: vrm_ptr,
+
             reg_write_shift_register: SR_INITIAL_VALUE,
 
             // Control
@@ -98,6 +112,8 @@ impl MMC1Mapper {
             // PRG bank
             // 0xE000-0xFFFF
             reg3: 0,
+
+            nametable_alignment: flags & super::NAMETABLE_ALIGNMENT_BIT,
         };
 
         unsafe {
@@ -146,20 +162,15 @@ impl MMC1Mapper {
         let addr = super::mirror_addr(addr);
         let page = addr_to_page(addr);
 
-        //println!("Reading from {:X}", addr);
-
         match page {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 => {
                 // PPU registers
-                // TODO: need chr bank access here
-                self.ppu.borrow_mut().read(addr, self.chr_ptr)
+                self.ppu.borrow_mut().read(addr, self as _)
             }
             0x40 => {
                 // TODO: APU goes here, 0x40
-                if addr > 0x4017 {
-                    //panic!("Write at addr {:X} not mapped", addr);
-                }
+                if addr > 0x4017 {}
                 0
             }
             0x60 | 0x70 => unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) },
@@ -182,10 +193,13 @@ impl MMC1Mapper {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 => {
                 //println!("Write to PPU reg {:X}: {:X}", addr, value);
-                self.ppu.borrow_mut().write(addr, value, self.cpu_ram_ptr)
+                let should_write = self.ppu.borrow_mut().write(addr, value, self.cpu_ram_ptr);
+                if let Some((addr, value)) = should_write {
+                    self.ppu_write(addr, value);
+                }
             }
             0x40 => {
-                //println!("Write to APU   reg {:X}: {:X}", addr, value);
+                //println!("Write to APU reg {:X}: {:X}", addr, value);
                 if addr > 0x4017 {
                     //panic!("Write at addr {:X} not mapped", addr);
                 }
@@ -269,11 +283,55 @@ impl MMC1Mapper {
         };
     }
 
-    fn _ppu_read(&self, addr: u16, dest: *mut u8, size: usize) {
+    fn _ppu_read(&self, addr: u16) -> u8 {
+        let mut addr = addr;
+        let page = addr_to_page(addr);
+
+        match page {
+            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
+            0x20 => {
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                unsafe { *self.vrm_ptr.offset(addr as _) }
+            }
+            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
+            _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
+        }
+    }
+
+    fn _ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+        /*
+        $0000-1FFF is normally mapped by the cartridge to a CHR-ROM or CHR-RAM, often with a bank switching mechanism.
+        $2000-2FFF is normally mapped to the 2kB NES internal VRAM, providing 2 nametables with a mirroring configuration controlled by the cartridge, but it can be partly or fully remapped to RAM on the cartridge, allowing up to 4 simultaneous nametables.
+        $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. The PPU does not render from this address range, so this space has negligible utility.
+        $3F00-3FFF is not configurable, always mapped to the internal palette control.
+        */
+        let mut addr = addr % MAX_VRAM_ADDR;
         let page = addr_to_page(addr);
         match page {
             0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
+            0x20 => {
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
+            }
+            0x30 => unsafe {
+                std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as _), dest, size)
+            },
+
             _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
+        }
+    }
+
+    fn _ppu_write(&mut self, addr: u16, value: u8) {
+        let mut addr = addr % MAX_VRAM_ADDR;
+        let page = addr_to_page(addr);
+        match page {
+            0x20 => {
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                unsafe { *self.vrm_ptr.offset(addr as _) = value }
+            }
+            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },
+
+            _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
         }
     }
 }
@@ -287,8 +345,8 @@ impl MemoryMapper for MMC1Mapper {
         self._write_bus(addr, value);
     }
 
-    fn ppu_read(&self, _addr: u16) -> u8 {
-        0
+    fn ppu_read(&self, addr: u16) -> u8 {
+        self._ppu_read(addr)
     }
 
     fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
@@ -298,10 +356,12 @@ impl MemoryMapper for MMC1Mapper {
         $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. The PPU does not render from this address range, so this space has negligible utility.
         $3F00-3FFF is not configurable, always mapped to the internal palette control.
         */
-        self._ppu_read(addr, dest, size);
+        self._ppu_copy(addr, dest, size);
     }
 
-    fn ppu_write(&mut self, mut _addr: u16, _value: u8) {}
+    fn ppu_write(&mut self, addr: u16, value: u8) {
+        self._ppu_write(addr, value);
+    }
 
     fn code_start(&mut self) -> u16 {
         ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
@@ -331,7 +391,7 @@ mod tests {
         chr_banks.push([0; CHR_BANK_SIZE]);
         chr_banks.push([0; CHR_BANK_SIZE]);
 
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(prg_banks, chr_banks));
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(0, prg_banks, chr_banks));
 
         assert_eq!(mapper.code_start(), 0x4711);
     }
@@ -347,7 +407,7 @@ mod tests {
         chr_banks.push([0; CHR_BANK_SIZE]);
         chr_banks.push([0; CHR_BANK_SIZE]);
 
-        let mut mapper = MMC1Mapper::new(prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
 
         // CPU ram
         mapper._write_bus(0x1173, 0x42);
@@ -371,7 +431,7 @@ mod tests {
         chr_banks.push([0; CHR_BANK_SIZE]);
         chr_banks.push([0; CHR_BANK_SIZE]);
 
-        let mut mapper = MMC1Mapper::new(prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
         mapper.reg0 = 0b11101;
 
         mapper._write_bus(0x8000, 0x80);
@@ -392,7 +452,7 @@ mod tests {
         chr_banks.push([0; CHR_BANK_SIZE]);
 
         // TODO: initial reg0 value might change in the future
-        let mut mapper = MMC1Mapper::new(prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
 
         // Write to mmaped mmc reg, note that rom does not change
         mapper._write_bus(0x8000, 41);

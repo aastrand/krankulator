@@ -25,20 +25,26 @@ pub enum CycleState {
 
 pub struct Emulator {
     pub cpu: cpu::Cpu,
+    lookup: Box<opcodes::Lookup>,
     pub mem: Box<dyn memory::MemoryMapper>,
     pub ppu: Rc<RefCell<ppu::PPU>>,
-    lookup: Box<opcodes::Lookup>,
+
     iohandler: Box<dyn io::IOHandler>,
-    logformatter: io::log::LogFormatter,
+
     stepping: bool,
     pub breakpoints: Box<HashSet<u16>>,
+
+    logformatter: io::log::LogFormatter,
     pub logdata: Box<Vec<u16>>,
     should_log: bool,
     should_debug_on_infinite_loop: bool,
+    should_exit_on_infinite_loop: bool,
     verbose: bool,
+    start_time: Instant,
+
     pub instructions: u64,
     pub cycles: u64,
-    start_time: Instant,
+
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
 }
@@ -79,20 +85,26 @@ impl Emulator {
 
         Emulator {
             cpu: cpu,
+            lookup: lookup,
             mem: mapper,
             ppu: ppu,
-            lookup: lookup,
+
             iohandler: iohandler,
-            logformatter: io::log::LogFormatter::new(30),
+
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
+
+            logformatter: io::log::LogFormatter::new(30),
             logdata: Box::new(Vec::<u16>::new()),
             should_log: true,
             should_debug_on_infinite_loop: false,
+            should_exit_on_infinite_loop: true,
             verbose: true,
+            start_time: Instant::now(),
+
             instructions: 0,
             cycles: 0,
-            start_time: Instant::now(),
+
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
         }
@@ -109,6 +121,10 @@ impl Emulator {
 
     pub fn toggle_debug_on_infinite_loop(&mut self, debug: bool) {
         self.should_debug_on_infinite_loop = debug
+    }
+
+    pub fn toggle_should_exit_on_infinite_loop(&mut self, exit: bool) {
+        self.should_exit_on_infinite_loop = exit;
     }
 
     #[allow(dead_code)] // only used in tests
@@ -136,6 +152,8 @@ impl Emulator {
                 break;
             }
         }
+
+        self.exit();
     }
 
     pub fn cycle(&mut self) -> CycleState {
@@ -149,19 +167,17 @@ impl Emulator {
                 self.debug();
             }
 
-            if self.cpu.pc == self.cpu.last_instruction {
+            if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop) && self.cpu.pc == self.cpu.last_instruction {
                 if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
                     let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
                     self.iohandler.log(msg);
                     if self.should_debug_on_infinite_loop {
                         self.debug();
-                    } else {
-                        self.exit("".to_owned());
+                    } else if self.should_exit_on_infinite_loop {
                         state = CycleState::Exiting
                     }
-                } else {
-                    let msg = format!("reached probable end of code");
-                    self.exit(msg);
+                } else if self.should_exit_on_infinite_loop {
+                    self.iohandler.log(format!("reached probable end of code"));
                     state = CycleState::Exiting
                 }
             }
@@ -174,19 +190,23 @@ impl Emulator {
             }
         }
 
-        let is_vblank = {
+        let fire_vblank_nmi = {
             let mut ppu = self.ppu.borrow_mut();
             let vblank = ppu.cycle();
+            //vblank |= ppu.cycle();
+            //vblank |= ppu.cycle();
 
-            vblank & ppu.vblank_is_enabled()
+            vblank & ppu.vblank_nmi_is_enabled()
         };
-        if self.should_trigger_nmi && (is_vblank || self.nmi_triggered_countdown == 0) {
-            self.trigger_interrupt(memory::NMI_TARGET_ADDR);
+        if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
+            self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
             self.iohandler.render(&mut *self.mem);
         }
         if self.cycles % 16666 == 0 {
-            self.iohandler.poll(&*self.mem);
+            if self.iohandler.poll(&*self.mem) {
+                state = CycleState::Exiting
+            }
         }
 
         self.cycles += 1;
@@ -854,18 +874,16 @@ impl Emulator {
             0x2000 => {
                 // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
                 // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
-                let ppu = self.ppu.borrow();
+                let mut ppu = self.ppu.borrow_mut();
                 if (value & ppu::VERTICAL_BLANK_BIT) == ppu::VERTICAL_BLANK_BIT
-                    && !ppu.vblank_is_enabled()
+                    && !ppu.vblank_nmi_is_enabled()
                     && ppu.is_in_vblank()
                 {
-                    //TODO: fix this: self.nmi_triggered_countdown = 1;
+                    //self.nmi_triggered_countdown = 1;
                 }
             }
             0x4017 => {
-                if (value & 0b0100_0000) == 0 {
-                    //self.nmi_triggered = true;
-                }
+                // TODO
             }
             _ => {}
         }
@@ -1069,8 +1087,8 @@ impl Emulator {
         }
     }
 
-    pub fn trigger_interrupt(&mut self, addr: u16) {
-        let addr: u16 = self.mem.get_16b_addr(addr);
+    pub fn trigger_nmi(&mut self) {
+        let addr: u16 = self.mem.get_16b_addr(memory::NMI_TARGET_ADDR);
         self.push_pc_to_stack(2);
         self.logdata.push(addr);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
@@ -1080,7 +1098,7 @@ impl Emulator {
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
 
         self.cpu.pc = addr;
-        //self.cpu.cycle += 7;
+        self.cpu.cycle += 7;
     }
 
     pub fn log_str(&mut self) -> String {
@@ -1119,15 +1137,14 @@ impl Emulator {
         dbg::debug(self);
     }
 
-    fn exit(&self, reason: String) {
-        self.iohandler.log("".to_owned());
-        self.iohandler.log(reason);
-
+    fn exit(&self) {
+        let elapsed_secs = self.start_time.elapsed().as_secs_f64();
         self.iohandler.exit(format!(
-            "Exiting after {} instructions, {} cycles ({:.1} MHz)",
+            "Exiting after {} instructions, {} cycles ({:.1} MHz) {:.1} avg fps",
             self.instructions,
             self.cycles,
-            (self.cycles as f64 / self.start_time.elapsed().as_secs_f64()) / 1_000_000.0
+            (self.cycles as f64 / elapsed_secs) / 1_000_000.0,
+            self.ppu.borrow().frames as f64 / elapsed_secs
         ));
     }
 }

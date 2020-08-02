@@ -14,3 +14,4 @@ Resources:
 * [nestest](http://www.qmtpro.com/~nes/misc/)
 * [nesdev](https://wiki.nesdev.com)
 * [nes rendering overview](https://austinmorlan.com/posts/nes_rendering_overview/)
+* [nes system documentation](https://patpend.net/technical/nes/nestech.doc.txt)
