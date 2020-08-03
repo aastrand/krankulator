@@ -41,6 +41,7 @@ mod tests {
     #[test]
     fn test_addr_mirroring() {
         assert_eq!(mirror_addr(0x973), 0x173);
+        assert_eq!(mirror_addr(0x200C), 0x2004);
         assert_eq!(mirror_addr(0x3002), 0x2002);
         assert_eq!(mirror_addr(0x8000), 0x8000);
     }
