@@ -20,7 +20,7 @@ use super::ppu;
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper);
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool;
     fn render(&mut self, mem: &dyn memory::MemoryMapper);
     fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char>;
     fn exit(&self, s: String);
@@ -43,7 +43,9 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper) {}
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool {
+        false
+    }
 
     fn render(&mut self, _mem: &dyn memory::MemoryMapper) {}
 
@@ -104,8 +106,8 @@ impl<'a> IOHandler for SDLIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper) {
-        //self.event_pump.poll_event();
+    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool {
+        let mut should_exit = false;
 
         for event in self.event_pump.poll_iter() {
             match event {
@@ -113,8 +115,8 @@ impl<'a> IOHandler for SDLIOHandler {
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
-                }  => {
-                    std::process::exit(0);
+                } => {
+                    should_exit = true;
                 }
                 Event::KeyDown {
                     keycode: Some(Keycode::M),
@@ -125,6 +127,8 @@ impl<'a> IOHandler for SDLIOHandler {
                 _ => {}
             }
         }
+
+        should_exit
     }
 
     fn render(&mut self, mem: &dyn memory::MemoryMapper) {

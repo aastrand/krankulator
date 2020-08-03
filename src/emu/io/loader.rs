@@ -112,11 +112,12 @@ impl Loader for InesLoader {
 
         let result: Box<dyn memory::MemoryMapper> = match mapper {
             0 => Box::new(mapper::nrom::NROMMapper::new(
+                *flags,
                 Box::new(*prg_banks.get(0).unwrap()),
                 prg_banks.pop(),
                 chr_banks.pop(),
             )),
-            1 => Box::new(mapper::mmc1::MMC1Mapper::new(prg_banks, chr_banks)),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(*flags, prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 

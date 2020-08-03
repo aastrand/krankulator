@@ -1,8 +1,8 @@
 pub mod mapper;
 use super::ppu;
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 #[allow(dead_code)] // only used in tests
@@ -12,6 +12,7 @@ pub const CODE_START_ADDR: u16 = 0x600;
 pub const STACK_START_ADDR: u16 = 0xff;
 
 pub const MAX_RAM_SIZE: usize = 65536;
+pub const MAX_VRAM_SIZE: usize = 0x4000;
 pub const STACK_BASE_OFFSET: u16 = 0x100;
 
 pub fn to_16b_addr(hb: u8, lb: u8) -> u16 {
@@ -100,6 +101,8 @@ pub trait MemoryMapper {
 pub struct IdentityMapper {
     _ram: Box<[u8; MAX_RAM_SIZE]>,
     ram_ptr: *mut u8,
+    _vram: Box<[u8; MAX_VRAM_SIZE]>,
+    vram_ptr: *mut u8,
     code_start: u16,
 }
 
@@ -107,9 +110,14 @@ impl IdentityMapper {
     pub fn new(code_start: u16) -> IdentityMapper {
         let mut ram = Box::new([0; MAX_RAM_SIZE]);
         let ram_ptr = ram.as_mut_ptr();
+
+        let mut vram = Box::new([0; MAX_VRAM_SIZE]);
+        let vram_ptr = vram.as_mut_ptr();
         IdentityMapper {
             _ram: ram,
             ram_ptr,
+            _vram: vram,
+            vram_ptr: vram_ptr,
             code_start: code_start,
         }
     }
@@ -126,13 +134,19 @@ impl MemoryMapper for IdentityMapper {
         unsafe { *self.ram_ptr.offset(addr as _) = value }
     }
 
-    fn ppu_read(&self, _addr: u16) -> u8 {
-        0
+    fn ppu_read(&self, addr: u16) -> u8 {
+        unsafe { *self.vram_ptr.offset(addr as _) }
     }
 
-    fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+        unsafe { std::ptr::copy(self.vram_ptr.offset(addr as _), dest, size) }
 
-    fn ppu_write(&mut self, _addr: u16, _value: u8) {}
+    }
+
+    fn ppu_write(&mut self, addr: u16, value: u8) {
+        unsafe { *self.vram_ptr.offset(addr as _) = value }
+
+    }
 
     fn code_start(&mut self) -> u16 {
         self.code_start
