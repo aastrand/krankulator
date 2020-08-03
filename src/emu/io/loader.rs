@@ -46,7 +46,8 @@ impl Loader for BinLoader {
     fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
         let bytes = util::read_bytes(path);
 
-        let mut mapper: Box<dyn memory::MemoryMapper> = Box::new(memory::IdentityMapper::new(0x400));
+        let mut mapper: Box<dyn memory::MemoryMapper> =
+            Box::new(memory::IdentityMapper::new(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
             mapper.cpu_write(i as u16, *b);
@@ -94,20 +95,31 @@ impl Loader for InesLoader {
             prg_banks.push(code);
         }
 
-        println!("Loaded {} PRG banks, {} CHR banks, with {} PRG RAM units", num_prg_blocks, num_chr_blocks, prg_ram_units);
-
+        println!(
+            "Loaded {} PRG banks, {} CHR banks, with {} PRG RAM units",
+            num_prg_blocks, num_chr_blocks, prg_ram_units
+        );
 
         let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
 
-        for b in 0..num_chr_blocks {
-            let mut gfx = [0; CHR_BANK_SIZE];
+        if num_chr_blocks > 0 {
+            for b in 0..num_chr_blocks {
+                let mut gfx = [0; CHR_BANK_SIZE];
 
-            let block_offset: usize =
-                chr_offset as usize + (b as u32 * CHR_BANK_SIZE as u32) as usize;
-            gfx[0..CHR_BANK_SIZE]
-                .clone_from_slice(&bytes[block_offset..(block_offset + CHR_BANK_SIZE)]);
+                let block_offset: usize =
+                    chr_offset as usize + (b as u32 * CHR_BANK_SIZE as u32) as usize;
+                gfx[0..CHR_BANK_SIZE]
+                    .clone_from_slice(&bytes[block_offset..(block_offset + CHR_BANK_SIZE)]);
 
-            chr_banks.push(gfx);
+                chr_banks.push(gfx);
+            }
+        } else {
+            // CHR RAM
+            for _ in 0..32 {
+                let gfx: [u8; CHR_BANK_SIZE] = [0; CHR_BANK_SIZE];
+                chr_banks.push(gfx);
+
+            }
         }
 
         let result: Box<dyn memory::MemoryMapper> = match mapper {

@@ -7,7 +7,7 @@ use std::cmp::max;
 use std::rc::Rc;
 
 const BANK_SIZE: usize = 16 * 1024;
-const CHR_BANK_SIZE: usize = 8 * 1024;
+const CHR_BANK_SIZE: u16 = 8 * 1024;
 const CPU_RAM_SIZE: usize = 2 * 1024;
 const MMC_RAM_SIZE: usize = 8 * 1024;
 const VRAM_SIZE: u16 = 2 * 1024;
@@ -31,8 +31,9 @@ pub struct MMC1Mapper {
     low_bank: *mut u8,
     high_bank: *mut u8,
 
-    _chr_banks: Vec<[u8; CHR_BANK_SIZE]>,
-    chr_ptr: *mut u8,
+    chr_banks: Vec<[u8; CHR_BANK_SIZE as _]>,
+    low_chr_bank: *mut u8,
+    high_chr_bank: *mut u8,
 
     _vram: Box<[u8; VRAM_SIZE as usize]>,
     vrm_ptr: *mut u8,
@@ -53,7 +54,7 @@ impl MMC1Mapper {
     pub fn new(
         flags: u8,
         mut prg_banks: Vec<[u8; BANK_SIZE]>,
-        chr_banks: Vec<[u8; CHR_BANK_SIZE]>,
+        mut chr_banks: Vec<[u8; CHR_BANK_SIZE as _]>,
     ) -> MMC1Mapper {
         if prg_banks.len() < 2 {
             panic!("Expected at least two PRG banks");
@@ -66,7 +67,7 @@ impl MMC1Mapper {
 
         let low_bank_ptr: *mut u8 = unsafe { prg_banks.get_unchecked_mut(0).as_mut_ptr() };
 
-        let chr_ptr: *mut u8 = std::mem::MaybeUninit::zeroed().as_mut_ptr();
+        let chr_ptr: *mut u8 = unsafe { chr_banks.get_unchecked_mut(0).as_mut_ptr() };
         //*mut u8 = chr_banks[0].as_mut_ptr();
 
         let mut vram = Box::new([0; VRAM_SIZE as usize]);
@@ -92,8 +93,9 @@ impl MMC1Mapper {
 
             // PPU $0000-$0FFF: 4 KB switchable CHR bank
             // PPU $1000-$1FFF: 4 KB switchable CHR bank
-            _chr_banks: chr_banks,
-            chr_ptr: chr_ptr,
+            chr_banks: chr_banks,
+            low_chr_bank: chr_ptr,
+            high_chr_bank: chr_ptr,
 
             _vram: vram,
             vrm_ptr: vrm_ptr,
@@ -119,6 +121,12 @@ impl MMC1Mapper {
         unsafe {
             let len = mapper.banks.len();
             mapper.high_bank = mapper.banks.get_unchecked_mut(max(0, len - 1)).as_mut_ptr();
+
+            let len = mapper.chr_banks.len();
+            mapper.high_chr_bank = mapper
+                .chr_banks
+                .get_unchecked_mut(max(0, len - 1))
+                .as_mut_ptr();
         }
 
         mapper
@@ -224,12 +232,71 @@ impl MMC1Mapper {
                 }
             }
             0xa0 | 0xb0 => {
-                self.handle_register_write(value);
+                if let Some(result) = self.handle_register_write(value) {
+                    self.reg1 = result;
+
+                    // 4k switch
+                    if self.reg0 & 0b1_0000 == 0b1_0000 {
+                        let bank = value & 0b11111;
+                        unsafe {
+                            self.low_chr_bank =
+                                self.chr_banks.get_unchecked_mut(bank as usize).as_mut_ptr();
+                        }
+                        println!("Switched low chr bank to {:X} (4k mode)", (bank) as usize);
+                    } else {
+                        // 8k
+                        let bank = value & 0b11110;
+                        unsafe {
+                            self.low_chr_bank = self
+                                .chr_banks
+                                .get_unchecked_mut((bank) as usize)
+                                .as_mut_ptr();
+                            self.high_chr_bank = self
+                                .chr_banks
+                                .get_unchecked_mut((bank + 1) as usize)
+                                .as_mut_ptr();
+                        }
+                        println!("Switched low chr bank to {:X} (8k mode)", (bank) as usize);
+                        println!(
+                            "Switched high chr bank to {:X} (8k mode)",
+                            (bank + 1) as usize
+                        );
+                    }
+                }
                 //println!("Write to MMC reg1: {:X}", value);
             }
             0xc0 | 0xd0 => {
-                self.handle_register_write(value);
-                //println!("Write to MMC reg2: {:X}", value);
+                if let Some(result) = self.handle_register_write(value) {
+                    self.reg2 = result;
+
+                    // 4k switch
+                    if self.reg0 & 0b1_0000 == 0b1_0000 {
+                        let bank = value & 0b11111;
+                        unsafe {
+                            self.high_chr_bank =
+                                self.chr_banks.get_unchecked_mut(bank as usize).as_mut_ptr();
+                        }
+                        println!("Switched high chr bank to {:X} (4k mode)", (bank) as usize);
+                    } else {
+                        // 8k
+                        let bank = value & 0b11110;
+                        unsafe {
+                            self.low_chr_bank = self
+                                .chr_banks
+                                .get_unchecked_mut((bank) as usize)
+                                .as_mut_ptr();
+                            self.high_chr_bank = self
+                                .chr_banks
+                                .get_unchecked_mut((bank + 1) as usize)
+                                .as_mut_ptr();
+                        }
+                        println!("Switched low chr bank to {:X} (8k mode)", (bank) as usize);
+                        println!(
+                            "Switched high chr bank to {:X} (8k mode)",
+                            (bank + 1) as usize
+                        );
+                    }
+                } //println!("Write to MMC reg2: {:X}", value);
             }
             0xe0 | 0xf0 => {
                 //println!("Write to MMC reg3: {:X}", value);
@@ -237,7 +304,7 @@ impl MMC1Mapper {
                 if let Some(result) = self.handle_register_write(value) {
                     self.reg3 = result;
 
-                    if self.reg3 & 0b100 == 0b100 {
+                    if self.reg0 & 0b100 == 0b100 {
                         // 32k bank switching
                         let base_bank = result & 0b110;
                         unsafe {
@@ -258,7 +325,7 @@ impl MMC1Mapper {
                             "Switched high bank to {:X} (32K mode)",
                             ((base_bank * 2) + 1) as usize
                         );
-                    } else if self.reg3 & 0b10 == 0b10 {
+                    } else if self.reg0 & 0b10 == 0b10 {
                         unsafe {
                             self.low_bank = self
                                 .banks
@@ -288,9 +355,11 @@ impl MMC1Mapper {
         let page = addr_to_page(addr);
 
         match page {
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
+            0x0 => unsafe { *self.low_chr_bank.offset(addr as _) },
+            0x10 => unsafe { *self.high_chr_bank.offset((addr % CHR_BANK_SIZE) as _) },
             0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                addr =
+                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
@@ -308,9 +377,17 @@ impl MMC1Mapper {
         let mut addr = addr % MAX_VRAM_ADDR;
         let page = addr_to_page(addr);
         match page {
-            0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
+            0x0 => unsafe { std::ptr::copy(self.low_chr_bank.offset(addr as _), dest, size) },
+            0x10 => unsafe {
+                std::ptr::copy(
+                    self.high_chr_bank.offset((addr % CHR_BANK_SIZE) as _),
+                    dest,
+                    size,
+                )
+            },
             0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                addr =
+                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
                 unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
             }
             0x30 => unsafe {
@@ -325,8 +402,11 @@ impl MMC1Mapper {
         let mut addr = addr % MAX_VRAM_ADDR;
         let page = addr_to_page(addr);
         match page {
+            0x0 => unsafe { *self.low_chr_bank.offset(addr as _) = value },
+            0x10 => unsafe { *self.high_chr_bank.offset((addr % CHR_BANK_SIZE) as _) = value },
             0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                addr =
+                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) = value }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },
@@ -387,9 +467,9 @@ mod tests {
         prg_banks[15][0x3ffc] = 0x11;
         prg_banks[15][0x3ffd] = 0x47;
 
-        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-        chr_banks.push([0; CHR_BANK_SIZE]);
-        chr_banks.push([0; CHR_BANK_SIZE]);
+        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE as _]> = vec![];
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
 
         let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(0, prg_banks, chr_banks));
 
@@ -403,9 +483,9 @@ mod tests {
             prg_banks.push([0; BANK_SIZE]);
         }
 
-        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-        chr_banks.push([0; CHR_BANK_SIZE]);
-        chr_banks.push([0; CHR_BANK_SIZE]);
+        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE as _]> = vec![];
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
 
         let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
 
@@ -427,9 +507,9 @@ mod tests {
             prg_banks.push([0; BANK_SIZE]);
         }
 
-        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-        chr_banks.push([0; CHR_BANK_SIZE]);
-        chr_banks.push([0; CHR_BANK_SIZE]);
+        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE as _]> = vec![];
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
 
         let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
         mapper.reg0 = 0b11101;
@@ -447,9 +527,9 @@ mod tests {
             prg_banks.push([1; BANK_SIZE]);
         }
 
-        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-        chr_banks.push([0; CHR_BANK_SIZE]);
-        chr_banks.push([0; CHR_BANK_SIZE]);
+        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE as _]> = vec![];
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
+        chr_banks.push([0; CHR_BANK_SIZE as _]);
 
         // TODO: initial reg0 value might change in the future
         let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
@@ -481,4 +561,5 @@ mod tests {
     // * test for 16k low switching
     // * test for 16k high switching
     // * test for 32k switchig
+    // * test for chr switching
 }
