@@ -243,8 +243,6 @@ impl Emulator {
         let opcode = self.mem.cpu_read(self.cpu.pc as _);
         let size: u16 = self.lookup.size(opcode);
 
-        //println!("Executing {}", self.lookup.name(opcode));
-
         match opcode {
             opcodes::AND_ABS
             | opcodes::AND_ABX
@@ -283,6 +281,7 @@ impl Emulator {
             opcodes::BIT_ABS | opcodes::BIT_ZP => {
                 // Test BITs
                 let addr = self.addr(opcode);
+                self.logdata.push(addr);
                 self.cpu.bit(self.mem.cpu_read(addr));
             }
 
@@ -510,18 +509,6 @@ impl Emulator {
                 // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
             }
-            opcodes::RTS => {
-                // ReTurn from Subroutine
-                let lb: u8 = self.pull_from_stack();
-                let hb: u8 = self.pull_from_stack();
-
-                let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
-                self.logdata.push(addr);
-
-                self.cpu.pc = addr;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
 
             opcodes::INC_ABS | opcodes::INC_ABX | opcodes::INC_ZP | opcodes::INC_ZPX => {
                 let addr = self.addr(opcode);
@@ -676,6 +663,19 @@ impl Emulator {
                 let hb: u8 = self.pull_from_stack();
 
                 let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff);
+                self.logdata.push(addr);
+
+                self.cpu.pc = addr;
+                // Compensate for length addition
+                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
+            }
+
+            opcodes::RTS => {
+                // ReTurn from Subroutine
+                let lb: u8 = self.pull_from_stack();
+                let hb: u8 = self.pull_from_stack();
+
+                let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
                 self.logdata.push(addr);
 
                 self.cpu.pc = addr;
@@ -879,7 +879,7 @@ impl Emulator {
                     && !ppu.vblank_nmi_is_enabled()
                     && ppu.is_in_vblank()
                 {
-                    //self.nmi_triggered_countdown = 1;
+                    self.nmi_triggered_countdown = 2;
                 }
             }
             0x4017 => {
@@ -1089,8 +1089,8 @@ impl Emulator {
 
     pub fn trigger_nmi(&mut self) {
         let addr: u16 = self.mem.get_16b_addr(memory::NMI_TARGET_ADDR);
-        self.push_pc_to_stack(2);
-        self.logdata.push(addr);
+        //println!("Triggering NMI to {:X}", addr);
+        self.push_pc_to_stack(0);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
 

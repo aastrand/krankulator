@@ -446,7 +446,29 @@ mod tests {
         assert_eq!(expected, buf);
     }
 
-    
+    /*#[test]
+    fn test_nes_ppu_vbl_set_time() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/vbl_nmi/02-vbl_set_time.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("T+ 1 2\n00 - V\n01 - V\n02 - V\n03 - V\n04 - -\n05 V -\n06 V -\n07 V -\n08 V -\n\n02-vbl_set_time\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        println!("{}", buf);
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }*/
+
     #[test]
     fn test_nes_ppu_vbl_clear_time() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
@@ -472,28 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn test_nes_ppu_even_odd_frames() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/ppu/vbl_nmi/09-even_odd_frames.nes",
-        )));
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("00 01 01 02 \n09-even_odd_frames\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /*#[test]
     fn test_nes_ppu_nmi_control() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/ppu/vbl_nmi/04-nmi_control.nes",
@@ -508,18 +508,17 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("\n01-vbl_basics\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, 1000);
+        let expected = String::from("\n04-nmi_control\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
-        println!("{}", buf);
-        //assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }
 
-    #[test]
-    fn test_nes_ppu_vbl_set_time() {
+    /*#[test]
+    fn test_nes_ppu_nmi_timing() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/ppu/vbl_nmi/02-vbl_set_time.nes",
+            "input/nes/ppu/vbl_nmi/05-nmi_timing.nes",
         )));
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
@@ -531,10 +530,9 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("T+ 1 2\n00 - V\n01 - V\n02 - V\n03 - V\n04 - -\n05 V -\n06 V -\n07 V -\n08 V -\n\n02-vbl_set_time\n\nPassed\n");
+        let expected = String::from("\n04-nmi_control\n\nPassed\n");
         let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
-        println!("{}", buf);
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }
@@ -561,6 +559,116 @@ mod tests {
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }
+
+    #[test]
+    fn test_nes_ppu_nmi_on_timing() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/vbl_nmi/07-nmi_on_timing.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n04-nmi_control\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 1000);
+
+        println!("{}", buf);
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
+    fn test_nes_ppu_nmi_off_timing() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/vbl_nmi/08-nmi_off_timing.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n04-nmi_control\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 1000);
+
+        println!("{}", buf);
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }*/
+
+    #[test]
+    fn test_nes_ppu_even_odd_frames() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/vbl_nmi/09-even_odd_frames.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("00 01 01 02 \n09-even_odd_frames\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    /*#[test]
+    fn test_nes_ppu_even_odd_timing() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/vbl_nmi/10-even_odd_timing.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("00 01 01 02 \n09-even_odd_frames\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 1000);
+
+        println!("{}", buf);
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }*/
+
+    /*#[test]
+    fn test_nes_oam_stress() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/oam_stress.nes",
+        )));
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("All 16 tests passed");
+        let buf = get_status_str(&mut emu, 0x6004, 1000);
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
     #[test]
     fn test_nes_vram_access() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
@@ -581,37 +689,6 @@ mod tests {
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
 
-    }
-
-    #[test]
-    fn test_nes_oam_read() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/ppu/oam_read.nes",
-        )));
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("All 16 tests passed");
-
-        let mut buf = String::new();
-        let mut idx = 0x6004;
-        //for _ in 0..expected.len() {
-        loop {
-            let chr = emu.mem.cpu_read(idx);
-            if chr == 0 {
-                break;
-            } else {
-                buf.push(chr as char);
-            }
-            idx += 1;
-        }
-
-        println!("{}", buf);
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
     }
 
     #[test]
