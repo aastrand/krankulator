@@ -425,6 +425,24 @@ mod tests {
     }
 
     #[test]
+    fn test_nes_oam_read() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/ppu/oam_read.nes",
+        )));
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n----------------\n\noam_read\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
     fn test_nes_ppu_vbl_basics() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/ppu/vbl_nmi/01-vbl_basics.nes",
@@ -632,6 +650,29 @@ mod tests {
     fn test_nes_ppu_even_odd_timing() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/ppu/vbl_nmi/10-even_odd_timing.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("00 01 01 02 \n09-even_odd_frames\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 1000);
+
+        println!("{}", buf);
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }*/
+
+   /* #[test]
+    fn test_nes_interrupts_nmi_and_brk() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/interrupts/2-nmi_and_brk.nes",
         )));
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;

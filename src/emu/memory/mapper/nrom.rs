@@ -85,7 +85,7 @@ impl NROMMapper {
 impl MemoryMapper for NROMMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         let addr = super::mirror_addr(addr);
-        if addr >= 0x2000 && addr < 0x2008 {
+        if (addr >= 0x2000 && addr < 0x2008) || addr == 0x4014 {
             self.ppu.borrow_mut().read(addr, self as _)
         } else {
             unsafe { *self.addr_space_ptr.offset(addr as _) }
@@ -110,6 +110,9 @@ impl MemoryMapper for NROMMapper {
                 }
             }
             0x40 => {
+                if addr == 0x4014 {
+                    self.ppu.borrow_mut().write(addr, value, self.addr_space_ptr);
+                }
                 //println!("Write to APU reg {:X}: {:X}", addr, value);
                 /*if addr > 0x4017 {
                     panic!("Write at addr {:X} not mapped", addr);

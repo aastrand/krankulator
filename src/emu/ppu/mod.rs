@@ -2,7 +2,7 @@ extern crate sdl2;
 
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::{Canvas, TextureCreator};
+use sdl2::render::{BlendMode, Canvas, Texture, TextureCreator};
 use sdl2::video::Window;
 
 use super::memory;
@@ -22,14 +22,21 @@ OAMDMA	$4014	aaaa aaaa	OAM DMA high address
 pub const CTRL_REG_ADDR: u16 = 0x2000;
 pub const CTRL_NAMETABLE_ADDR: u8 = 0b0000_0011;
 pub const CTRL_VRAM_ADDR_INC: u8 = 0b0000_0100;
-pub const CTRL_PATTERN_TABLE_OFFSET: u8 = 0b0001_0000;
+pub const CTRL_SPRITE_PATTERN_TABLE_OFFSET: u8 = 0b0000_1000;
+pub const CTRL_BG_PATTERN_TABLE_OFFSET: u8 = 0b0001_0000;
+pub const CTRL_SPRITE_SIZE: u8 = 0b0010_0000;
 pub const CTRL_NMI_ENABLE: u8 = 0b1000_0000;
 
 pub const MASK_BACKGROUND_ENABLE: u8 = 0b0000_1000;
+pub const MASK_SPRITES_ENABLE: u8 = 0b0001_0000;
+#[allow(dead_code)]
+pub const MASK_RENDERING_ENABLE: u8 = 0b0001_1000;
+
+pub const STATUS_VERTICAL_BLANK_BIT: u8 = 0b1000_0000;
+pub const STATUS_SPRITE_ZERO_HIT: u8 = 0b0100_0000;
 
 pub const MASK_REG_ADDR: u16 = 0x2001;
 pub const STATUS_REG_ADDR: u16 = 0x2002;
-pub const VERTICAL_BLANK_BIT: u8 = 0b1000_0000;
 
 pub const OAM_ADDR: u16 = 0x2003;
 pub const OAM_DATA_ADDR: u16 = 0x2004;
@@ -244,12 +251,11 @@ impl PPU {
         match addr {
             CTRL_REG_ADDR => self.ppu_ctrl,
             MASK_REG_ADDR => self.ppu_mask,
-            OAM_ADDR => self.oam_addr,
             STATUS_REG_ADDR => {
                 let status = self.get_status_reg();
 
                 // reading clears bit 7
-                self.ppu_status &= !VERTICAL_BLANK_BIT;
+                self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
                 // reset address latches
                 self.ppu_addr_idx = 0;
                 self.ppu_addr[0] = 0;
@@ -258,9 +264,12 @@ impl PPU {
 
                 status
             }
+            OAM_ADDR => self.oam_addr,
+
             OAM_DATA_ADDR => {
-                // TODO: reads during vertical or forced blanking return the value from OAM at that address but do not increment.
+                // reads during vertical or forced blanking return the value from OAM at that address but do not increment.
                 let value = self.oam_ram[self.oam_addr as usize];
+                println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
                 value
             }
             SCROLL_ADDR => 0,
@@ -315,27 +324,27 @@ impl PPU {
         let mut ret = None;
 
         match addr {
-            CTRL_REG_ADDR => {
-                // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
-                // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
-                /*println!("{}", unsafe { *self.nmi_trigger });
-
-                if (value & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
-                    && !self.vblank_is_enabled()
-                    && self.is_in_vblank()
-                {
-                    unsafe { std::ptr::write(self.nmi_trigger, true) };
-                }
-                println!("{}", unsafe { *self.nmi_trigger });*/
-                self.ppu_ctrl = value;
-            }
+            CTRL_REG_ADDR => self.ppu_ctrl = value,
             MASK_REG_ADDR => self.ppu_mask = value,
-            OAM_ADDR => self.oam_addr = value,
+            OAM_ADDR => {
+                self.oam_addr = value;
+                //println!("Set oam_addr to {:X}", value);
+            }
             OAM_DATA_ADDR => {
+                // Writes to OAMDATA during rendering (on the pre-render line and the visible lines 0-239,
+                // provided either sprite or background rendering is enabled) do not modify values in OAM,
+                // but do perform a glitchy increment of OAMADDR, bumping only the high 6 bits
+                /*if (self.scanline == 261 || self.scanline < 240)
+                    && self.ppu_mask & MASK_RENDERING_ENABLE != 0
+                {
+                    self.oam_addr = (self.oam_addr.wrapping_add(1) & 0b1111_1100)
+                        + (self.oam_addr & 0b0000_0011);
+                    println!("Glitch-increased oam_addr to {:X}]", self.oam_addr);
+                } else {*/
                 self.oam_ram[self.oam_addr as usize] = value;
-                if !self.is_in_vblank() {
-                    self.oam_addr = self.oam_addr.wrapping_add(1)
-                }
+                //println!("Wrote to {:X} oam_ram[{:X}]", value, self.oam_addr);
+                self.oam_addr = self.oam_addr.wrapping_add(1);
+                //}
             }
             SCROLL_ADDR => {
                 self.ppu_scroll_positions[self.ppu_scroll_idx] = value;
@@ -384,13 +393,14 @@ impl PPU {
                 // This page is typically located in internal RAM, commonly $0200-$02FF,
                 let page: u16 = (value as u16) << 8;
                 // TODO: move to mapper
-                if page < 0x20 {
+                if page < 0x2000 {
                     unsafe {
-                        std::ptr::copy(cpu_ram, self.oam_ram_ptr, 256);
+                        std::ptr::copy(cpu_ram.offset(page as _), self.oam_ram_ptr, 256);
                     }
                 } else {
                     panic!("Tried to OAM_DMA copy page {:X}", page);
                 }
+                //println!("OAM DMA copied page {:X}", page);
             }
             _ => {} //println!("addr {:X} not mapped for write!", addr),
         }
@@ -402,15 +412,24 @@ impl PPU {
         // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
         // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
         // on the pre-render scanline to (0,0) on the first visible scanline and doing the last cycle of the last dummy nametable fetch there instead;
-        let num_cycles = if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
-            && self.frames % 2 == 1
-            && self.scanline == 261
-            && self.cycle > 336
-        {
-            4
-        } else {
-            3
-        };
+        let mut num_cycles = 3;
+        if self.scanline == 261 {
+            if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
+                && self.frames % 2 == 1
+                && self.cycle > 336
+            {
+                num_cycles = 4;
+            }
+
+            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
+            if self.hit_pixel_1(num_cycles) {
+                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            }
+        }
+
+        let hit_pixel_1 = self.hit_pixel_1(num_cycles);
+
+        // TODO: check sprite zero hit
 
         self.cycle = self.cycle.wrapping_add(num_cycles);
         if self.cycle > CYCLES_PER_SCANLINE {
@@ -422,35 +441,36 @@ impl PPU {
         }
 
         // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
-        if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
+        /*if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
             && self.cycle > 256
         {
             self.oam_addr = 0;
-        }
+        }*/
 
-        let hit_pixel_1 = self.cycle > 0 && self.cycle < (1 + num_cycles);
         let vblank =
             self.scanline == VBLANK_SCANLINE && hit_pixel_1 && !self.vblank_bit_race_condition;
 
         if self.scanline == PRE_RENDER_SCANLINE && hit_pixel_1 {
-            self.ppu_status &= !VERTICAL_BLANK_BIT;
+            self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
         } else if vblank {
-            self.ppu_status |= VERTICAL_BLANK_BIT;
+            self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
         }
 
-        // -2 => -1 0 1 => 01
-        // -1 =>  0 1 2 => 10
-        // 0  = > 1 2 3 => 11
         // return vblank = true for scanline 241 and pixel *1*
         return vblank;
+    }
+
+    pub fn hit_pixel_1(&self, num_cycles: u16) -> bool {
+        self.cycle > 0 && self.cycle < (1 + num_cycles)
     }
 
     pub fn vblank_nmi_is_enabled(&self) -> bool {
         (self.ppu_ctrl & CTRL_NMI_ENABLE) == CTRL_NMI_ENABLE
     }
 
+    #[allow(dead_code)]
     pub fn is_in_vblank(&mut self) -> bool {
-        (self.get_status_reg() & VERTICAL_BLANK_BIT) == VERTICAL_BLANK_BIT
+        (self.get_status_reg() & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
     }
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, mem: &dyn memory::MemoryMapper) {
@@ -464,12 +484,7 @@ impl PPU {
             .ok()
             .unwrap();
 
-        let addr_offset: u16 =
-            if self.ppu_ctrl & CTRL_PATTERN_TABLE_OFFSET == CTRL_PATTERN_TABLE_OFFSET {
-                0x1000
-            } else {
-                0
-            };
+        texture.set_blend_mode(BlendMode::Blend);
 
         let bg_color = PALETTE[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
         canvas.set_draw_color(bg_color);
@@ -479,61 +494,127 @@ impl PPU {
             NAMETABLE_BASE_ADDR + (0x400 * (self.ppu_ctrl & CTRL_NAMETABLE_ADDR) as usize);
 
         canvas.clear();
-        for y in 0..0x1f as usize {
-            for x in 0..0x20 as usize {
-                // what sprite # is written at this tile?
-                let pattern_table_index =
-                    mem.ppu_read((nametable_addr + (y * 0x20) + x) as _) as u16;
-                // where is the pixels for that tile?
-                let pattern_table_addr = (pattern_table_index * 16) + addr_offset;
-                // copy pixels
-                mem.ppu_copy(pattern_table_addr, tile_ptr, 16);
 
-                // where are the palette attributes for that tile?
-                let attribute_table_addr_offset =
-                    self.tile_to_attribute_byte(x as u8, y as u8) as usize;
-                // fetch palette attributes for that grid
-                let attribute_byte =
-                    mem.ppu_read((ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) as _);
-                // find our position within grid and what palette to use
-                let palette_offset = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
+        if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE {
+            let pattern_table: u16 =
+                if self.ppu_ctrl & CTRL_BG_PATTERN_TABLE_OFFSET == CTRL_BG_PATTERN_TABLE_OFFSET {
+                    0x1000
+                } else {
+                    0
+                };
+            for y in 0..0x1f as usize {
+                for x in 0..0x20 as usize {
+                    // what sprite # is written at this tile?
+                    let pattern_table_index =
+                        mem.ppu_read((nametable_addr + (y * 0x20) + x) as _) as u16;
+                    // where are the pixels for that tile?
+                    let pattern_table_addr = (pattern_table_index * 16) + pattern_table;
+                    // copy pixels
+                    mem.ppu_copy(pattern_table_addr, tile_ptr, 16);
 
-                let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-                    for yp in 0..8 {
-                        let lb = tile[yp];
-                        let hb = tile[yp + 8];
-                        for xp in 0..8 {
-                            let mask = 1 << xp;
-                            let left = (lb & mask) >> xp;
-                            let right = ((hb & mask) >> xp) << 1;
-                            let pixel_value: usize = (left | right) as usize;
+                    // where are the palette attributes for that tile?
+                    let attribute_table_addr_offset =
+                        self.tile_to_attribute_byte(x as u8, y as u8) as usize;
+                    // fetch palette attributes for that grid
+                    let attribute_byte =
+                        mem.ppu_read((ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) as _);
+                    // find our position within grid and what palette to use
+                    let palette = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
 
-                            let transparency = if pixel_value == 0 { 0 } else { 0xff };
-
-                            let palette = mem.ppu_read(
-                                (UNIVERSAL_BG_COLOR_ADDR
-                                    + ((palette_offset as usize) * 4)
-                                    + pixel_value) as _,
-                            ) as usize;
-
-                            let color = { PALETTE[palette % PALETTE_SIZE] };
-
-                            let offset = yp * pitch + (28 - (xp * 4));
-                            buffer[offset] = color.r;
-                            buffer[offset + 1] = color.g;
-                            buffer[offset + 2] = color.b;
-                            buffer[offset + 3] = transparency;
-                        }
-                    }
-                });
-                let _ = canvas.copy(
-                    &texture,
-                    None,
-                    Some(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8)),
-                );
-                // }
+                    self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+                    let _ = canvas.copy(
+                        &texture,
+                        None,
+                        Some(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8)),
+                    );
+                    // }
+                }
             }
         }
+
+        if self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE {
+            let pattern_table: u16 = if self.ppu_ctrl & CTRL_SPRITE_PATTERN_TABLE_OFFSET
+                == CTRL_SPRITE_PATTERN_TABLE_OFFSET
+            {
+                0x1000
+            } else {
+                0
+            };
+
+            for s in 0..64 {
+                let s = s * 4;
+                let y = unsafe { *self.oam_ram_ptr.offset(s) };
+                if y > 0xed {
+                    continue;
+                }
+
+                let tile = unsafe { *self.oam_ram_ptr.offset(s + 1) };
+                // TODO: 8x16
+                if self.ppu_ctrl & CTRL_SPRITE_SIZE == CTRL_SPRITE_SIZE {
+                } else {
+                }
+                let pattern_table_addr = (tile as u16 * 16) + pattern_table;
+                mem.ppu_copy(pattern_table_addr, tile_ptr, 16);
+
+                let attributes = unsafe { *self.oam_ram_ptr.offset(s + 2) };
+                // Palette (4 to 7) of sprite
+                let palette = (attributes & 0b0000_0011) + 4;
+                let flip_horizontally = attributes & 0b0100_0000 == 0b0100_0000;
+                let flip_vertically = attributes & 0b1000_0000 == 0b1000_0000;
+
+                let x = unsafe { *self.oam_ram_ptr.offset(s + 3) };
+
+                self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+
+                /*println!(
+                    "rendering sprite {} to x:{}, y:{} with palette {}",
+                    s/4, x, y, palette
+                );*/
+                let _ = canvas.copy_ex(
+                    &texture,
+                    None,
+                    Some(Rect::new(x as i32, y as i32, 8, 8)),
+                    0f64,
+                    None,
+                    flip_horizontally,
+                    flip_vertically,
+                );
+            }
+        }
+    }
+
+    fn render_tile_to_texture(
+        &self,
+        mem: &dyn memory::MemoryMapper,
+        tile_ptr: *mut u8,
+        palette: u8,
+        texture: &mut Texture,
+    ) {
+        let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
+            for yp in 0..8 as usize {
+                let lb = unsafe { *tile_ptr.offset(yp as _) };
+                let hb = unsafe { *tile_ptr.offset((yp + 8) as _) };
+                for xp in 0..8 as usize {
+                    let mask = 1 << xp;
+                    let left = (lb & mask) >> xp;
+                    let right = ((hb & mask) >> xp) << 1;
+                    let pixel_value: usize = (left | right) as usize;
+
+                    let transparency = if pixel_value == 0 { 0 } else { 0xff };
+
+                    let color = PALETTE[mem.ppu_read(
+                        (UNIVERSAL_BG_COLOR_ADDR + ((palette as usize) * 4) + pixel_value) as _,
+                    ) as usize
+                        % PALETTE_SIZE];
+
+                    let offset = yp * pitch + (28 - (xp * 4));
+                    buffer[offset] = color.r;
+                    buffer[offset + 1] = color.g;
+                    buffer[offset + 2] = color.b;
+                    buffer[offset + 3] = transparency;
+                }
+            }
+        });
     }
 
     fn _print_palette(&self, mem: &dyn memory::MemoryMapper) {
@@ -732,20 +813,16 @@ mod tests {
     #[test]
     fn test_cycle() {
         let mut ppu = PPU::new();
-        ppu.oam_addr = 0x42;
 
         let vblank = ppu.cycle();
         assert_eq!(vblank, false);
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.cycle, 3);
-        assert_eq!(ppu.oam_addr, 0x42);
-        assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+        assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
 
         while ppu.cycle() == false {
-            assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+            assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
         }
-
-        assert_eq!(ppu.oam_addr, 0x0);
 
         assert_eq!(ppu.scanline, 241);
         match ppu.cycle {
@@ -760,14 +837,14 @@ mod tests {
             let vblank = ppu.cycle();
             assert_eq!(vblank, false);
         }
-        assert_eq!(ppu.ppu_status & VERTICAL_BLANK_BIT, 0);
+        assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
     }
 
     #[test]
     pub fn vblank_is_enabled() {
         let mut ppu = PPU::new();
         assert_eq!(ppu.vblank_nmi_is_enabled(), false);
-        ppu.ppu_ctrl |= VERTICAL_BLANK_BIT;
+        ppu.ppu_ctrl |= STATUS_VERTICAL_BLANK_BIT;
         assert_eq!(ppu.vblank_nmi_is_enabled(), true);
     }
 }

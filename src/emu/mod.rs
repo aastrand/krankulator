@@ -875,7 +875,7 @@ impl Emulator {
                 // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
                 // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
                 let mut ppu = self.ppu.borrow_mut();
-                if (value & ppu::VERTICAL_BLANK_BIT) == ppu::VERTICAL_BLANK_BIT
+                if (value & ppu::STATUS_VERTICAL_BLANK_BIT) == ppu::STATUS_VERTICAL_BLANK_BIT
                     && !ppu.vblank_nmi_is_enabled()
                     && ppu.is_in_vblank()
                 {
