@@ -31,14 +31,15 @@ fn main() -> Result<(), String> {
         }
         None | Some("nes") => {
             let mut loader: Box<dyn loader::Loader> = loader::InesLoader::new();
-            let mapper = loader.load(matches.value_of("INPUT").unwrap());
+            let file = matches.value_of("INPUT").unwrap();
+            let mapper = loader.load(file);
 
             let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
                 let sdl_context = sdl2::init()?;
 
                 let video_subsystem = sdl_context.video()?;
                 let window = video_subsystem
-                    .window("Krankulator", 256 * 2, 240 * 2)
+                    .window(&format!("Krankulator - {}", util::filename(file)), 256 * 2, 240 * 2)
                     .position_centered()
                     .build()
                     .map_err(|e| e.to_string())?;
