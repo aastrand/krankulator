@@ -1,4 +1,5 @@
 pub mod mapper;
+use super::io::controller;
 use super::ppu;
 
 use std::cell::RefCell;
@@ -32,6 +33,7 @@ pub trait MemoryMapper {
 
     fn code_start(&mut self) -> u16;
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
+    fn controllers(&mut self) -> &mut [controller::Controller; 2];
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
@@ -104,6 +106,7 @@ pub struct IdentityMapper {
     _vram: Box<[u8; MAX_VRAM_SIZE]>,
     vram_ptr: *mut u8,
     code_start: u16,
+    controllers: [controller::Controller; 2]
 }
 
 impl IdentityMapper {
@@ -119,6 +122,7 @@ impl IdentityMapper {
             _vram: vram,
             vram_ptr: vram_ptr,
             code_start: code_start,
+            controllers: [controller::Controller::new(), controller::Controller::new()],
         }
     }
 }
@@ -140,12 +144,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         unsafe { std::ptr::copy(self.vram_ptr.offset(addr as _), dest, size) }
-
     }
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         unsafe { *self.vram_ptr.offset(addr as _) = value }
-
     }
 
     fn code_start(&mut self) -> u16 {
@@ -154,6 +156,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::new(RefCell::new(ppu::PPU::new()))
+    }
+
+    fn controllers(&mut self) -> &mut [controller::Controller; 2] {
+        &mut self.controllers
     }
 }
 

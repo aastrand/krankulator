@@ -167,7 +167,9 @@ impl Emulator {
                 self.debug();
             }
 
-            if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop) && self.cpu.pc == self.cpu.last_instruction {
+            if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
+                && self.cpu.pc == self.cpu.last_instruction
+            {
                 if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
                     let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
                     self.iohandler.log(msg);
@@ -204,7 +206,7 @@ impl Emulator {
             self.iohandler.render(&mut *self.mem);
         }
         if self.cycles % 16666 == 0 {
-            if self.iohandler.poll(&*self.mem) {
+            if self.iohandler.poll(&mut *self.mem, &mut self.cpu) {
                 state = CycleState::Exiting
             }
         }

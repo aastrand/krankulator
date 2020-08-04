@@ -34,6 +34,8 @@ pub struct NROMMapper {
     vrm_ptr: *mut u8,
 
     nametable_alignment: u8,
+
+    pub controllers: [controller::Controller; 2],
 }
 
 impl NROMMapper {
@@ -78,17 +80,32 @@ impl NROMMapper {
             vrm_ptr: vrm_ptr,
 
             nametable_alignment: flags & super::NAMETABLE_ALIGNMENT_BIT,
+
+            controllers: [controller::Controller::new(), controller::Controller::new()],
         }
     }
 }
 
 impl MemoryMapper for NROMMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
-        let addr = super::mirror_addr(addr);
-        if (addr >= 0x2000 && addr < 0x2008) || addr == 0x4014 {
-            self.ppu.borrow_mut().read(addr, self as _)
-        } else {
-            unsafe { *self.addr_space_ptr.offset(addr as _) }
+        let addr = mirror_addr(addr);
+        let page = addr_to_page(addr);
+
+        match page {
+            0x20 => {
+                if addr >= 0x2000 && addr < 0x2008 {
+                    self.ppu.borrow_mut().read(addr, self as _)
+                } else {
+                    unsafe { *self.addr_space_ptr.offset(addr as _) }
+                }
+            }
+            0x40 => match addr {
+                0x4014 => self.ppu.borrow_mut().read(addr, self as _),
+                0x4016 => self.controllers[0].poll(),
+                0x4017 => self.controllers[1].poll(),
+                _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
+            },
+            _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
         }
     }
 
@@ -111,7 +128,9 @@ impl MemoryMapper for NROMMapper {
             }
             0x40 => {
                 if addr == 0x4014 {
-                    self.ppu.borrow_mut().write(addr, value, self.addr_space_ptr);
+                    self.ppu
+                        .borrow_mut()
+                        .write(addr, value, self.addr_space_ptr);
                 }
                 //println!("Write to APU reg {:X}: {:X}", addr, value);
                 /*if addr > 0x4017 {
@@ -184,6 +203,10 @@ impl MemoryMapper for NROMMapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::clone(&self.ppu)
+    }
+
+    fn controllers(&mut self) -> &mut [controller::Controller; 2] {
+        &mut self.controllers
     }
 }
 

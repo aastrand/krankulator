@@ -48,6 +48,8 @@ pub struct MMC1Mapper {
     reg3: u8,
 
     nametable_alignment: u8,
+
+    pub controllers: [controller::Controller; 2],
 }
 
 impl MMC1Mapper {
@@ -116,6 +118,8 @@ impl MMC1Mapper {
             reg3: 0,
 
             nametable_alignment: flags & super::NAMETABLE_ALIGNMENT_BIT,
+
+            controllers: [controller::Controller::new(), controller::Controller::new()],
         };
 
         unsafe {
@@ -450,6 +454,10 @@ impl MemoryMapper for MMC1Mapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::clone(&self.ppu)
+    }
+
+    fn controllers(&mut self) -> &mut [controller::Controller; 2] {
+        &mut self.controllers
     }
 }
 

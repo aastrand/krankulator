@@ -1,3 +1,4 @@
+pub mod controller;
 pub mod loader;
 pub mod log;
 
@@ -14,15 +15,15 @@ use sdl2::Sdl;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::cpu;
 use super::memory;
 use super::ppu;
 
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool;
+    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool;
     fn render(&mut self, mem: &dyn memory::MemoryMapper);
-    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char>;
     fn exit(&self, s: String);
 }
 
@@ -38,12 +39,7 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char> {
-        None
-    }
-
-    #[allow(unused_variables)]
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool {
+    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool {
         false
     }
 
@@ -101,12 +97,7 @@ impl<'a> IOHandler for SDLIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, mem: &mut dyn memory::MemoryMapper) -> Option<char> {
-        None
-    }
-
-    #[allow(unused_variables)]
-    fn poll(&mut self, mem: &dyn memory::MemoryMapper) -> bool {
+    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool {
         let mut should_exit = false;
 
         for event in self.event_pump.poll_iter() {
@@ -124,6 +115,117 @@ impl<'a> IOHandler for SDLIOHandler {
                 } => {
                     self.muted ^= true;
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => {
+                    cpu.pc = mem.get_16b_addr(memory::RESET_TARGET_ADDR);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::Z),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::A);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Z),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::A);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::X),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::B);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::X),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::B);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::C),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::START);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::C),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::START);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::V),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::SELECT);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::V),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::SELECT);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::LEFT);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::LEFT);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::RIGHT);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::RIGHT);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::UP);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::UP);
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => {
+                    mem.controllers()[0].set_pressed(controller::DOWN);
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => {
+                    mem.controllers()[0].set_not_pressed(controller::DOWN);
+                }
+
                 _ => {}
             }
         }
