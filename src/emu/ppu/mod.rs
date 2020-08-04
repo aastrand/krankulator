@@ -413,23 +413,19 @@ impl PPU {
         // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
         // on the pre-render scanline to (0,0) on the first visible scanline and doing the last cycle of the last dummy nametable fetch there instead;
         let mut num_cycles = 3;
-        if self.scanline == 261 {
-            if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
-                && self.frames % 2 == 1
-                && self.cycle > 336
-            {
-                num_cycles = 4;
-            }
-
-            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
-            if self.hit_pixel_1(num_cycles) {
-                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
-            }
+        if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
+            && self.frames % 2 == 1
+            && self.scanline == 261
+            && self.cycle > 336
+        {
+            num_cycles = 4;
         }
 
-        let hit_pixel_1 = self.hit_pixel_1(num_cycles);
-
         // TODO: check sprite zero hit
+        // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
+        /*if self.hit_pixel_1(num_cycles) {
+            self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+        }*/
 
         self.cycle = self.cycle.wrapping_add(num_cycles);
         if self.cycle > CYCLES_PER_SCANLINE {
@@ -439,6 +435,8 @@ impl PPU {
                 self.frames += 1;
             }
         }
+
+        let hit_pixel_1 = self.hit_pixel_1(num_cycles);
 
         // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
         /*if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
