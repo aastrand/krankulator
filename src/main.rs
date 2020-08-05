@@ -22,45 +22,60 @@ fn main() -> Result<(), String> {
 
     let mut emu = match matches.value_of("LOADER") {
         Some("bin") => {
-            let mut loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
-            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
+            let loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
+            let result = loader.load(matches.value_of("INPUT").unwrap());
+            match result {
+                Ok(mapper) => emu::Emulator::new_headless(mapper),
+                Err(msg) => panic!(msg),
+            }
         }
         Some("ascii") => {
-            let mut loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
-            emu::Emulator::new_headless(loader.load(matches.value_of("INPUT").unwrap()))
+            let loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
+            let result = loader.load(matches.value_of("INPUT").unwrap());
+            match result {
+                Ok(mapper) => emu::Emulator::new_headless(mapper),
+                Err(msg) => panic!(msg),
+            }
         }
         None | Some("nes") => {
-            let mut loader: Box<dyn loader::Loader> = loader::InesLoader::new();
+            let loader: Box<dyn loader::Loader> = loader::InesLoader::new();
             let file = matches.value_of("INPUT").unwrap();
-            let mapper = loader.load(file);
+            match loader.load(file) {
+                Ok(mapper) => {
+                    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+                        let sdl_context = sdl2::init()?;
 
-            let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
-                let sdl_context = sdl2::init()?;
+                        let video_subsystem = sdl_context.video()?;
+                        let window = video_subsystem
+                            .window(
+                                &format!("Krankulator - {}", util::filename(file)),
+                                256 * 2,
+                                240 * 2,
+                            )
+                            .position_centered()
+                            .build()
+                            .map_err(|e| e.to_string())?;
+                        let canvas = window
+                            .into_canvas()
+                            .target_texture()
+                            .present_vsync()
+                            .build()
+                            .map_err(|e| e.to_string())?;
 
-                let video_subsystem = sdl_context.video()?;
-                let window = video_subsystem
-                    .window(&format!("Krankulator - {}", util::filename(file)), 256 * 2, 240 * 2)
-                    .position_centered()
-                    .build()
-                    .map_err(|e| e.to_string())?;
-                let canvas = window
-                    .into_canvas()
-                    .target_texture()
-                    .present_vsync()
-                    .build()
-                    .map_err(|e| e.to_string())?;
+                        emu::Emulator::new(mapper, sdl_context, canvas)
+                    } else {
+                        emu::Emulator::new_headless(mapper)
+                    };
 
-                emu::Emulator::new(mapper, sdl_context, canvas)
-            } else {
-                emu::Emulator::new_headless(mapper)
-            };
+                    emu.cpu.status = 0x34;
+                    emu.cpu.sp = 0xfd;
+                    emu.toggle_should_trigger_nmi(true);
+                    emu.toggle_should_exit_on_infinite_loop(false);
 
-            emu.cpu.status = 0x34;
-            emu.cpu.sp = 0xfd;
-            emu.toggle_should_trigger_nmi(true);
-            emu.toggle_should_exit_on_infinite_loop(false);
-
-            emu
+                    emu
+                }
+                Err(msg) => panic!(msg)
+            }
         }
         _ => {
             println!("Invalid loader, see --help");
@@ -670,7 +685,7 @@ mod tests {
         assert_eq!(expected, buf);
     }*/
 
-   /* #[test]
+    /* #[test]
     fn test_nes_interrupts_nmi_and_brk() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/interrupts/2-nmi_and_brk.nes",

@@ -4,13 +4,13 @@ use super::super::{super::util, memory::mapper};
 extern crate hex;
 
 pub trait Loader {
-    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper>;
+    fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String>;
 }
 
 pub struct AsciiLoader {}
 
 impl Loader for AsciiLoader {
-    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
+    fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
         let mut code: Vec<u8> = vec![];
 
         if let Ok(lines) = util::read_lines(path) {
@@ -36,15 +36,15 @@ impl Loader for AsciiLoader {
             i += 1;
         }
 
-        mapper
+        Ok(mapper)
     }
 }
 
 pub struct BinLoader {}
 
 impl Loader for BinLoader {
-    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
-        let bytes = util::read_bytes(path);
+    fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
+        let bytes = util::read_bytes(path)?;
 
         let mut mapper: Box<dyn memory::MemoryMapper> =
             Box::new(memory::IdentityMapper::new(0x400));
@@ -54,7 +54,7 @@ impl Loader for BinLoader {
             i += 1;
         }
 
-        mapper
+        Ok(mapper)
     }
 }
 
@@ -71,15 +71,20 @@ const PRG_BANK_SIZE: usize = 16384;
 const CHR_BANK_SIZE: usize = 8192;
 
 impl Loader for InesLoader {
-    fn load(&mut self, path: &str) -> Box<dyn memory::MemoryMapper> {
-        let bytes = util::read_bytes(path);
+    fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
+        let bytes = util::read_bytes(path)?;
+
+        //0-3: Constant $4E $45 $53 $1A ("NES" followed by MS-DOS end-of-file)
+        if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
+            return Err(format!("ERROR: Missing iNES header magic numbers"))
+        }
 
         let num_prg_blocks = bytes[4];
         let num_chr_blocks = bytes[5];
-        let flags = bytes.get(6).unwrap();
-        let prg_ram_units = bytes.get(8).unwrap();
+        let flags = bytes[6];
+        let prg_ram_units = bytes[8];
         let mapper = flags >> 4;
-        let prg_offset: usize = INES_HEADER_SIZE + (*flags & 0b0000_0100) as usize * 512;
+        let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
         let mut prg_banks: Vec<[u8; PRG_BANK_SIZE]> = vec![];
@@ -124,47 +129,64 @@ impl Loader for InesLoader {
 
         let result: Box<dyn memory::MemoryMapper> = match mapper {
             0 => Box::new(mapper::nrom::NROMMapper::new(
-                *flags,
+                flags,
                 Box::new(*prg_banks.get(0).unwrap()),
                 prg_banks.pop(),
                 chr_banks.pop(),
             )),
-            1 => Box::new(mapper::mmc1::MMC1Mapper::new(*flags, prg_banks, chr_banks)),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(flags, prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 
         println!("Loaded {} with mapper {}", path, mapper);
 
-        result
+        Ok(result)
     }
 }
 
 #[allow(dead_code)] // only used in tests
 pub fn load_ascii(path: &str) -> Box<dyn memory::MemoryMapper> {
-    let mut l: Box<dyn Loader> = Box::new(AsciiLoader {});
-    l.load(path)
+    let l: Box<dyn Loader> = Box::new(AsciiLoader {});
+    l.load(path).ok().unwrap()
 }
 
 #[allow(dead_code)] // only used in tests
 pub fn load_bin(path: &str) -> Box<dyn memory::MemoryMapper> {
-    let mut l: Box<dyn Loader> = Box::new(BinLoader {});
-    l.load(path)
+    let l: Box<dyn Loader> = Box::new(BinLoader {});
+    l.load(path).ok().unwrap()
 }
 
 #[allow(dead_code)] // only used in tests
 pub fn load_nes(path: &str) -> Box<dyn memory::MemoryMapper> {
-    let mut l: Box<dyn Loader> = InesLoader::new();
-    l.load(path)
+    let l: Box<dyn Loader> = InesLoader::new();
+    l.load(path).ok().unwrap()
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_load_ines() {
-        let code = load_nes("input/official_only.nes");
-        // TODO
+        let l: Box<dyn Loader> = InesLoader::new();
+        let result = l.load("input/nes/all_instrs.nes");
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.ok().unwrap().code_start(), 0xea71);
     }
 
-}*/
+    #[test]
+    fn test_load_ines_no_such_file() {
+        let l: Box<dyn Loader> = InesLoader::new();
+        let result = l.load("does_not_exist");
+        assert_eq!(result.is_ok(), false);
+        assert_eq!(result.err(), Some(format!("File does not exist: does_not_exist")));
+    }
+
+    #[test]
+    fn test_load_ines_header() {
+        let l: Box<dyn Loader> = InesLoader::new();
+        let result = l.load("input/nes/nestest.log");
+        assert_eq!(result.is_ok(), false);
+        assert_eq!(result.err(), Some(format!("ERROR: Missing iNES header magic numbers")));
+    }
+}
