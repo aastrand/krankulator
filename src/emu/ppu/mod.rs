@@ -56,8 +56,19 @@ pub const NAMETABLE_BASE_ADDR: usize = 0x2000;
 pub const ATTRIBUTE_TABLE_ADDR: usize = 0x23C0;
 pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
 
+pub const MASKS: [u8; 8] = [
+    0b0000_0001,
+    0b0000_0010,
+    0b0000_0100,
+    0b0000_1000,
+    0b0001_0000,
+    0b0010_0000,
+    0b0100_0000,
+    0b1000_0000,
+];
+
 pub const PALETTE_SIZE: usize = 64;
-pub const PALETTE: [Color; PALETTE_SIZE] = [
+pub const PALETTE_TO_RGB: [Color; PALETTE_SIZE] = [
     Color::RGB(84, 84, 84),
     Color::RGB(0, 30, 116),
     Color::RGB(8, 16, 144),
@@ -484,14 +495,20 @@ impl PPU {
 
         texture.set_blend_mode(BlendMode::Blend);
 
-        let bg_color = PALETTE[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
+        let bg_color =
+            PALETTE_TO_RGB[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
         canvas.set_draw_color(bg_color);
         //self.print_palette();
 
         let nametable_addr =
             NAMETABLE_BASE_ADDR + (0x400 * (self.ppu_ctrl & CTRL_NAMETABLE_ADDR) as usize);
 
+        let mut palettes = [0; 32];
+        mem.ppu_copy(UNIVERSAL_BG_COLOR_ADDR as _, palettes.as_mut_ptr(), 32);
+
         canvas.clear();
+
+        let mut pixel_buffer: [u8; 256] = [0; 256];
 
         if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE {
             let pattern_table: u16 =
@@ -519,7 +536,7 @@ impl PPU {
                     // find our position within grid and what palette to use
                     let palette = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
 
-                    self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+                    self.render_tile_to_texture(&mut pixel_buffer, tile_ptr, palette, &mut texture, &palettes);
                     let _ = canvas.copy(
                         &texture,
                         None,
@@ -562,7 +579,7 @@ impl PPU {
 
                 let x = unsafe { *self.oam_ram_ptr.offset(s + 3) };
 
-                self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+                self.render_tile_to_texture(&mut pixel_buffer, tile_ptr, palette, &mut texture, &palettes);
 
                 /*println!(
                     "rendering sprite {} to x:{}, y:{} with palette {}",
@@ -583,27 +600,51 @@ impl PPU {
 
     fn render_tile_to_texture(
         &self,
-        mem: &dyn memory::MemoryMapper,
+        buf: &mut [u8; 256],
         tile_ptr: *mut u8,
         palette: u8,
         texture: &mut Texture,
+        palettes: &[u8]
     ) {
-        let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
+        let buf_ptr = buf.as_mut_ptr();
+        for yp in 0..8 as usize {
+            let lb = unsafe { *tile_ptr.offset(yp as _) };
+            let hb = unsafe { *tile_ptr.offset((yp + 8) as _) };
+            for xp in 0..8 as usize {
+                let mask = MASKS[xp];
+                let left = (lb & mask) >> xp;
+                let right = ((hb & mask) >> xp) << 1;
+                let pixel_value: usize = (left | right) as usize;
+
+                let transparency = if pixel_value == 0 { 0 } else { 0xff };
+
+                let color: Color =
+                    PALETTE_TO_RGB[palettes[((palette as usize) * 4) + pixel_value] as usize];
+
+                let offset = (yp * 32) + (28 - (xp * 4));
+                unsafe {
+                    *buf_ptr.offset(offset as _) = color.r;
+                    *buf_ptr.offset((offset + 1) as _) = color.g;
+                    *buf_ptr.offset((offset + 2) as _) = color.b;
+                    *buf_ptr.offset((offset + 3) as _) = transparency;
+                }
+            }
+        }
+        let _ = texture.update(None, buf, 32);
+        /*let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
             for yp in 0..8 as usize {
                 let lb = unsafe { *tile_ptr.offset(yp as _) };
                 let hb = unsafe { *tile_ptr.offset((yp + 8) as _) };
                 for xp in 0..8 as usize {
-                    let mask = 1 << xp;
+                    let mask = MASKS[xp];
                     let left = (lb & mask) >> xp;
                     let right = ((hb & mask) >> xp) << 1;
                     let pixel_value: usize = (left | right) as usize;
 
                     let transparency = if pixel_value == 0 { 0 } else { 0xff };
 
-                    let color = PALETTE[mem.ppu_read(
-                        (UNIVERSAL_BG_COLOR_ADDR + ((palette as usize) * 4) + pixel_value) as _,
-                    ) as usize
-                        % PALETTE_SIZE];
+                    let color: Color =
+                        PALETTE_TO_RGB[palettes[((palette as usize) * 4) + pixel_value] as usize];
 
                     let offset = yp * pitch + (28 - (xp * 4));
                     buffer[offset] = color.r;
@@ -612,7 +653,7 @@ impl PPU {
                     buffer[offset + 3] = transparency;
                 }
             }
-        });
+        });*/
     }
 
     fn _print_palette(&self, mem: &dyn memory::MemoryMapper) {

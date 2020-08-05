@@ -151,6 +151,9 @@ impl Emulator {
             if self.cycle() == CycleState::Exiting {
                 break;
             }
+            if self.start_time.elapsed().as_micros() % 1000000 == 0 {
+                self.exit();
+            }
         }
 
         self.exit();
