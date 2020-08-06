@@ -269,7 +269,7 @@ impl PPU {
             OAM_DATA_ADDR => {
                 // reads during vertical or forced blanking return the value from OAM at that address but do not increment.
                 let value = self.oam_ram[self.oam_addr as usize];
-                println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
+                //println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
                 value
             }
             SCROLL_ADDR => 0,

@@ -33,7 +33,7 @@ pub struct NROMMapper {
     _vram: Box<[u8; VRAM_SIZE as usize]>,
     vrm_ptr: *mut u8,
 
-    nametable_alignment: u8,
+    nametable_alignment: NametableMirror,
 
     pub controllers: [controller::Controller; 2],
 }
@@ -65,6 +65,12 @@ impl NROMMapper {
         let mut vram = Box::new([0; VRAM_SIZE as usize]);
         let vrm_ptr = vram.as_mut_ptr();
 
+        let nametable_alignment = if flags & super::NAMETABLE_ALIGNMENT_BIT == 1 {
+            NametableMirror::Horizontal
+        } else {
+            NametableMirror::Vertical
+        };
+
         NROMMapper {
             _flags: flags,
 
@@ -79,7 +85,7 @@ impl NROMMapper {
             _vram: vram,
             vrm_ptr: vrm_ptr,
 
-            nametable_alignment: flags & super::NAMETABLE_ALIGNMENT_BIT,
+            nametable_alignment: nametable_alignment,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
@@ -149,7 +155,7 @@ impl MemoryMapper for NROMMapper {
             0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
             0x20 => {
                 addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
@@ -170,7 +176,7 @@ impl MemoryMapper for NROMMapper {
             0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
             0x20 => {
                 addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
             }
             0x30 => unsafe {
@@ -187,7 +193,7 @@ impl MemoryMapper for NROMMapper {
         match page {
             0x20 => {
                 addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment == 0) % VRAM_SIZE;
+                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) = value }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },

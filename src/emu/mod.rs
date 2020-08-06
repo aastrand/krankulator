@@ -16,6 +16,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
 
+pub const _NS_PER_CYCLE: std::time::Duration = std::time::Duration::from_nanos(559);
+
 #[derive(PartialEq)]
 pub enum CycleState {
     CpuAhead,
@@ -615,9 +617,6 @@ impl Emulator {
             }
             opcodes::PLA => {
                 // PuLl Accumulator
-                if self.cpu.sp == 0xff {
-                    self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
-                }
                 self.cpu.a = self.pull_from_stack();
                 self.cpu.check_negative(self.cpu.a);
                 self.cpu.check_zero(self.cpu.a);
