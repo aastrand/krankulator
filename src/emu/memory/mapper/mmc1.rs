@@ -365,7 +365,7 @@ impl MMC1Mapper {
                             unsafe {
                                 self.low_bank =
                                     //self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
-                                    self.banks[result as usize].as_mut_ptr();
+                                    self.banks[(result & 0b1111) as usize].as_mut_ptr();
                             }
                         }
                         2 => {
@@ -373,7 +373,7 @@ impl MMC1Mapper {
                             unsafe {
                                 self.high_bank =
                                     //self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
-                                    self.banks[result as usize].as_mut_ptr();
+                                    self.banks[(result & 0b1111) as usize].as_mut_ptr();
                             }
                         }
                         _ => panic!("Can't happen!"),
