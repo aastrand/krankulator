@@ -157,7 +157,7 @@ impl MMC1Mapper {
             bit 4 - unaffected
         */
         if value & 0x80 == 0x80 {
-            self.reg0 |= 0b00110;
+            self.reg0 |= 0b01100;
             self.reg_write_shift_register = SR_INITIAL_VALUE;
         //println!("Reset SR");
         } else {
@@ -169,9 +169,10 @@ impl MMC1Mapper {
 
             if was & 0b0000_0001 == 1 {
                 result = Some(self.reg_write_shift_register);
+                //println!("SR full at {:05b}", self.reg_write_shift_register);
                 self.reg_write_shift_register = SR_INITIAL_VALUE;
             }
-            //println!("SR now {:05b}", self.reg_write_shift_register);
+            //println!("SR now {:05b}, was {:05b}", self.reg_write_shift_register, was);
         }
 
         result
@@ -247,40 +248,41 @@ impl MMC1Mapper {
                     self.reg1 = result;
 
                     // 4k switch
-                    if self.reg0 & 0b0_1000 == 0b0_1000 {
-                        // For carts with 8 KiB of CHR (be it ROM or RAM), MMC1 follows the common behavior of using only the low-order bits: 
+                    if self.reg0 & 0b1_0000 == 0b1_0000 {
+                        // For carts with 8 KiB of CHR (be it ROM or RAM), MMC1 follows the common behavior of using only the low-order bits:
                         // the bank number is in effect ANDed with 1.
                         // TODO: clean
                         let bank = if self.chr_banks.len() == 2 {
-                            result & 0b0001
+                            result & 0b00001
                         } else {
-                            result & 0b1111
+                            result & 0b11111
                         };
-                        println!("Switched low chr bank to {} (4k mode)", (bank) as usize);
+                        //println!("Switched low chr bank to {} (4k mode)", (bank) as usize);
                         unsafe {
-                            self.low_chr_bank = self.chr_banks
-                                //.get_unchecked_mut(bank as usize)
-                                [bank as usize]
+                            self.low_chr_bank = self
+                                .chr_banks
+                                .get_unchecked_mut(bank as usize)
+                                //[bank as usize]
                                 .as_mut_ptr();
                         }
                     } else {
                         // 8k
-                        let bank = result & 0b1110;
-                        println!("Switched low chr bank to {} (8k mode)", (bank) as usize);
+                        let bank = result & 0b11110;
+                        /*println!("Switched low chr bank to {} (8k mode)", (bank) as usize);
                         println!(
                             "Switched high chr bank to {} (8k mode)",
                             (bank + 1) as usize
-                        );
+                        );*/
                         unsafe {
                             self.low_chr_bank = self
                                 .chr_banks
-                                //.get_unchecked_mut((bank) as usize)
-                                [bank as usize]
+                                .get_unchecked_mut((bank) as usize)
+                                //[bank as usize]
                                 .as_mut_ptr();
                             self.high_chr_bank = self
                                 .chr_banks
-                                //.get_unchecked_mut((bank + 1) as usize)
-                                [(bank + 1) as usize]
+                                .get_unchecked_mut((bank + 1) as usize)
+                                //[(bank + 1) as usize]
                                 .as_mut_ptr();
                         }
                     }
@@ -292,41 +294,42 @@ impl MMC1Mapper {
                     self.reg2 = result;
 
                     // 4k switch
-                    if self.reg0 & 0b1000 == 0b1000 {
+                    if self.reg0 & 0b1_0000 == 0b1_0000 {
                         // TODO: clean
                         let bank = if self.chr_banks.len() == 2 {
-                            result & 0b0001
+                            result & 0b00001
                         } else {
-                            result & 0b1111
+                            result & 0b11111
                         };
-                        println!("Switched high chr bank to {} (4k mode)", (bank) as usize);
+                        //println!("Switched high chr bank to {} (4k mode)", (bank) as usize);
                         unsafe {
-                            self.high_chr_bank = self.chr_banks
-                                //.get_unchecked_mut(bank as usize)
-                                    [bank as usize]
-                                .as_mut_ptr();
-                        }
-                    } else {
-                        // 8k
-                        let bank = result & 0b1110;
-                        println!("Switched low chr bank to {} (8k mode)", (bank) as usize);
-                        println!(
-                            "Switched high chr bank to {} (8k mode)",
-                            (bank + 1) as usize
-                        );
-                        unsafe {
-                            self.low_chr_bank = self
-                                .chr_banks
-                                //.get_unchecked_mut((bank) as usize)
-                                [bank as usize]
-                                .as_mut_ptr();
                             self.high_chr_bank = self
                                 .chr_banks
-                                //.get_unchecked_mut((bank + 1) as usize)
-                                [(bank + 1) as usize]
+                                .get_unchecked_mut(bank as usize)
+                                //[bank as usize]
                                 .as_mut_ptr();
                         }
-                    }
+                    } /*else { // ignored in 8k mode
+                          // 8k
+                          let bank = result & 0b1110;
+                          println!("Switched low chr bank to {} (8k mode)", (bank) as usize);
+                          println!(
+                              "Switched high chr bank to {} (8k mode)",
+                              (bank + 1) as usize
+                          );
+                          unsafe {
+                              self.low_chr_bank = self
+                                  .chr_banks
+                                  //.get_unchecked_mut((bank) as usize)
+                                  [bank as usize]
+                                  .as_mut_ptr();
+                              self.high_chr_bank = self
+                                  .chr_banks
+                                  //.get_unchecked_mut((bank + 1) as usize)
+                                  [(bank + 1) as usize]
+                                  .as_mut_ptr();
+                          }
+                      }*/
                 } //println!("Write to MMC reg2: {:X}", value);
             }
             0xe0 | 0xf0 => {
@@ -350,13 +353,13 @@ impl MMC1Mapper {
                             unsafe {
                                 self.low_bank = self
                                     .banks
-                                    //.get_unchecked_mut(base_bank as usize)
-                                    [base_bank as usize]
+                                    .get_unchecked_mut(base_bank as usize)
+                                    //[base_bank as usize]
                                     .as_mut_ptr();
                                 self.high_bank = self
                                     .banks
-                                    //.get_unchecked_mut((base_bank + 1) as usize)
-                                    [(base_bank +1 ) as usize]
+                                    .get_unchecked_mut((base_bank + 1) as usize)
+                                    //[(base_bank +1 ) as usize]
                                     .as_mut_ptr();
                             }
                         }
@@ -364,16 +367,16 @@ impl MMC1Mapper {
                             //println!("Switched low bank to {}", (result) as usize);
                             unsafe {
                                 self.low_bank =
-                                    //self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
-                                    self.banks[(result & 0b1111) as usize].as_mut_ptr();
+                                    self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
+                                //self.banks[(result & 0b1111) as usize].as_mut_ptr();
                             }
                         }
                         2 => {
                             println!("Switched high bank to {}", result as usize);
                             unsafe {
                                 self.high_bank =
-                                    //self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
-                                    self.banks[(result & 0b1111) as usize].as_mut_ptr();
+                                    self.banks.get_unchecked_mut(result as usize).as_mut_ptr();
+                                //self.banks[(result & 0b1111) as usize].as_mut_ptr();
                             }
                         }
                         _ => panic!("Can't happen!"),
@@ -558,11 +561,11 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
         let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
-        mapper.reg0 = 0b11101;
+        mapper.reg0 = 0b11001;
 
         mapper._write_bus(0x8000, 0x80);
 
-        assert_eq!(mapper.reg0, 0b11111);
+        assert_eq!(mapper.reg0, 0b11101);
     }
 
     #[test]
@@ -789,14 +792,14 @@ mod tests {
         assert_eq!(mapper._ppu_read(0x0000), 0);
         assert_eq!(mapper.reg0, 0);
 
-        mapper._write_bus(0xc000, 5); // 1
+        mapper._write_bus(0xc000, 4); // 0
         assert_eq!(mapper._ppu_read(0x0000), 0);
         assert_eq!(mapper.reg0, 0);
 
-        mapper._write_bus(0x8000, 2); // 0
+        mapper._write_bus(0x8000, 1); // 1
         assert_eq!(mapper._ppu_read(0x0000), 0);
         assert_eq!(mapper._ppu_read(0x1000), 15);
-        assert_eq!(mapper.reg0, 0b01000);
+        assert_eq!(mapper.reg0, 0b10000);
 
         // switch chr low to bank 8
         mapper._write_bus(0xc000, 40);
@@ -845,32 +848,119 @@ mod tests {
         assert_eq!(mapper._ppu_read(0x1000), 15);
         assert_eq!(mapper.reg0, 0);
 
-        mapper._write_bus(0xc000, 5); // 1
+        mapper._write_bus(0xc000, 4); // 0
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper.reg0, 0);
+
+        mapper._write_bus(0x8000, 1); // 1
+        assert_eq!(mapper._ppu_read(0x0000), 0);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper.reg0, 0b10000);
+
+        // switch chr high to bank 31
+        mapper._write_bus(0xc000, 41);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+
+        mapper._write_bus(0xc000, 21);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+
+        mapper._write_bus(0xc000, 11);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+
+        mapper._write_bus(0xc000, 5);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+
+        mapper._write_bus(0xc000, 1);
+        assert_eq!(mapper._ppu_read(0x0000), 0);
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+    }
+
+    #[test]
+    fn test_switch_8k() {
+        let mut prg_banks: Vec<[u8; BANK_SIZE]> = vec![];
+        for b in 0..16 {
+            // Init with bank num
+            prg_banks.push([b; BANK_SIZE]);
+        }
+
+        let mut chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]> = vec![];
+        for b in 0..16 {
+            // Init with bank num
+            chr_banks.push([b; io::loader::CHR_BANK_SIZE as _]);
+        }
+
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+
+        // Set chr switching to 4k
+        mapper._write_bus(0x8000, 40); // 0
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper.reg0, 0);
+
+        mapper._write_bus(0xa000, 20); // 0
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper.reg0, 0);
+
+        mapper._write_bus(0xe000, 8); // 0
+        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper.reg0, 0);
+
+        mapper._write_bus(0xc000, 4); // 0
         assert_eq!(mapper._ppu_read(0x1000), 15);
         assert_eq!(mapper.reg0, 0);
 
         mapper._write_bus(0x8000, 2); // 0
         assert_eq!(mapper._ppu_read(0x0000), 0);
         assert_eq!(mapper._ppu_read(0x1000), 15);
-        assert_eq!(mapper.reg0, 0b01000);
-
-        // switch chr high to bank 4
+        assert_eq!(mapper.reg0, 0b00000);
+        // switch chr low to bank 8
         mapper._write_bus(0xc000, 40);
-        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper._ppu_read(0x0000), 0);
 
         mapper._write_bus(0xc000, 20);
-        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper._ppu_read(0x0000), 0);
+
+        mapper._write_bus(0xc000, 10);
+        assert_eq!(mapper._ppu_read(0x0000), 0);
+
+        mapper._write_bus(0xc000, 5);
+        assert_eq!(mapper._ppu_read(0x0000), 0);
+
+        mapper._write_bus(0xa000, 2);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+        assert_eq!(mapper._ppu_read(0x1000), 4);
+
+        // try set to 31 on high
+        mapper._write_bus(0xc000, 41);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+
+        mapper._write_bus(0xc000, 21);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
 
         mapper._write_bus(0xc000, 11);
-        assert_eq!(mapper._ppu_read(0x1000), 15);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
 
-        mapper._write_bus(0xc000, 4);
-        assert_eq!(mapper._ppu_read(0x1000), 15);
+        mapper._write_bus(0xc000, 5);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
 
-        mapper._write_bus(0xc000, 2);
-        assert_eq!(mapper._ppu_read(0x0000), 0);
-        assert_eq!(mapper._ppu_read(0x1000), 2);
+        mapper._write_bus(0xc000, 1);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+        assert_eq!(mapper._ppu_read(0x1000), 4);
+
+        // switch chr low to bank 9
+        mapper._write_bus(0xc000, 41);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+
+        mapper._write_bus(0xc000, 20);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+
+        mapper._write_bus(0xc000, 10);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+
+        mapper._write_bus(0xc000, 5);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+
+        mapper._write_bus(0xa000, 2);
+        assert_eq!(mapper._ppu_read(0x0000), 4);
+        assert_eq!(mapper._ppu_read(0x1000), 4);
     }
-
-    // TODO: chr switching 8k
 }
