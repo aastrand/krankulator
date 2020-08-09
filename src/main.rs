@@ -377,8 +377,9 @@ mod tests {
 
     #[test]
     fn test_nes_instr_test() {
+        // TODO: also run all_instrs.nes
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/all_instrs.nes",
+            "input/nes/official_only.nes",
         )));
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
@@ -386,9 +387,10 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("All 16 tests passed");
+        let expected = String::from("All 16 tests passed\n\n\n");
         let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
+        println!("{}", buf);
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }

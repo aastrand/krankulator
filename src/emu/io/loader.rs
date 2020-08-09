@@ -68,7 +68,7 @@ impl InesLoader {
 
 const INES_HEADER_SIZE: usize = 16;
 const PRG_BANK_SIZE: usize = 16384;
-const CHR_BANK_SIZE: usize = 8192;
+pub const CHR_BANK_SIZE: usize = 8192;
 
 impl Loader for InesLoader {
     fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
@@ -77,6 +77,16 @@ impl Loader for InesLoader {
         //0-3: Constant $4E $45 $53 $1A ("NES" followed by MS-DOS end-of-file)
         if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
             return Err(format!("ERROR: Missing iNES header magic numbers"))
+        }
+
+        // A file is a NES 2.0 ROM image file if it begins with "NES<EOF>" (same as iNES) and,
+        // additionally, the byte at offset 7 has bit 2 clear and bit 3 set:
+        let is_nes2_header = {
+            bytes[7] & 0b0000_1100 == 0b0000_1000
+        };
+
+        if is_nes2_header {
+            println!("Header has NES 2.0 extension");
         }
 
         let num_prg_blocks = bytes[4];
@@ -88,6 +98,27 @@ impl Loader for InesLoader {
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
         let mut prg_banks: Vec<[u8; PRG_BANK_SIZE]> = vec![];
+
+        let chr_ram_size = {
+            if is_nes2_header {
+                /*
+                ---------
+                cccc CCCC
+                |||| ++++- CHR-RAM size (volatile) shift count
+                ++++------ CHR-NVRAM size (non-volatile) shift count
+                If the shift count is zero, there is no CHR-(NV)RAM.
+                If the shift count is non-zero, the actual size is
+                "64 << shift count" bytes, i.e. 8192 bytes for a shift count of 7.
+                */
+                let ram_shift = bytes[11] & 0b0000_1111;
+                let nvram_shift = (bytes[11] & 0b1111_0000) >> 4;
+                let shift = std::cmp::max(ram_shift, nvram_shift);
+
+                64 << shift
+            } else {
+                8192
+            }
+        };
 
         for b in 0..num_prg_blocks {
             let mut code = [0; PRG_BANK_SIZE];
@@ -101,7 +132,7 @@ impl Loader for InesLoader {
         }
 
         println!(
-            "Loaded {} PRG banks, {} CHR banks, with {} PRG RAM units",
+            "Loading {} PRG banks, {} CHR banks, with {} PRG RAM units",
             num_prg_blocks, num_chr_blocks, prg_ram_units
         );
 
@@ -119,11 +150,11 @@ impl Loader for InesLoader {
                 chr_banks.push(gfx);
             }
         } else {
-            // CHR RAM
-            for _ in 0..32 {
+            // If the header CHR-ROM value is 0, we should assume that 8KB of CHR-RAM is available.
+            println!("Got {} bytes of CHR RAM", chr_ram_size);
+            for _ in 0..(chr_ram_size / CHR_BANK_SIZE) {
                 let gfx: [u8; CHR_BANK_SIZE] = [0; CHR_BANK_SIZE];
                 chr_banks.push(gfx);
-
             }
         }
 

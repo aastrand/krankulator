@@ -33,7 +33,7 @@ pub const MASK_SPRITES_ENABLE: u8 = 0b0001_0000;
 pub const MASK_RENDERING_ENABLE: u8 = 0b0001_1000;
 
 pub const STATUS_VERTICAL_BLANK_BIT: u8 = 0b1000_0000;
-pub const _STATUS_SPRITE_ZERO_HIT: u8 = 0b0100_0000;
+pub const STATUS_SPRITE_ZERO_HIT: u8 = 0b0100_0000;
 
 pub const MASK_REG_ADDR: u16 = 0x2001;
 pub const STATUS_REG_ADDR: u16 = 0x2002;
@@ -269,7 +269,7 @@ impl PPU {
             OAM_DATA_ADDR => {
                 // reads during vertical or forced blanking return the value from OAM at that address but do not increment.
                 let value = self.oam_ram[self.oam_addr as usize];
-                println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
+                //println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
                 value
             }
             SCROLL_ADDR => 0,
@@ -421,11 +421,16 @@ impl PPU {
             num_cycles = 4;
         }
 
+        // TODO: fix
+        if (self.scanline == self.oam_ram[0] as _) && (self.cycle == self.oam_ram[3] as _) {
+            self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
+        }
+
         // TODO: check sprite zero hit
         // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
-        /*if self.hit_pixel_1(num_cycles) {
+        if self.scanline == 261 && self.hit_pixel_1(num_cycles) {
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
-        }*/
+        }
 
         self.cycle = self.cycle.wrapping_add(num_cycles);
         if self.cycle > CYCLES_PER_SCANLINE {
@@ -473,16 +478,23 @@ impl PPU {
 
     pub fn render(&mut self, canvas: &mut Canvas<Window>, mem: &dyn memory::MemoryMapper) {
         let texture_creator: TextureCreator<_> = canvas.texture_creator();
-        let mut tile = [0; 16];
+        let mut tile = [0; 32];
         let tile_ptr = tile.as_mut_ptr();
 
-        let mut texture = texture_creator
+        let mut texture8 = texture_creator
             .create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)
             .map_err(|e| e.to_string())
             .ok()
             .unwrap();
 
-        texture.set_blend_mode(BlendMode::Blend);
+        let mut texture16 = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGBA32, 8, 16)
+            .map_err(|e| e.to_string())
+            .ok()
+            .unwrap();
+
+        texture8.set_blend_mode(BlendMode::Blend);
+        texture16.set_blend_mode(BlendMode::Blend);
 
         let bg_color = PALETTE[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
         canvas.set_draw_color(bg_color);
@@ -519,9 +531,9 @@ impl PPU {
                     // find our position within grid and what palette to use
                     let palette = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
 
-                    self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+                    self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture8, 8);
                     let _ = canvas.copy(
-                        &texture,
+                        &texture8,
                         None,
                         Some(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8)),
                     );
@@ -547,12 +559,24 @@ impl PPU {
                 }
 
                 let tile = unsafe { *self.oam_ram_ptr.offset(s + 1) };
+                let mut sprite_pattern_table = pattern_table;
+                let mut texture = &mut texture8;
                 // TODO: 8x16
-                if self.ppu_ctrl & CTRL_SPRITE_SIZE == CTRL_SPRITE_SIZE {
+                let tile_size = if self.ppu_ctrl & CTRL_SPRITE_SIZE == CTRL_SPRITE_SIZE {
+                    sprite_pattern_table = {
+                        if tile & 0b0000_0001 == 1 {
+                            0x1000
+                        } else {
+                            0x0
+                        }
+                    };
+                    texture = &mut texture16;
+                    16
                 } else {
-                }
-                let pattern_table_addr = (tile as u16 * 16) + pattern_table;
-                mem.ppu_copy(pattern_table_addr, tile_ptr, 16);
+                    8
+                };
+                let pattern_table_addr = (tile as u16 * 16) + sprite_pattern_table;
+                mem.ppu_copy(pattern_table_addr, tile_ptr, tile_size * 2);
 
                 let attributes = unsafe { *self.oam_ram_ptr.offset(s + 2) };
                 // Palette (4 to 7) of sprite
@@ -562,7 +586,7 @@ impl PPU {
 
                 let x = unsafe { *self.oam_ram_ptr.offset(s + 3) };
 
-                self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture);
+                self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture, tile_size);
 
                 /*println!(
                     "rendering sprite {} to x:{}, y:{} with palette {}",
@@ -571,7 +595,7 @@ impl PPU {
                 let _ = canvas.copy_ex(
                     &texture,
                     None,
-                    Some(Rect::new(x as i32, y as i32, 8, 8)),
+                    Some(Rect::new(x as i32, y as i32, 8, tile_size as _)),
                     0f64,
                     None,
                     flip_horizontally,
@@ -587,9 +611,10 @@ impl PPU {
         tile_ptr: *mut u8,
         palette: u8,
         texture: &mut Texture,
+        y_size: usize,
     ) {
         let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            for yp in 0..8 as usize {
+            for yp in 0..y_size as usize {
                 let lb = unsafe { *tile_ptr.offset(yp as _) };
                 let hb = unsafe { *tile_ptr.offset((yp + 8) as _) };
                 for xp in 0..8 as usize {
