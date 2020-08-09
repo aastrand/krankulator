@@ -390,7 +390,6 @@ mod tests {
         let expected = String::from("All 16 tests passed\n\n\n");
         let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
-        println!("{}", buf);
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }
