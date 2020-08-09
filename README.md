@@ -2,6 +2,7 @@
 
 Naive NES emulator, written to learn Rust.
 
+![emulator screenshot](emulator.png)
 
 Resources: 
 
