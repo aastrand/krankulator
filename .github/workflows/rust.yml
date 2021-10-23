@@ -16,12 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Update dependencies
+      run: sudo apt-get update
     - name: Install dependencies
-      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar
-    - name: Install vcpkg
-      run: cargo install cargo-vcpkg
-    - name: Build vcpkg
-      run: cargo vcpkg build
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libsdl2-dev cmake
     - name: Build
       run: cargo build --verbose
     - name: Run tests
