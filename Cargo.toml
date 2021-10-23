@@ -1,7 +1,7 @@
 [package]
 name = "krankulator"
 version = "0.1.0"
-authors = ["Anders Åstrand <aastrand@gmail.com>"]
+authors = ["Anders Åstrand <anders@teknodromen.se>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,15 +15,20 @@ rand = "0.7.3"
 clap = "3.0.0-beta.1"
 shrust = "0.0.7"
 
-[dependencies.sdl2]
+[target.'cfg(target_os = "linux")'.dependencies.sdl2]
 version = "0.34"
 default-features = false
-features = ["ttf","image","gfx","mixer","static-link","use-vcpkg"]
+features = ["ttf","image","gfx","mixer","static-link", "bundled"]
 
-[package.metadata.vcpkg]
+[target.'cfg(target_os = "windows")'.dependencies.sdl2]
+version = "0.34"
+default-features = false
+features = ["ttf","image","gfx","mixer","static-link", "use-vcpkg"]
+
+[target.'cfg(target_os = "windows")'.package.metadata.vcpkg]
 dependencies = ["sdl2", "sdl2-image[libjpeg-turbo,tiff,libwebp]", "sdl2-ttf", "sdl2-gfx", "sdl2-mixer"]
 git = "https://github.com/microsoft/vcpkg"
 rev = "a0518036077baa4"
 
-[package.metadata.vcpkg.target]
+[target.'cfg(target_os = "windows")'.package.metadata.vcpkg.target]
 x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
