@@ -1,48 +1,73 @@
 mod emu;
 mod util;
 
-use clap::clap_app;
+use clap::Parser;
 use emu::io::loader;
 
+/// Krankulator
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Use a mapped display
+    #[clap(long)]
+    display: bool,
+
+    /// Specify loader: nes (default), ascii, bin
+    #[clap(short, long, default_value = "nes")]
+    loader: String,
+
+     /// Verbose mode
+     #[clap(short, long)]
+    verbose: bool,
+
+    /// Quiet mode, overrides verbose
+    #[clap(short, long)]
+    quiet: bool,
+
+    /// Debug on infinite loop
+    #[clap(short, long)]
+    debug: bool,
+
+    /// Add a breakpoint
+    #[clap(short, long, multiple_occurrences(true))]
+    breakpoint: Vec<String>,
+
+    /// Starting address of code
+    #[clap(short, long)]
+    codeaddr: Option<String>,
+
+    /// Input file to use
+    #[clap()]
+    input: String,   
+}
+
+
 fn main() -> Result<(), String> {
-    let matches = clap_app!(myapp =>
-        (version: "0.1")
-        (author: "Anders Å. <aastrand@gmail.com>")
-        (@arg DISPLAY: --display "Use a mapped display")
-        (@arg LOADER: -l --loader +takes_value "Specify loader: nes (default), ascii, bin")
-        (@arg VERBOSE: -v --verbose "Verbose mode")
-        (@arg QUIET_MODE: -q --quiet "Quiet mode, overrides verbose")
-        (@arg DEBUG: -d --debg "Debug on infinite loop")
-        (@arg BREAKPOINT: -p --breakpoint +multiple "Add a breakpint")
-        (@arg CODEADDR: -c --codeaddr +takes_value "Starting address of code")
+    let args = Args::parse();
 
-        (@arg INPUT: +required "Sets the input file to use")
-    )
-    .get_matches();
-
-    let mut emu = match matches.value_of("LOADER") {
-        Some("bin") => {
+    let mut emu = match args.loader.as_str() {
+        "bin" => {
             let loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
-            let result = loader.load(matches.value_of("INPUT").unwrap());
+            let result = loader.load(&args.input);
             match result {
                 Ok(mapper) => emu::Emulator::new_headless(mapper),
-                Err(msg) => panic!(msg),
+                Err(msg) => panic!("{}", msg),
             }
         }
-        Some("ascii") => {
+        "ascii" => {
             let loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
-            let result = loader.load(matches.value_of("INPUT").unwrap());
+            let result = loader.load(&args.input);
             match result {
                 Ok(mapper) => emu::Emulator::new_headless(mapper),
-                Err(msg) => panic!(msg),
+                Err(msg) => panic!("{}", msg),
             }
         }
-        None | Some("nes") => {
+        "nes" => {
             let loader: Box<dyn loader::Loader> = loader::InesLoader::new();
-            let file = matches.value_of("INPUT").unwrap();
+            let file = &args.input;
             match loader.load(file) {
                 Ok(mapper) => {
-                    let mut emu: emu::Emulator = if matches.is_present("DISPLAY") {
+                    let mut emu: emu::Emulator = if args.display {
                         let sdl_context = sdl2::init()?;
 
                         let video_subsystem = sdl_context.video()?;
@@ -74,7 +99,7 @@ fn main() -> Result<(), String> {
 
                     emu
                 }
-                Err(msg) => panic!(msg)
+                Err(msg) => panic!("{}", msg)
             }
         }
         _ => {
@@ -83,16 +108,14 @@ fn main() -> Result<(), String> {
         }
     };
 
-    if matches.is_present("BREAKPOINT") {
-        for breakpoint in matches.values_of("BREAKPOINT").unwrap() {
-            println!("Adding breakpoint at {}", breakpoint);
-            emu::dbg::toggle_breakpoint(breakpoint, &mut emu.breakpoints);
-        }
+    for breakpoint in args.breakpoint {
+        println!("Adding breakpoint at {}", breakpoint);
+        emu::dbg::toggle_breakpoint(&breakpoint, &mut emu.breakpoints);
     }
 
-    if matches.is_present("CODEADDR") {
-        let input_addr = matches.value_of("CODEADDR").unwrap();
-        match util::hex_str_to_u16(input_addr) {
+    if args.codeaddr.is_some() {
+        let input_addr = args.codeaddr.unwrap();
+        match util::hex_str_to_u16(&input_addr) {
             Ok(addr) => emu.cpu.pc = addr,
             _ => {
                 println!("Invalid code addr: {}", input_addr);
@@ -101,9 +124,9 @@ fn main() -> Result<(), String> {
         };
     }
 
-    emu.toggle_verbose_mode(matches.is_present("VERBOSE") & !matches.is_present("QUIET_MODE"));
-    emu.toggle_quiet_mode(matches.is_present("QUIET_MODE"));
-    emu.toggle_debug_on_infinite_loop(matches.is_present("DEBUG"));
+    emu.toggle_verbose_mode(args.verbose & !args.quiet);
+    emu.toggle_quiet_mode(args.quiet);
+    emu.toggle_debug_on_infinite_loop(args.debug);
 
     emu.run();
 
@@ -351,11 +374,11 @@ mod tests {
                     assert_eq!(expected_ppu_cycles.parse::<u16>().unwrap(), ppu_cycles);
                     assert_eq!(expected_ppu_scanline.parse::<u16>().unwrap(), ppu_scanline);
                 } else {
-                    panic!("Error iterating over nesttest.log");
+                    panic!("{}", "Error iterating over nesttest.log");
                 }
             }
         } else {
-            panic!("Could not read nestest.log");
+            panic!("{}", "Could not read nestest.log");
         }
     }
 
