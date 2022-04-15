@@ -187,7 +187,7 @@ impl Emulator {
             }
 
             let opcode = self.execute_instruction();
-            self.log(opcode, self.cpu.last_instruction);
+            self.log_instruction(opcode, self.cpu.last_instruction);
 
             if self.nmi_triggered_countdown > 0 {
                 self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
@@ -218,7 +218,26 @@ impl Emulator {
         state
     }
 
-    pub fn log(&mut self, opcode: u8, pc: u16) {
+    #[cfg(debug_assertions)]
+    pub fn log_init(&mut self) {
+        self.logdata.clear();
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub fn log_init(&mut self) {
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn log_push(&mut self, data: u16) {
+        self.logdata.push(data);
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub fn log_push(&mut self, _data: u16) {
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn log_instruction(&mut self, opcode: u8, pc: u16) {
         if self.should_log {
             let scanline = self.ppu.borrow_mut().scanline;
             let cycle = self.ppu.borrow_mut().cycle;
@@ -240,8 +259,12 @@ impl Emulator {
         }
     }
 
+    #[cfg(not(debug_assertions))]
+    pub fn log_instruction(&mut self, _opcode: u8, _pc: u16) {
+    }
+
     pub fn execute_instruction(&mut self) -> u8 {
-        self.logdata.clear();
+        self.log_init();
 
         self.cpu.last_instruction = self.cpu.pc;
         let opcode = self.mem.cpu_read(self.cpu.pc as _);
@@ -273,9 +296,9 @@ impl Emulator {
             }
 
             opcodes::ASL => {
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.asl(self.cpu.a);
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
             }
             opcodes::ASL_ABS | opcodes::ASL_ABX | opcodes::ASL_ZP | opcodes::ASL_ZPX => {
                 let addr = self.addr(opcode);
@@ -285,13 +308,13 @@ impl Emulator {
             opcodes::BIT_ABS | opcodes::BIT_ZP => {
                 // Test BITs
                 let addr = self.addr(opcode);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu.bit(self.mem.cpu_read(addr));
             }
 
             opcodes::BPL => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on PLus)
                 if !self.cpu.negative_flag() {
                     self.branch(operand);
@@ -299,7 +322,7 @@ impl Emulator {
             }
             opcodes::BMI => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on MInus
                 if self.cpu.negative_flag() {
                     self.branch(operand);
@@ -307,7 +330,7 @@ impl Emulator {
             }
             opcodes::BVC => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on oVerflow Clear
                 if !self.cpu.overflow_flag() {
                     self.branch(operand);
@@ -315,7 +338,7 @@ impl Emulator {
             }
             opcodes::BVS => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on oVerflow Set
                 if self.cpu.overflow_flag() {
                     self.branch(operand);
@@ -323,7 +346,7 @@ impl Emulator {
             }
             opcodes::BCC => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on Carry Clear
                 if !self.cpu.carry_flag() {
                     self.branch(operand);
@@ -331,7 +354,7 @@ impl Emulator {
             }
             opcodes::BCS => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on Carry Set
                 if self.cpu.carry_flag() {
                     self.branch(operand);
@@ -339,7 +362,7 @@ impl Emulator {
             }
             opcodes::BEQ => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on EQual
                 if self.cpu.zero_flag() {
                     self.branch(operand);
@@ -347,7 +370,7 @@ impl Emulator {
             }
             opcodes::BNE => {
                 let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
-                self.logdata.push((operand as u16) & 0xff);
+                self.log_push((operand as u16) & 0xff);
                 // Branch on Not Equal
                 if !self.cpu.zero_flag() {
                     self.branch(operand);
@@ -375,7 +398,7 @@ impl Emulator {
                 // BRK without a target gets ignored
                 if addr > 0 {
                     self.push_pc_to_stack(2);
-                    self.logdata.push(addr);
+                    self.log_push(addr);
                     // software instructions BRK & PHP will push the B flag as being 1.
                     // hardware interrupts IRQ & NMI will push the B flag as being 0.
                     self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
@@ -410,9 +433,9 @@ impl Emulator {
             | opcodes::CMP_ZP
             | opcodes::CMP_ZPX => {
                 let addr = self.addr(opcode);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 let value = self.mem.cpu_read(addr);
-                self.logdata.push(value as u16);
+                self.log_push(value as u16);
                 self.cpu.compare(self.cpu.a, value);
             }
 
@@ -472,7 +495,7 @@ impl Emulator {
             opcodes::JMP_ABS => {
                 // JuMP to address
                 let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu.pc = addr as _;
                 // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
@@ -495,10 +518,10 @@ impl Emulator {
                 let hb = self.mem.cpu_read(adjusted_addr);
                 let lb = self.mem.cpu_read(addr);
 
-                self.logdata.push(addr);
+                self.log_push(addr);
 
                 let operand: u16 = memory::to_16b_addr(hb, lb);
-                self.logdata.push(operand);
+                self.log_push(operand);
                 self.cpu.pc = operand;
                 // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
@@ -508,7 +531,7 @@ impl Emulator {
                 // Jump to SubRoutine
                 self.push_pc_to_stack(2);
                 let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu.pc = addr;
                 // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
@@ -586,9 +609,9 @@ impl Emulator {
             }
 
             opcodes::LSR => {
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.lsr(self.cpu.a);
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
             }
             opcodes::LSR_ABS | opcodes::LSR_ABX | opcodes::LSR_ZP | opcodes::LSR_ZPX => {
                 let addr = self.addr(opcode);
@@ -664,7 +687,7 @@ impl Emulator {
                 let hb: u8 = self.pull_from_stack();
 
                 let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff);
-                self.logdata.push(addr);
+                self.log_push(addr);
 
                 self.cpu.pc = addr;
                 // Compensate for length addition
@@ -677,7 +700,7 @@ impl Emulator {
                 let hb: u8 = self.pull_from_stack();
 
                 let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
-                self.logdata.push(addr);
+                self.log_push(addr);
 
                 self.cpu.pc = addr;
                 // Compensate for length addition
@@ -696,9 +719,9 @@ impl Emulator {
             }
 
             opcodes::ROL => {
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.rol(self.cpu.a);
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
             }
             opcodes::ROL_ABS | opcodes::ROL_ABX | opcodes::ROL_ZP | opcodes::ROL_ZPX => {
                 let addr = self.addr(opcode);
@@ -706,9 +729,9 @@ impl Emulator {
             }
 
             opcodes::ROR => {
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.ror(self.cpu.a);
-                self.logdata.push(self.cpu.a as u16);
+                self.log_push(self.cpu.a as u16);
             }
             opcodes::ROR_ABS | opcodes::ROR_ABX | opcodes::ROR_ZP | opcodes::ROR_ZPX => {
                 let addr = self.addr(opcode);
@@ -775,19 +798,19 @@ impl Emulator {
             | opcodes::STA_ZPX => {
                 // Store hides page crossing penalties
                 let addr = self.addr(opcode);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu_write(addr, self.cpu.a);
             }
 
             opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
                 let addr = self.addr(opcode);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu_write(addr, self.cpu.x);
             }
 
             opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
                 let addr = self.addr(opcode);
-                self.logdata.push(addr);
+                self.log_push(addr);
                 self.cpu_write(addr, self.cpu.y);
             }
 
@@ -843,17 +866,17 @@ impl Emulator {
 
     fn adc(&mut self, addr: u16) {
         // Add Memory to Accumulator with Carry
-        self.logdata.push(addr);
+        self.log_push(addr);
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         self.cpu.add_to_a_with_carry(operand);
     }
 
     fn asl(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(value as u16);
+        self.log_push(value as u16);
         let result: u8 = self.cpu.asl(value);
-        self.logdata.push(result as u16);
+        self.log_push(result as u16);
         self.cpu_write(addr, result);
 
         result
@@ -865,7 +888,7 @@ impl Emulator {
             self.cpu.cycle += 1;
         }
         self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-        self.logdata.push(self.cpu.pc + 2 as u16);
+        self.log_push(self.cpu.pc + 2 as u16);
         // Branch taken is infers a cycle penalty
         self.cpu.cycle += 1;
     }
@@ -894,7 +917,7 @@ impl Emulator {
     fn dec(&mut self, addr: u16) {
         // DECrement memory
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
         self.cpu_write(addr, value);
 
@@ -904,7 +927,7 @@ impl Emulator {
 
     fn dcp(&mut self, addr: u16) {
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
         self.cpu_write(addr, value);
 
@@ -917,14 +940,14 @@ impl Emulator {
     fn eor(&mut self, addr: u16) {
         // bitwise Exclusive OR
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         self.cpu.eor(operand);
     }
 
     fn inc(&mut self, addr: u16) {
         // INCrement memory
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         let value: u8 = operand.wrapping_add(1);
         self.cpu_write(addr, value);
 
@@ -934,7 +957,7 @@ impl Emulator {
 
     fn isb(&mut self, addr: u16) {
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
 
         let value: u8 = operand.wrapping_add(1);
         self.cpu_write(addr, value);
@@ -946,7 +969,7 @@ impl Emulator {
     }
 
     fn lax(&mut self, addr: u16) {
-        self.logdata.push(addr);
+        self.log_push(addr);
         let value = self.load(addr);
         self.cpu.a = value;
         self.cpu.x = value;
@@ -954,9 +977,9 @@ impl Emulator {
 
     fn lsr(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(value as u16);
+        self.log_push(value as u16);
         let result: u8 = self.cpu.lsr(value);
-        self.logdata.push(result as u16);
+        self.log_push(result as u16);
         self.cpu_write(addr, result);
 
         result
@@ -964,9 +987,9 @@ impl Emulator {
 
     fn ora(&mut self, addr: u16) {
         // Bitwise OR with Accumulator
-        self.logdata.push(addr);
+        self.log_push(addr);
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         self.cpu.ora(operand);
     }
 
@@ -977,9 +1000,9 @@ impl Emulator {
 
     fn rol(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(value as u16);
+        self.log_push(value as u16);
         let result: u8 = self.cpu.rol(value);
-        self.logdata.push(result as u16);
+        self.log_push(result as u16);
         self.cpu_write(addr, result);
 
         result
@@ -987,9 +1010,9 @@ impl Emulator {
 
     fn ror(&mut self, addr: u16) -> u8 {
         let value: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(value as u16);
+        self.log_push(value as u16);
         let result: u8 = self.cpu.ror(value);
-        self.logdata.push(result as u16);
+        self.log_push(result as u16);
         self.cpu_write(addr, result);
 
         result
@@ -1001,14 +1024,14 @@ impl Emulator {
     }
 
     fn sax(&mut self, addr: u16) {
-        self.logdata.push(addr);
+        self.log_push(addr);
         self.cpu_write(addr, self.cpu.a & self.cpu.x);
     }
 
     fn sbc(&mut self, addr: u16) {
-        self.logdata.push(addr);
+        self.log_push(addr);
         let operand: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(operand as u16);
+        self.log_push(operand as u16);
         self.cpu.sub_from_a_with_carry(operand);
     }
 
@@ -1043,9 +1066,9 @@ impl Emulator {
     }
 
     fn load(&mut self, addr: u16) -> u8 {
-        self.logdata.push(addr);
+        self.log_push(addr);
         let val: u8 = self.mem.cpu_read(addr);
-        self.logdata.push(val as u16);
+        self.log_push(val as u16);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
         val

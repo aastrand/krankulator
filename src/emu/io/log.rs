@@ -91,6 +91,7 @@ impl LogFormatter {
         logline
     }
 
+    #[allow(dead_code)]
     pub fn log(
         &mut self,
         logline: String,
