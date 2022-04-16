@@ -190,7 +190,6 @@ pub struct PPU {
     pub cycle: u16,
     pub scanline: u16,
     pub frames: u64,
-    vblank_bit_race_condition: bool,
 }
 
 impl PPU {
@@ -220,7 +219,6 @@ impl PPU {
             cycle: 0,
             scanline: 0,
             frames: 0,
-            vblank_bit_race_condition: false,
         }
     }
 
@@ -415,21 +413,10 @@ impl PPU {
         let mut num_cycles = 3;
         if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
             && self.frames % 2 == 1
-            && self.scanline == 261
+            && self.scanline == PRE_RENDER_SCANLINE
             && self.cycle > 336
         {
             num_cycles = 4;
-        }
-
-        // TODO: fix
-        if (self.scanline == self.oam_ram[0] as _) && (self.cycle == self.oam_ram[3] as _) {
-            self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
-        }
-
-        // TODO: check sprite zero hit
-        // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
-        if self.scanline == 261 && self.hit_pixel_1(num_cycles) {
-            self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
         }
 
         self.cycle = self.cycle.wrapping_add(num_cycles);
@@ -439,32 +426,46 @@ impl PPU {
             if self.scanline == 0 {
                 self.frames += 1;
             }
+
+            let hit_pixel_0 = self.hit_pixel_0(self.cycle);
+            if hit_pixel_0 {
+                self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
+            }
+
+            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
+            if self.scanline == VBLANK_SCANLINE {
+                self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
+                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            }
+
+            // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
+            if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
+                && self.cycle > 256
+            {
+                self.oam_addr = 0;
+            }
+
+            let vblank = self.scanline == VBLANK_SCANLINE && self.vblank_nmi_is_enabled();
+            if self.scanline == PRE_RENDER_SCANLINE {
+                self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
+                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            }
+
+            return vblank;
         }
 
-        let hit_pixel_1 = self.hit_pixel_1(num_cycles);
-
-        // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
-        /*if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
-            && self.cycle > 256
-        {
-            self.oam_addr = 0;
-        }*/
-
-        let vblank =
-            self.scanline == VBLANK_SCANLINE && hit_pixel_1 && !self.vblank_bit_race_condition;
-
-        if self.scanline == PRE_RENDER_SCANLINE && hit_pixel_1 {
-            self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
-        } else if vblank {
-            self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
-        }
-
-        // return vblank = true for scanline 241 and pixel *1*
-        return vblank;
+        return false;
     }
 
-    pub fn hit_pixel_1(&self, num_cycles: u16) -> bool {
-        self.cycle > 0 && self.cycle < (1 + num_cycles)
+    pub fn hit_pixel_0(&self, num_cycles: u16) -> bool {
+        //self.cycle > 0 && self.cycle < (1 + num_cycles)
+        let y = self.oam_ram[0] as usize;
+        let x = self.oam_ram[3] as usize;
+        (y == self.scanline as usize) && x <= num_cycles as usize && self.rendering_enabled()
+    }
+
+    pub fn rendering_enabled(&self) -> bool {
+        (self.ppu_mask & MASK_RENDERING_ENABLE) == MASK_RENDERING_ENABLE
     }
 
     pub fn vblank_nmi_is_enabled(&self) -> bool {
@@ -512,11 +513,11 @@ impl PPU {
                 } else {
                     0
                 };
-            for y in 0..0x1f as usize {
-                for x in 0..0x20 as usize {
+            for row in 0..0x1f as usize {
+                for col in 0..0x20 as usize {
                     // what sprite # is written at this tile?
                     let pattern_table_index =
-                        mem.ppu_read((nametable_addr + (y * 0x20) + x) as _) as u16;
+                        mem.ppu_read((nametable_addr + (row * 0x20) + col) as _) as u16;
                     // where are the pixels for that tile?
                     let pattern_table_addr = (pattern_table_index * 16) + pattern_table;
                     // copy pixels
@@ -524,20 +525,19 @@ impl PPU {
 
                     // where are the palette attributes for that tile?
                     let attribute_table_addr_offset =
-                        self.tile_to_attribute_byte(x as u8, y as u8) as usize;
+                        self.tile_to_attribute_byte(col as u8, row as u8) as usize;
                     // fetch palette attributes for that grid
                     let attribute_byte =
                         mem.ppu_read((ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) as _);
                     // find our position within grid and what palette to use
-                    let palette = self.tile_to_attribute_pos(x as u8, y as u8, attribute_byte);
+                    let palette = self.tile_to_attribute_pos(col as u8, row as u8, attribute_byte);
 
                     self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture8, 8);
                     let _ = canvas.copy(
                         &texture8,
                         None,
-                        Some(Rect::new((x as i32) * 8, (y as i32) * 8, 8, 8)),
+                        Some(Rect::new((col as i32) * 8, (row as i32) * 8, 8, 8)),
                     );
-                    // }
                 }
             }
         }
@@ -836,6 +836,7 @@ mod tests {
     #[test]
     fn test_cycle() {
         let mut ppu = PPU::new();
+        ppu.ppu_ctrl |= CTRL_NMI_ENABLE;
 
         let vblank = ppu.cycle();
         assert_eq!(vblank, false);

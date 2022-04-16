@@ -196,11 +196,7 @@ impl Emulator {
 
         let fire_vblank_nmi = {
             let mut ppu = self.ppu.borrow_mut();
-            let vblank = ppu.cycle();
-            //vblank |= ppu.cycle();
-            //vblank |= ppu.cycle();
-
-            vblank & ppu.vblank_nmi_is_enabled()
+            ppu.cycle()
         };
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
