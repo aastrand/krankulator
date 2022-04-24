@@ -1,16 +1,9 @@
-extern crate sdl2;
-
-use sdl2::pixels::{Color, PixelFormatEnum};
-use sdl2::rect::Rect;
-use sdl2::render::{BlendMode, Canvas, Texture, TextureCreator};
-use sdl2::video::Window;
-
 use super::memory;
 
 /*
 Common Name	Address	Bits	Notes
 PPUCTRL	$2000	VPHB SINN	NMI enable (V), PPU master/slave (P), sprite height (H), background tile select (B), sprite tile select (S), increment mode (I), nametable select (NN)
-PPUMASK	$2001	BGRs bMmG	color emphasis (BGR), sprite enable (s), background enable (b), sprite left column enable (M), background left column enable (m), greyscale (G)
+PPUMASK	$2001	BGRs bMmG	color emphasis (BGR), sprite enable (s), background enable (b), sprite left column enable (M), background left column enable (1), greyscale (G)
 PPUSTATUS	$2002	VSO- ----	vblank (V), sprite 0 hit (S), sprite overflow (O); read resets write pair for $2005/$2006
 OAMADDR	$2003	aaaa aaaa	OAM read/write address
 OAMDATA	$2004	dddd dddd	OAM data read/write
@@ -52,77 +45,8 @@ pub const VBLANK_SCANLINE: u16 = 241;
 pub const CYCLES_PER_SCANLINE: u16 = 340;
 pub const NUM_SCANLINES: u16 = PRE_RENDER_SCANLINE + 1;
 
-pub const NAMETABLE_BASE_ADDR: usize = 0x2000;
 pub const ATTRIBUTE_TABLE_ADDR: usize = 0x23C0;
 pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
-
-pub const PALETTE_SIZE: usize = 64;
-pub const PALETTE: [Color; PALETTE_SIZE] = [
-    Color::RGB(84, 84, 84),
-    Color::RGB(0, 30, 116),
-    Color::RGB(8, 16, 144),
-    Color::RGB(48, 0, 136),
-    Color::RGB(68, 0, 100),
-    Color::RGB(92, 0, 48),
-    Color::RGB(84, 4, 0),
-    Color::RGB(60, 24, 0),
-    Color::RGB(32, 42, 0),
-    Color::RGB(8, 58, 0),
-    Color::RGB(0, 64, 0),
-    Color::RGB(0, 60, 0),
-    Color::RGB(0, 50, 60),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-    Color::RGB(152, 150, 152),
-    Color::RGB(8, 76, 196),
-    Color::RGB(48, 50, 236),
-    Color::RGB(92, 30, 228),
-    Color::RGB(136, 20, 176),
-    Color::RGB(160, 20, 100),
-    Color::RGB(152, 34, 32),
-    Color::RGB(120, 60, 0),
-    Color::RGB(84, 90, 0),
-    Color::RGB(40, 114, 0),
-    Color::RGB(8, 124, 0),
-    Color::RGB(0, 118, 40),
-    Color::RGB(0, 102, 120),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-    Color::RGB(236, 238, 236),
-    Color::RGB(76, 154, 236),
-    Color::RGB(120, 124, 236),
-    Color::RGB(176, 98, 236),
-    Color::RGB(228, 84, 236),
-    Color::RGB(236, 88, 180),
-    Color::RGB(236, 106, 100),
-    Color::RGB(212, 136, 32),
-    Color::RGB(160, 170, 0),
-    Color::RGB(116, 196, 0),
-    Color::RGB(76, 208, 32),
-    Color::RGB(56, 204, 108),
-    Color::RGB(56, 180, 204),
-    Color::RGB(60, 60, 60),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-    Color::RGB(236, 238, 236),
-    Color::RGB(168, 204, 236),
-    Color::RGB(188, 188, 236),
-    Color::RGB(212, 178, 236),
-    Color::RGB(236, 174, 236),
-    Color::RGB(236, 174, 212),
-    Color::RGB(236, 180, 176),
-    Color::RGB(228, 196, 144),
-    Color::RGB(204, 210, 120),
-    Color::RGB(180, 222, 120),
-    Color::RGB(168, 226, 144),
-    Color::RGB(152, 226, 180),
-    Color::RGB(160, 214, 228),
-    Color::RGB(160, 162, 160),
-    Color::RGB(0, 0, 0),
-    Color::RGB(0, 0, 0),
-];
 
 /*
         RAM Memory Map
@@ -180,7 +104,7 @@ pub struct PPU {
     ppu_status: u8,
     oam_addr: u8,
 
-    ppu_scroll_positions: [u8; 2],
+    pub ppu_scroll_positions: [u8; 2],
     ppu_scroll_idx: usize,
 
     ppu_addr: [u8; 2],
@@ -477,248 +401,51 @@ impl PPU {
         (self.get_status_reg() & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
     }
 
-    pub fn render(&mut self, canvas: &mut Canvas<Window>, mem: &dyn memory::MemoryMapper) {
-        let texture_creator: TextureCreator<_> = canvas.texture_creator();
-        let mut tile = [0; 32];
-        let tile_ptr = tile.as_mut_ptr();
+    pub fn read_oam(&self, offset: usize) -> u8 {
+        unsafe { *self.oam_ram_ptr.offset(offset as _) }
+    }
 
-        let mut texture8 = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)
-            .map_err(|e| e.to_string())
-            .ok()
-            .unwrap();
-
-        let mut texture16 = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGBA32, 8, 16)
-            .map_err(|e| e.to_string())
-            .ok()
-            .unwrap();
-
-        texture8.set_blend_mode(BlendMode::Blend);
-        texture16.set_blend_mode(BlendMode::Blend);
-
-        let bg_color = PALETTE[mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as _) as usize % PALETTE_SIZE];
-        canvas.set_draw_color(bg_color);
-        //self.print_palette();
-
-        let nametable_addr =
-            NAMETABLE_BASE_ADDR + (0x400 * (self.ppu_ctrl & CTRL_NAMETABLE_ADDR) as usize);
-
-        canvas.clear();
-
-        if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE {
-            let pattern_table: u16 =
-                if self.ppu_ctrl & CTRL_BG_PATTERN_TABLE_OFFSET == CTRL_BG_PATTERN_TABLE_OFFSET {
-                    0x1000
-                } else {
-                    0
-                };
-            for row in 0..0x1f as usize {
-                for col in 0..0x20 as usize {
-                    // what sprite # is written at this tile?
-                    let pattern_table_index =
-                        mem.ppu_read((nametable_addr + (row * 0x20) + col) as _) as u16;
-                    // where are the pixels for that tile?
-                    let pattern_table_addr = (pattern_table_index * 16) + pattern_table;
-                    // copy pixels
-                    mem.ppu_copy(pattern_table_addr, tile_ptr, 16);
-
-                    // where are the palette attributes for that tile?
-                    let attribute_table_addr_offset =
-                        self.tile_to_attribute_byte(col as u8, row as u8) as usize;
-                    // fetch palette attributes for that grid
-                    let attribute_byte =
-                        mem.ppu_read((ATTRIBUTE_TABLE_ADDR + attribute_table_addr_offset) as _);
-                    // find our position within grid and what palette to use
-                    let palette = self.tile_to_attribute_pos(col as u8, row as u8, attribute_byte);
-
-                    self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture8, 8);
-                    let _ = canvas.copy(
-                        &texture8,
-                        None,
-                        Some(Rect::new((col as i32) * 8, (row as i32) * 8, 8, 8)),
-                    );
-                }
-            }
-        }
-
-        if self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE {
-            let pattern_table: u16 = if self.ppu_ctrl & CTRL_SPRITE_PATTERN_TABLE_OFFSET
-                == CTRL_SPRITE_PATTERN_TABLE_OFFSET
-            {
-                0x1000
-            } else {
-                0
-            };
-
-            for s in 0..64 {
-                let s = s * 4;
-                let y = unsafe { *self.oam_ram_ptr.offset(s) };
-                if y > 0xed {
-                    continue;
-                }
-
-                let tile = unsafe { *self.oam_ram_ptr.offset(s + 1) };
-                let mut sprite_pattern_table = pattern_table;
-                let mut texture = &mut texture8;
-                // TODO: 8x16
-                let tile_size = if self.ppu_ctrl & CTRL_SPRITE_SIZE == CTRL_SPRITE_SIZE {
-                    sprite_pattern_table = {
-                        if tile & 0b0000_0001 == 1 {
-                            0x1000
-                        } else {
-                            0x0
-                        }
-                    };
-                    texture = &mut texture16;
-                    16
-                } else {
-                    8
-                };
-                let pattern_table_addr = (tile as u16 * 16) + sprite_pattern_table;
-                mem.ppu_copy(pattern_table_addr, tile_ptr, tile_size * 2);
-
-                let attributes = unsafe { *self.oam_ram_ptr.offset(s + 2) };
-                // Palette (4 to 7) of sprite
-                let palette = (attributes & 0b0000_0011) + 4;
-                let flip_horizontally = attributes & 0b0100_0000 == 0b0100_0000;
-                let flip_vertically = attributes & 0b1000_0000 == 0b1000_0000;
-
-                let x = unsafe { *self.oam_ram_ptr.offset(s + 3) };
-
-                self.render_tile_to_texture(mem, tile_ptr, palette, &mut texture, tile_size);
-
-                /*println!(
-                    "rendering sprite {} to x:{}, y:{} with palette {}",
-                    s/4, x, y, palette
-                );*/
-                let _ = canvas.copy_ex(
-                    &texture,
-                    None,
-                    Some(Rect::new(x as i32, y as i32, 8, tile_size as _)),
-                    0f64,
-                    None,
-                    flip_horizontally,
-                    flip_vertically,
-                );
-            }
+    pub fn ctrl_sprite_pattern_table_addr(&self) -> u16 {
+        if self.ppu_ctrl & CTRL_SPRITE_PATTERN_TABLE_OFFSET == CTRL_SPRITE_PATTERN_TABLE_OFFSET {
+            0x1000
+        } else {
+            0
         }
     }
 
-    fn render_tile_to_texture(
-        &self,
-        mem: &dyn memory::MemoryMapper,
-        tile_ptr: *mut u8,
-        palette: u8,
-        texture: &mut Texture,
-        y_size: usize,
-    ) {
-        let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            for yp in 0..y_size as usize {
-                let lb = unsafe { *tile_ptr.offset(yp as _) };
-                let hb = unsafe { *tile_ptr.offset((yp + 8) as _) };
-                for xp in 0..8 as usize {
-                    let mask = 1 << xp;
-                    let left = (lb & mask) >> xp;
-                    let right = ((hb & mask) >> xp) << 1;
-                    let pixel_value: usize = (left | right) as usize;
-
-                    let transparency = if pixel_value == 0 { 0 } else { 0xff };
-
-                    let color = PALETTE[mem.ppu_read(
-                        (UNIVERSAL_BG_COLOR_ADDR + ((palette as usize) * 4) + pixel_value) as _,
-                    ) as usize
-                        % PALETTE_SIZE];
-
-                    let offset = yp * pitch + (28 - (xp * 4));
-                    buffer[offset] = color.r;
-                    buffer[offset + 1] = color.g;
-                    buffer[offset + 2] = color.b;
-                    buffer[offset + 3] = transparency;
-                }
-            }
-        });
-    }
-
-    fn _print_palette(&self, mem: &dyn memory::MemoryMapper) {
-        for i in 0..0x20 as usize {
-            let addr = UNIVERSAL_BG_COLOR_ADDR + i;
-            println!("vram[{:X}] = {:X}", addr, mem.ppu_read(addr as _))
+    pub fn ctrl_sprite_size(&self) -> u8 {
+        if self.ppu_ctrl & CTRL_SPRITE_SIZE == CTRL_SPRITE_SIZE {
+            16
+        } else {
+            8
         }
     }
 
-    fn tile_to_attribute_byte(&self, x: u8, y: u8) -> u8 {
-        ((y / 4) * 8) + (x / 4)
-    }
-
-    fn tile_to_attribute_pos(&self, x: u8, y: u8, attribute_byte: u8) -> u8 {
-        // value = (bottomright << 6) | (bottomleft << 4) | (topright << 2) | (topleft << 0)
-        // x:
-        // 04, 05 => 0, 1 => left
-        // 06, 07 => 2, 3 => right
-
-        // y:
-        // 18, 19 => 0, 1 => top
-        // 1a, 1b => 2, 3 => bottom
-        let x = x % 4;
-        let y = y % 4;
-
-        match y {
-            0 | 1 => match x {
-                // top
-                0 | 1 => attribute_byte & 0b0000_0011, // left
-                2 | 3 => (attribute_byte & 0b0000_1100) >> 2, // right
-                _ => panic!("This can't happen"),
-            },
-            2 | 3 => match x {
-                // bottom
-                0 | 1 => (attribute_byte & 0b0011_0000) >> 4, // left
-                2 | 3 => (attribute_byte & 0b1100_0000) >> 6, // right
-                _ => panic!("This can't happen"),
-            },
-            _ => panic!("This can't happen"),
+    pub fn ctrl_background_pattern_addr(&self) -> u16 {
+        if self.ppu_ctrl & CTRL_BG_PATTERN_TABLE_OFFSET == CTRL_BG_PATTERN_TABLE_OFFSET {
+            0x1000
+        } else {
+            0
         }
     }
 
-    /*fn _render_tile(
-        &self,
-        idx: u8,
-        mem: &dyn memory::MemoryMapper,
-        tc: TextureCreator<WindowContext>, // TODO ???
-    ) -> Result<Texture, String> {
-        let mut tile = [0; 16];
-        let tile_ptr = tile.as_mut_ptr();
-        mem.ppu_read((idx as u16) * 16, tile_ptr, 16);
+    pub fn mask_background_enabled(&self) -> bool {
+        self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
+    }
 
-        let mut texture = tc
-            .create_texture_streaming(PixelFormatEnum::RGB24, 8, 8)
-            .map_err(|e| e.to_string())?;
+    pub fn mask_sprites_enabled(&self) -> bool {
+        self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE
+    }
 
-        texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            for y in 0..8 {
-                let lb = tile[y];
-                let hb = tile[y + 8];
-                for x in 1..9 {
-                    let mask = 1 << x;
-                    let left = ((lb << x) & mask) >> x;
-                    let right = ((hb << x) & mask) >> x - 1;
-                    let val = ((left + right) * 63) + 63;
-                    // 00 = 0 => 63
-                    // 01 = 1 => 126
-                    // 10 = 2 => 189
-                    // 11 = 3 => 255
-
-                    let offset = y * pitch + x * 3;
-                    buffer[offset] = val;
-                    buffer[offset + 1] = val;
-                    buffer[offset + 2] = val;
-                }
-            }
-        })?;
-
-        //Ok(texture)
-        Err(format!(""))
-    }*/
+    pub fn name_table_addr(&self) -> u16 {
+        match self.ppu_ctrl & CTRL_NAMETABLE_ADDR & 0b11 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2c00,
+            _ => panic!("not possible"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -776,61 +503,6 @@ mod tests {
         }
 
         assert_eq!(ppu.vram_addr, 0x371b);
-    }
-
-    #[test]
-    fn test_tile_to_attribute_bytes() {
-        let ppu = PPU::new();
-        assert_eq!(ppu.tile_to_attribute_byte(0x04, 0x19), 49)
-    }
-
-    #[test]
-    fn test_tile_to_attribute_pos() {
-        let ppu = PPU::new();
-        // bottomright = 1
-        // bottomleft  = 2
-        // topright    = 0
-        // topleft     = 3
-        let attribute_byte = 0b0110_0011;
-        assert_eq!(ppu.tile_to_attribute_pos(0x0, 0x0, attribute_byte), 3);
-        assert_eq!(ppu.tile_to_attribute_pos(0x0, 0x1, attribute_byte), 3);
-        assert_eq!(ppu.tile_to_attribute_pos(0x1, 0x0, attribute_byte), 3);
-        assert_eq!(ppu.tile_to_attribute_pos(0x1, 0x1, attribute_byte), 3);
-
-        assert_eq!(ppu.tile_to_attribute_pos(0x2, 0x0, attribute_byte), 0);
-        assert_eq!(ppu.tile_to_attribute_pos(0x2, 0x1, attribute_byte), 0);
-        assert_eq!(ppu.tile_to_attribute_pos(0x3, 0x0, attribute_byte), 0);
-        assert_eq!(ppu.tile_to_attribute_pos(0x3, 0x1, attribute_byte), 0);
-
-        assert_eq!(ppu.tile_to_attribute_pos(0x2, 0x2, attribute_byte), 1);
-        assert_eq!(ppu.tile_to_attribute_pos(0x2, 0x3, attribute_byte), 1);
-        assert_eq!(ppu.tile_to_attribute_pos(0x3, 0x2, attribute_byte), 1);
-        assert_eq!(ppu.tile_to_attribute_pos(0x3, 0x3, attribute_byte), 1);
-
-        assert_eq!(ppu.tile_to_attribute_pos(0x0, 0x2, attribute_byte), 2);
-        assert_eq!(ppu.tile_to_attribute_pos(0x1, 0x3, attribute_byte), 2);
-        assert_eq!(ppu.tile_to_attribute_pos(0x0, 0x2, attribute_byte), 2);
-        assert_eq!(ppu.tile_to_attribute_pos(0x1, 0x3, attribute_byte), 2);
-
-        assert_eq!(ppu.tile_to_attribute_pos(0x04, 0x19, attribute_byte), 3);
-    }
-
-    #[test]
-    fn test_tile_palette() {
-        let mut ppu = PPU::new();
-        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
-
-        ppu.write((ATTRIBUTE_TABLE_ADDR + 49) as u16, 0b0110_0011, cpu_ram);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 3) as u16, 0x11, cpu_ram);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 4) as u16, 0x11, cpu_ram);
-        ppu.write((UNIVERSAL_BG_COLOR_ADDR + 5) as u16, 0x11, cpu_ram);
-
-        // bottomright = 1
-        // bottomleft  = 2
-        // topright    = 0
-        // topleft     = 3
-        let attribute_byte = 0b0110_0011;
-        assert_eq!(ppu.tile_to_attribute_pos(0x04, 0x19, attribute_byte), 3);
     }
 
     #[test]

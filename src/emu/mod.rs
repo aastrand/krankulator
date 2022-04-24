@@ -1,5 +1,6 @@
 pub mod cpu;
 pub mod dbg;
+pub mod gfx;
 pub mod io;
 pub mod memory;
 pub mod ppu;
@@ -30,6 +31,7 @@ pub struct Emulator {
     lookup: Box<opcodes::Lookup>,
     pub mem: Box<dyn memory::MemoryMapper>,
     pub ppu: Rc<RefCell<ppu::PPU>>,
+    buf: Box<gfx::buf::Buffer>,
 
     iohandler: Box<dyn io::IOHandler>,
 
@@ -55,10 +57,10 @@ impl Emulator {
     pub fn new(
         mapper: Box<dyn memory::MemoryMapper>,
         sdl_context: Sdl,
-        canvas: Canvas<Window>,
+        canvas: Canvas<Window>
     ) -> Emulator {
         Emulator::new_base(
-            Box::new(io::SDLIOHandler::new(sdl_context, canvas, mapper.ppu())),
+            Box::new(io::SDLIOHandler::new(sdl_context, canvas)),
             mapper,
         )
     }
@@ -85,11 +87,14 @@ impl Emulator {
 
         let ppu = mapper.ppu();
 
+        let buf = gfx::buf::Buffer::new();
+
         Emulator {
             cpu: cpu,
             lookup: lookup,
             mem: mapper,
             ppu: ppu,
+            buf: Box::new(buf),
 
             iohandler: iohandler,
 
@@ -201,7 +206,8 @@ impl Emulator {
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
-            self.iohandler.render(&mut *self.mem);
+            gfx::render(&mut *self.mem, &mut self.buf);
+            self.iohandler.render(&self.buf);
         }
         if self.cycles % 16666 == 0 {
             if self.iohandler.poll(&mut *self.mem, &mut self.cpu) {

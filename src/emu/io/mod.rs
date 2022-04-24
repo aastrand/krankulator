@@ -7,23 +7,23 @@ extern crate sdl2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::Canvas;
+use sdl2::render::TextureCreator;
 use sdl2::video::Window;
+use sdl2::video::WindowContext;
 use sdl2::EventPump;
 use sdl2::Sdl;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use super::cpu;
+use super::gfx;
 use super::memory;
-use super::ppu;
 
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool;
-    fn render(&mut self, mem: &dyn memory::MemoryMapper);
+    fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
 }
 
@@ -43,7 +43,7 @@ impl IOHandler for HeadlessIOHandler {
         false
     }
 
-    fn render(&mut self, _mem: &dyn memory::MemoryMapper) {}
+    fn render(&mut self, _buf: &gfx::buf::Buffer) {}
 
     fn exit(&self, s: String) {
         self.log(s);
@@ -52,8 +52,8 @@ impl IOHandler for HeadlessIOHandler {
 
 pub struct SDLIOHandler {
     canvas: Canvas<Window>,
+    texture_creator: TextureCreator<WindowContext>,
     event_pump: EventPump,
-    ppu: Rc<RefCell<ppu::PPU>>,
     muted: bool,
 }
 
@@ -61,13 +61,14 @@ impl SDLIOHandler {
     pub fn new(
         sdl_context: Sdl,
         canvas: Canvas<Window>,
-        ppu: Rc<RefCell<ppu::PPU>>,
     ) -> SDLIOHandler {
         let event_pump = sdl_context.event_pump().unwrap();
+        let texture_creator = canvas.texture_creator();
+
         SDLIOHandler {
             event_pump: event_pump,
             canvas: canvas,
-            ppu,
+            texture_creator,
             muted: false,
         }
     }
@@ -81,7 +82,6 @@ impl<'a> IOHandler for SDLIOHandler {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         // clears the canvas with the color we set in `set_draw_color`.
         self.canvas.clear();
-        let _ = self.canvas.set_scale(2.0, 2.0);
         // However the canvas has not been updated to the window yet, everything has been processed to
         // an internal buffer, but if we want our buffer to be displayed on the window, we need to call
         // `present`. We need to call this everytime we want to render a new frame on the window.
@@ -233,8 +233,15 @@ impl<'a> IOHandler for SDLIOHandler {
         should_exit
     }
 
-    fn render(&mut self, mem: &dyn memory::MemoryMapper) {
-        self.ppu.borrow_mut().render(&mut self.canvas, mem);
+    fn render(&mut self, buf: &gfx::buf::Buffer) {
+        let mut texture = self.texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGB24, buf.width as u32, buf.height as u32)
+            .map_err(|e| e.to_string())
+            .ok()
+            .unwrap();
+
+        texture.update(None, &buf.data, 256 * 3).unwrap();
+        self.canvas.copy(&texture, None, None).unwrap();
         self.canvas.present();
     }
 

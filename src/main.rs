@@ -8,9 +8,9 @@ use emu::io::loader;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Use a mapped display
+    /// Skip display
     #[clap(long)]
-    display: bool,
+    headless: bool,
 
     /// Specify loader: nes (default), ascii, bin
     #[clap(short, long, default_value = "nes")]
@@ -67,25 +67,26 @@ fn main() -> Result<(), String> {
             let file = &args.input;
             match loader.load(file) {
                 Ok(mapper) => {
-                    let mut emu: emu::Emulator = if args.display {
+                    let mut emu: emu::Emulator = if !args.headless {
                         let sdl_context = sdl2::init()?;
 
                         let video_subsystem = sdl_context.video()?;
                         let window = video_subsystem
                             .window(
                                 &format!("Krankulator - {}", util::filename(file)),
-                                256 * 2,
-                                240 * 2,
+                                256 * 4,
+                                240 * 4,
                             )
                             .position_centered()
                             .build()
                             .map_err(|e| e.to_string())?;
-                        let canvas = window
+                        let mut canvas = window
                             .into_canvas()
                             .target_texture()
                             .present_vsync()
                             .build()
                             .map_err(|e| e.to_string())?;
+                        canvas.set_scale(4.0, 4.0).unwrap();
 
                         emu::Emulator::new(mapper, sdl_context, canvas)
                     } else {
