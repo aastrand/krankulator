@@ -98,7 +98,7 @@ fn render_name_table(
                     ) as usize
                         % palette::PALETTE_SIZE];
 
-                    let pixel_x = (col * 8) + (8 - (xp)) as usize;
+                    let pixel_x = (col * 8) + (7 - (xp)) as usize;
                     let pixel_y = row * 8 + yp as usize;
 
                     if pixel_x >= view_port.x1
