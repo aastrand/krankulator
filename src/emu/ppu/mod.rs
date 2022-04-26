@@ -111,6 +111,8 @@ pub struct PPU {
     ppu_addr_idx: usize,
     ppu_data_valid: bool,
 
+    ppu_data_buf: u8,
+
     pub cycle: u16,
     pub scanline: u16,
     pub frames: u64,
@@ -139,6 +141,8 @@ impl PPU {
             ppu_addr: [0; 2],
             ppu_addr_idx: 0,
             ppu_data_valid: false,
+
+            ppu_data_buf: 0,
 
             cycle: 0,
             scanline: 0,
@@ -203,7 +207,9 @@ impl PPU {
                     0x0 | 0x10 => {
                         // patterntble
                         //unsafe { *chr_ptr.offset(self.vram_addr as _) }
-                        mem.ppu_read(addr as _)
+                        let r = self.ppu_data_buf;
+                        self.ppu_data_buf = mem.ppu_read(addr as _);
+                        r
                     }
                     0x20 | 0x30 => {
                         // nametable
@@ -213,7 +219,9 @@ impl PPU {
                             _ => self.vram_addr as _,
                         };
                         //self.vram[addr % VRAM_SIZE]
-                        mem.ppu_read(addr as _)
+                        let r = self.ppu_data_buf;
+                        self.ppu_data_buf = mem.ppu_read(addr as _);
+                        r
                     }
                     _ => 0,
                 };
@@ -242,11 +250,10 @@ impl PPU {
     }
 
     pub fn write(&mut self, addr: u16, value: u8, cpu_ram: *mut u8) -> Option<(u16, u8)> {
-        //self.ppu_status |= value & 0b1110_0000;
         let mut ret = None;
 
         match addr {
-            CTRL_REG_ADDR => self.ppu_ctrl = value,
+            CTRL_REG_ADDR => self.ppu_ctrl = value, // TODO: generate nmi here?
             MASK_REG_ADDR => self.ppu_mask = value,
             OAM_ADDR => {
                 self.oam_addr = value;
@@ -504,6 +511,29 @@ mod tests {
 
         assert_eq!(ppu.vram_addr, 0x371b);
     }
+
+    #[test]
+    fn test_read_ppu_data() {
+        let mut ppu = PPU::new();
+        let mem: &mut dyn memory::MemoryMapper = &mut memory::IdentityMapper::new(0x4000);
+
+        mem.ppu_write(0x3000, 0x47);
+        ppu.vram_addr = 0x3000;
+        let first = ppu.read(DATA_ADDR, mem);
+        ppu.vram_addr = 0x3000;
+        let second = ppu.read(DATA_ADDR, mem);
+        mem.ppu_write(0x3000, 0x14);
+        ppu.vram_addr = 0x3000;
+        let third = ppu.read(DATA_ADDR, mem);
+        ppu.vram_addr = 0x3000;
+        let fourth = ppu.read(DATA_ADDR, mem);
+
+        assert_eq!(first, 0);
+        assert_eq!(second, 0x47);
+        assert_eq!(third, 0x47);
+        assert_eq!(fourth, 0x14);
+    }
+
 
     #[test]
     fn test_cycle() {
