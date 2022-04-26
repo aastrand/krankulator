@@ -352,18 +352,17 @@ impl PPU {
 
         self.cycle = self.cycle.wrapping_add(num_cycles);
         if self.cycle > CYCLES_PER_SCANLINE {
+            let hit_pixel_0 = self.sprite_zero_hit(self.cycle);
+            if hit_pixel_0 {
+                self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
+            }
+
             self.cycle = self.cycle % (CYCLES_PER_SCANLINE + 1);
             self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
             if self.scanline == 0 {
                 self.frames += 1;
             }
 
-            let hit_pixel_0 = self.hit_pixel_0(self.cycle);
-            if hit_pixel_0 {
-                self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
-            }
-
-            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
             if self.scanline == VBLANK_SCANLINE {
                 self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
                 self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
@@ -376,6 +375,7 @@ impl PPU {
                 self.oam_addr = 0;
             }
 
+            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
             let vblank = self.scanline == VBLANK_SCANLINE && self.vblank_nmi_is_enabled();
             if self.scanline == PRE_RENDER_SCANLINE {
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
@@ -388,15 +388,11 @@ impl PPU {
         return false;
     }
 
-    pub fn hit_pixel_0(&self, num_cycles: u16) -> bool {
+    pub fn sprite_zero_hit(&self, num_cycles: u16) -> bool {
         //self.cycle > 0 && self.cycle < (1 + num_cycles)
         let y = self.oam_ram[0] as usize;
         let x = self.oam_ram[3] as usize;
-        (y == self.scanline as usize) && x <= num_cycles as usize && self.rendering_enabled()
-    }
-
-    pub fn rendering_enabled(&self) -> bool {
-        (self.ppu_mask & MASK_RENDERING_ENABLE) == MASK_RENDERING_ENABLE
+        (y == self.scanline as usize) && x <= num_cycles as usize && self.mask_sprites_enabled()
     }
 
     pub fn vblank_nmi_is_enabled(&self) -> bool {
@@ -438,6 +434,11 @@ impl PPU {
 
     pub fn mask_background_enabled(&self) -> bool {
         self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
+    }
+
+    #[allow(dead_code)]
+    pub fn mask_rendering_enabled(&self) -> bool {
+        (self.ppu_mask & MASK_SPRITES_ENABLE) == MASK_RENDERING_ENABLE
     }
 
     pub fn mask_sprites_enabled(&self) -> bool {
