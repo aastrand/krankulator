@@ -301,7 +301,7 @@ impl PPU {
                     0x20 | 0x30 => {
                         // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
                         let addr: u16 = match self.vram_addr {
-                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10),
+                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.vram_addr - 0x10,
                             _ => self.vram_addr,
                         };
                         // This should be written by the mapper, bounce it back
@@ -534,7 +534,6 @@ mod tests {
         assert_eq!(third, 0x47);
         assert_eq!(fourth, 0x14);
     }
-
 
     #[test]
     fn test_cycle() {

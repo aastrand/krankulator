@@ -16,8 +16,8 @@ struct Args {
     #[clap(short, long, default_value = "nes")]
     loader: String,
 
-     /// Verbose mode
-     #[clap(short, long)]
+    /// Verbose mode
+    #[clap(short, long)]
     verbose: bool,
 
     /// Quiet mode, overrides verbose
@@ -38,9 +38,8 @@ struct Args {
 
     /// Input file to use
     #[clap()]
-    input: String,   
+    input: String,
 }
-
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
@@ -68,27 +67,7 @@ fn main() -> Result<(), String> {
             match loader.load(file) {
                 Ok(mapper) => {
                     let mut emu: emu::Emulator = if !args.headless {
-                        let sdl_context = sdl2::init()?;
-
-                        let video_subsystem = sdl_context.video()?;
-                        let window = video_subsystem
-                            .window(
-                                &format!("Krankulator - {}", util::filename(file)),
-                                256 * 4,
-                                240 * 4,
-                            )
-                            .position_centered()
-                            .build()
-                            .map_err(|e| e.to_string())?;
-                        let mut canvas = window
-                            .into_canvas()
-                            .target_texture()
-                            .present_vsync()
-                            .build()
-                            .map_err(|e| e.to_string())?;
-                        canvas.set_scale(4.0, 4.0).unwrap();
-
-                        emu::Emulator::new(mapper, sdl_context, canvas)
+                        emu::Emulator::new(mapper)
                     } else {
                         emu::Emulator::new_headless(mapper)
                     };
@@ -98,9 +77,14 @@ fn main() -> Result<(), String> {
                     emu.toggle_should_trigger_nmi(true);
                     emu.toggle_should_exit_on_infinite_loop(false);
 
+                    // Enable PPU rendering for graphical mode
+                    if !args.headless {
+                        emu.ppu.borrow_mut().ppu_mask = 0x18; // Enable background and sprites
+                    }
+
                     emu
                 }
-                Err(msg) => panic!("{}", msg)
+                Err(msg) => panic!("{}", msg),
             }
         }
         _ => {

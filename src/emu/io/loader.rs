@@ -76,14 +76,12 @@ impl Loader for InesLoader {
 
         //0-3: Constant $4E $45 $53 $1A ("NES" followed by MS-DOS end-of-file)
         if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
-            return Err(format!("ERROR: Missing iNES header magic numbers"))
+            return Err(format!("ERROR: Missing iNES header magic numbers"));
         }
 
         // A file is a NES 2.0 ROM image file if it begins with "NES<EOF>" (same as iNES) and,
         // additionally, the byte at offset 7 has bit 2 clear and bit 3 set:
-        let is_nes2_header = {
-            bytes[7] & 0b0000_1100 == 0b0000_1000
-        };
+        let is_nes2_header = { bytes[7] & 0b0000_1100 == 0b0000_1000 };
 
         if is_nes2_header {
             println!("Header has NES 2.0 extension");
@@ -210,7 +208,10 @@ mod tests {
         let l: Box<dyn Loader> = InesLoader::new();
         let result = l.load("does_not_exist");
         assert_eq!(result.is_ok(), false);
-        assert_eq!(result.err(), Some(format!("File does not exist: does_not_exist")));
+        assert_eq!(
+            result.err(),
+            Some(format!("File does not exist: does_not_exist"))
+        );
     }
 
     #[test]
@@ -218,6 +219,9 @@ mod tests {
         let l: Box<dyn Loader> = InesLoader::new();
         let result = l.load("input/nes/nestest.log");
         assert_eq!(result.is_ok(), false);
-        assert_eq!(result.err(), Some(format!("ERROR: Missing iNES header magic numbers")));
+        assert_eq!(
+            result.err(),
+            Some(format!("ERROR: Missing iNES header magic numbers"))
+        );
     }
 }

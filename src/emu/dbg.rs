@@ -1,5 +1,5 @@
-use super::Emulator;
 use super::super::util;
+use super::Emulator;
 
 use shrust::{ExecError, Shell, ShellIO};
 use std::collections::HashSet;
@@ -14,7 +14,8 @@ pub fn debug(emu: &mut Emulator) {
                 writeln!(
                     io,
                     "was self.mem.read_bus(0x{:x}) == 0x{:x}",
-                    addr, emu.mem.cpu_read(addr as _)
+                    addr,
+                    emu.mem.cpu_read(addr as _)
                 )?;
 
                 if w.len() > 1 {

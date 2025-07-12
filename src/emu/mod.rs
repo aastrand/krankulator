@@ -7,10 +7,6 @@ pub mod ppu;
 
 use cpu::opcodes;
 
-use sdl2::render::Canvas;
-use sdl2::video::Window;
-use sdl2::Sdl;
-
 extern crate shrust;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -54,13 +50,9 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(
-        mapper: Box<dyn memory::MemoryMapper>,
-        sdl_context: Sdl,
-        canvas: Canvas<Window>
-    ) -> Emulator {
+    pub fn new(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
         Emulator::new_base(
-            Box::new(io::SDLIOHandler::new(sdl_context, canvas)),
+            Box::new(io::WinitPixelsIOHandler::new(256, 240)),
             mapper,
         )
     }
@@ -203,6 +195,7 @@ impl Emulator {
             let mut ppu = self.ppu.borrow_mut();
             ppu.cycle()
         };
+
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
@@ -226,8 +219,7 @@ impl Emulator {
     }
 
     #[cfg(not(debug_assertions))]
-    pub fn log_init(&mut self) {
-    }
+    pub fn log_init(&mut self) {}
 
     #[cfg(debug_assertions)]
     pub fn log_push(&mut self, data: u16) {
@@ -235,8 +227,7 @@ impl Emulator {
     }
 
     #[cfg(not(debug_assertions))]
-    pub fn log_push(&mut self, _data: u16) {
-    }
+    pub fn log_push(&mut self, _data: u16) {}
 
     #[cfg(debug_assertions)]
     pub fn log_instruction(&mut self, opcode: u8, pc: u16) {
@@ -262,8 +253,7 @@ impl Emulator {
     }
 
     #[cfg(not(debug_assertions))]
-    pub fn log_instruction(&mut self, _opcode: u8, _pc: u16) {
-    }
+    pub fn log_instruction(&mut self, _opcode: u8, _pc: u16) {}
 
     pub fn execute_instruction(&mut self) -> u8 {
         self.log_init();

@@ -25,17 +25,13 @@ pub fn hex_str_to_u8(s: &str) -> Result<u8, std::num::ParseIntError> {
 
 pub fn read_bytes(path: &str) -> Result<Vec<u8>, String> {
     if !Path::new(path).exists() {
-        return Err(format!("File does not exist: {}", path))
+        return Err(format!("File does not exist: {}", path));
     }
 
     let result = std::fs::read(path);
     match result {
-        Ok(code) => {
-            Ok(code)
-        }
-        _ => {
-            Err(format!("Error while parsing binary file {}", path))
-        }
+        Ok(code) => Ok(code),
+        _ => Err(format!("Error while parsing binary file {}", path)),
     }
 }
 

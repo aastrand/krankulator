@@ -154,8 +154,7 @@ impl MemoryMapper for NROMMapper {
         match page {
             0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
             0x20 => {
-                addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
@@ -175,8 +174,7 @@ impl MemoryMapper for NROMMapper {
         match page {
             0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
             0x20 => {
-                addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
             }
             0x30 => unsafe {
@@ -192,8 +190,7 @@ impl MemoryMapper for NROMMapper {
         let page = addr_to_page(addr);
         match page {
             0x20 => {
-                addr =
-                    super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
+                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) = value }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },

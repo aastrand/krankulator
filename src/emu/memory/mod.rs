@@ -106,7 +106,7 @@ pub struct IdentityMapper {
     _vram: Box<[u8; MAX_VRAM_SIZE]>,
     vram_ptr: *mut u8,
     code_start: u16,
-    controllers: [controller::Controller; 2]
+    controllers: [controller::Controller; 2],
 }
 
 impl IdentityMapper {

@@ -2,18 +2,14 @@ pub mod controller;
 pub mod loader;
 pub mod log;
 
-extern crate sdl2;
-
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::Canvas;
-use sdl2::render::TextureCreator;
-use sdl2::video::Window;
-use sdl2::video::WindowContext;
-use sdl2::EventPump;
-use sdl2::Sdl;
+use pixels::{Pixels, SurfaceTexture};
+use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::{
+    dpi::LogicalSize,
+    event::{ElementState, Event, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
 
 use super::cpu;
 use super::gfx;
@@ -50,43 +46,41 @@ impl IOHandler for HeadlessIOHandler {
     }
 }
 
-pub struct SDLIOHandler {
-    canvas: Canvas<Window>,
-    texture_creator: TextureCreator<WindowContext>,
-    event_pump: EventPump,
-    muted: bool,
+pub struct WinitPixelsIOHandler {
+    pub exit_flag: bool,
+    pub pixels: Pixels,
+    pub event_loop: Option<EventLoop<()>>,
+    pub window: winit::window::Window,
+    pub muted: bool,
 }
 
-impl SDLIOHandler {
-    pub fn new(
-        sdl_context: Sdl,
-        canvas: Canvas<Window>,
-    ) -> SDLIOHandler {
-        let event_pump = sdl_context.event_pump().unwrap();
-        let texture_creator = canvas.texture_creator();
+impl WinitPixelsIOHandler {
+    pub fn new(width: u32, height: u32) -> Self {
+        let scale = 4.0;
+        let window_width = (width as f32 * scale) as u32;
+        let window_height = (height as f32 * scale) as u32;
+        let event_loop = EventLoop::new();
+        let window = WindowBuilder::new()
+            .with_title("krankulator")
+            .with_inner_size(LogicalSize::new(window_width, window_height))
+            .build(&event_loop)
+            .unwrap();
 
-        SDLIOHandler {
-            event_pump: event_pump,
-            canvas: canvas,
-            texture_creator,
+        let surface_texture = SurfaceTexture::new(width, height, &window);
+        let pixels = Pixels::new(width, height, surface_texture).unwrap();
+
+        Self {
+            event_loop: Some(event_loop),
+            window,
+            pixels,
+            exit_flag: false,
             muted: false,
         }
     }
 }
 
-impl<'a> IOHandler for SDLIOHandler {
+impl IOHandler for WinitPixelsIOHandler {
     fn init(&mut self) -> Result<(), String> {
-        // the canvas allows us to both manipulate the property of the window and to change its content
-        // via hardware or software rendering. See CanvasBuilder for more info.
-        println!("Using SDL_Renderer \"{}\"", self.canvas.info().name);
-        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
-        // clears the canvas with the color we set in `set_draw_color`.
-        self.canvas.clear();
-        // However the canvas has not been updated to the window yet, everything has been processed to
-        // an internal buffer, but if we want our buffer to be displayed on the window, we need to call
-        // `present`. We need to call this everytime we want to render a new frame on the window.
-        self.canvas.present();
-
         Ok(())
     }
 
@@ -96,153 +90,133 @@ impl<'a> IOHandler for SDLIOHandler {
         }
     }
 
-    #[allow(unused_variables)]
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool {
-        let mut should_exit = false;
+        let mut exit = false;
 
-        for event in self.event_pump.poll_iter() {
+        let mut event_loop = self.event_loop.take().unwrap();
+
+        event_loop.run_return(|event, _, control_flow| {
+            *control_flow = ControlFlow::Poll;
+
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
-                    should_exit = true;
+                Event::MainEventsCleared => {
+                    *control_flow = ControlFlow::Exit;
                 }
-                Event::KeyDown {
-                    keycode: Some(Keycode::M),
-                    ..
-                } => {
-                    self.muted ^= true;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::R),
-                    ..
-                } => {
-                    cpu.pc = mem.get_16b_addr(memory::RESET_TARGET_ADDR);
-                }
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::Resized(size) => {
+                        let _ = self.pixels.resize_surface(size.width, size.height);
+                    }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        let _ = self.pixels.resize_surface(new_inner_size.width, new_inner_size.height);
+                    }
+                    WindowEvent::CloseRequested => {
+                        exit = true;
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if let Some(key) = input.virtual_keycode {
+                            let pressed = input.state == ElementState::Pressed;
 
-                Event::KeyDown {
-                    keycode: Some(Keycode::Z),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::A);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::Z),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::A);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::X),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::B);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::X),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::B);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::C),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::START);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::C),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::START);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::V),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::SELECT);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::V),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::SELECT);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::Left),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::LEFT);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::Left),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::LEFT);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::Right),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::RIGHT);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::Right),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::RIGHT);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::Up),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::UP);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::Up),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::UP);
-                }
-
-                Event::KeyDown {
-                    keycode: Some(Keycode::Down),
-                    ..
-                } => {
-                    mem.controllers()[0].set_pressed(controller::DOWN);
-                }
-                Event::KeyUp {
-                    keycode: Some(Keycode::Down),
-                    ..
-                } => {
-                    mem.controllers()[0].set_not_pressed(controller::DOWN);
-                }
-
+                            match key {
+                                VirtualKeyCode::Escape => {
+                                    exit = true;
+                                    *control_flow = ControlFlow::Exit;
+                                }
+                                VirtualKeyCode::M => {
+                                    if pressed {
+                                        self.muted ^= true;
+                                    }
+                                }
+                                VirtualKeyCode::R => {
+                                    if pressed {
+                                        cpu.pc = mem.get_16b_addr(memory::RESET_TARGET_ADDR);
+                                    }
+                                }
+                                VirtualKeyCode::Z => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::A);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::A);
+                                    }
+                                }
+                                VirtualKeyCode::X => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::B);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::B);
+                                    }
+                                }
+                                VirtualKeyCode::C => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::START);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::START);
+                                    }
+                                }
+                                VirtualKeyCode::V => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::SELECT);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::SELECT);
+                                    }
+                                }
+                                VirtualKeyCode::Left => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::LEFT);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::LEFT);
+                                    }
+                                }
+                                VirtualKeyCode::Right => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::RIGHT);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::RIGHT);
+                                    }
+                                }
+                                VirtualKeyCode::Up => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::UP);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::UP);
+                                    }
+                                }
+                                VirtualKeyCode::Down => {
+                                    if pressed {
+                                        mem.controllers()[0].set_pressed(controller::DOWN);
+                                    } else {
+                                        mem.controllers()[0].set_not_pressed(controller::DOWN);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
-        }
+        });
 
-        should_exit
+        self.event_loop = Some(event_loop);
+        exit
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        let mut texture = self.texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGB24, buf.width as u32, buf.height as u32)
-            .map_err(|e| e.to_string())
-            .ok()
-            .unwrap();
-
-        texture.update(None, &buf.data, 256 * 3).unwrap();
-        self.canvas.copy(&texture, None, None).unwrap();
-        self.canvas.present();
+        let frame = self.pixels.frame_mut();
+        let pixel_count = buf.data.len() / 3;
+        for i in 0..pixel_count {
+            let rgb = &buf.data[i * 3..i * 3 + 3];
+            let j = i * 4;
+            if j + 3 < frame.len() {
+                frame[j] = rgb[0];
+                frame[j + 1] = rgb[1];
+                frame[j + 2] = rgb[2];
+                frame[j + 3] = 255; // Opaque alpha
+            }
+        }
+        self.pixels.render().unwrap();
+        self.window.request_redraw();
     }
 
     fn exit(&self, s: String) {
