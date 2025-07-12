@@ -19,7 +19,7 @@ jobs:
     - name: Update dependencies
       run: sudo apt-get update
     - name: Install dependencies
-      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libsdl2-dev cmake libsdl2-image-dev libsdl2-gfx-dev libsdl2-ttf-dev libsdl2-mixer-dev libgbm-dev libdrm-dev
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar
     - name: Build
       run: cargo build --verbose
     - name: Run tests
