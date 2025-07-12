@@ -2,6 +2,9 @@ pub mod controller;
 pub mod loader;
 pub mod log;
 
+use std::thread;
+use std::time::{Duration, Instant};
+
 use pixels::{Pixels, SurfaceTexture};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::{
@@ -107,7 +110,9 @@ impl IOHandler for WinitPixelsIOHandler {
                         let _ = self.pixels.resize_surface(size.width, size.height);
                     }
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        let _ = self.pixels.resize_surface(new_inner_size.width, new_inner_size.height);
+                        let _ = self
+                            .pixels
+                            .resize_surface(new_inner_size.width, new_inner_size.height);
                     }
                     WindowEvent::CloseRequested => {
                         exit = true;

@@ -8,12 +8,14 @@ pub mod ppu;
 use cpu::opcodes;
 
 extern crate shrust;
+use std::thread;
+use std::time::{Duration, Instant};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::time::Instant;
 
 pub const _NS_PER_CYCLE: std::time::Duration = std::time::Duration::from_nanos(559);
+pub const MS_PER_FRAME: Duration = Duration::from_millis(13);
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -156,6 +158,8 @@ impl Emulator {
     }
 
     pub fn cycle(&mut self) -> CycleState {
+        let start = Instant::now();
+
         let mut state = CycleState::CpuAhead;
         if self.cpu.cycle == self.cycles {
             state = CycleState::CpuExecuted;
@@ -201,6 +205,8 @@ impl Emulator {
             self.nmi_triggered_countdown = -1;
             gfx::render(&mut *self.mem, &mut self.buf);
             self.iohandler.render(&self.buf);
+
+            thread::sleep(MS_PER_FRAME.saturating_sub(start.elapsed()));
         }
         if self.cycles % 16666 == 0 {
             if self.iohandler.poll(&mut *self.mem, &mut self.cpu) {
