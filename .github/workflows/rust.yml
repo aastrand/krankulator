@@ -19,7 +19,7 @@ jobs:
     - name: Update dependencies
       run: sudo apt-get update
     - name: Install dependencies
-      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
