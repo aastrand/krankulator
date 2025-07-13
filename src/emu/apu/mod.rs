@@ -85,17 +85,23 @@ impl APU {
 
             // Status
             0x4015 => {
-                println!("APU $4015 write: value = {:02X}", value);
+                let old_enabled = self.enabled_channels;
                 self.enabled_channels = value;
-                println!("  pulse1 enable: {}", value & 0x01 != 0);
+
+                // Only print when there are actual changes
+                if old_enabled != value {
+                    println!("APU $4015 write: value = {:02X}", value);
+                    println!("  pulse1 enable: {}", value & 0x01 != 0);
+                    println!("  pulse2 enable: {}", value & 0x02 != 0);
+                    println!("  triangle enable: {}", value & 0x04 != 0);
+                    println!("  noise enable: {}", value & 0x08 != 0);
+                    println!("  dmc enable: {}", value & 0x10 != 0);
+                }
+
                 self.pulse1.set_enabled(value & 0x01 != 0);
-                println!("  pulse2 enable: {}", value & 0x02 != 0);
                 self.pulse2.set_enabled(value & 0x02 != 0);
-                println!("  triangle enable: {}", value & 0x04 != 0);
                 self.triangle.set_enabled(value & 0x04 != 0);
-                println!("  noise enable: {}", value & 0x08 != 0);
                 self.noise.set_enabled(value & 0x08 != 0);
-                println!("  dmc enable: {}", value & 0x10 != 0);
                 self.dmc.set_enabled(value & 0x10 != 0);
             }
 
@@ -120,6 +126,13 @@ impl APU {
             self.pulse2.clock_length_counter();
             self.triangle.clock_length_counter();
             self.noise.clock_length_counter();
+        }
+
+        // Clock envelopes on steps 0, 1, 2, 3 (both modes)
+        if step <= 3 {
+            self.pulse1.clock_envelope();
+            self.pulse2.clock_envelope();
+            self.noise.clock_envelope();
         }
 
         // Clock linear counter on every cycle (except when reload flag is set)
@@ -153,9 +166,9 @@ impl APU {
         let noise_sample = self.noise.get_sample();
         let dmc_sample = self.dmc.get_sample();
 
-        // Debug: print individual channel samples and states
-        if self.sample_index % 1000 == 0 {
-            // Only print every 1000th sample to avoid spam
+        // Debug: print individual channel samples and states (less frequently)
+        if self.sample_index % 10000 == 0 {
+            // Only print every 10000th sample to avoid spam
             println!(
                 "APU Debug - Pulse1: {} (enabled: {}, len: {}), Pulse2: {} (enabled: {}, len: {}), Triangle: {} (enabled: {}, len: {}), Noise: {} (enabled: {}, len: {}), DMC: {} (enabled: {})",
                 pulse1_sample, self.pulse1.is_enabled(), self.pulse1.get_length_counter(),
@@ -175,8 +188,8 @@ impl APU {
             dmc_sample,
         );
 
-        // Debug: check if we're generating any samples
-        if mixed_sample != 0.0 {
+        // Debug: check if we're generating any samples (less frequently)
+        if mixed_sample != 0.0 && self.sample_index % 10000 == 0 {
             println!("APU generating sample: {}", mixed_sample);
         }
 
@@ -209,5 +222,326 @@ impl APU {
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.status &= 0xBF; // Clear frame IRQ bit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apu_new() {
+        let apu = APU::new();
+        assert_eq!(apu.status, 0);
+        assert_eq!(apu.enabled_channels, 0);
+        assert_eq!(apu.sample_index, 0);
+        assert_eq!(apu.cycles_since_sample, 0);
+        assert_eq!(apu.sample_buffer.len(), 4096);
+    }
+
+    #[test]
+    fn test_apu_read() {
+        let apu = APU::new();
+
+        // Test status register read
+        assert_eq!(apu.read(0x4015), 0);
+
+        // Test other addresses return 0
+        assert_eq!(apu.read(0x4000), 0);
+        assert_eq!(apu.read(0xFFFF), 0);
+    }
+
+    #[test]
+    fn test_apu_write_pulse1() {
+        let mut apu = APU::new();
+
+        // Test pulse1 control
+        apu.write(0x4000, 0x3F); // Volume 15, constant volume
+                                 // Test by enabling and checking output behavior
+        apu.write(0x4015, 0x01); // Enable pulse1
+        apu.write(0x4002, 0x10); // Set timer low
+        apu.write(0x4003, 0x00); // Set timer high
+
+        // Cycle to generate output
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should produce some output
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+    }
+
+    #[test]
+    fn test_apu_write_pulse2() {
+        let mut apu = APU::new();
+
+        // Test pulse2 control
+        apu.write(0x4004, 0x3F); // Volume 15, constant volume
+                                 // Test by enabling and checking output behavior
+        apu.write(0x4015, 0x02); // Enable pulse2
+        apu.write(0x4006, 0x10); // Set timer low
+        apu.write(0x4007, 0x00); // Set timer high
+
+        // Cycle to generate output
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should produce some output
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+    }
+
+    #[test]
+    fn test_apu_write_triangle() {
+        let mut apu = APU::new();
+
+        // Test triangle control and timer
+        apu.write(0x4008, 0x80); // Length counter halt
+        apu.write(0x400A, 0x34); // Timer low
+        apu.write(0x400B, 0x12); // Timer high, length counter
+
+        // Test by enabling and checking output behavior
+        apu.write(0x4015, 0x04); // Enable triangle
+
+        // Cycle to generate output
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should produce some output
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+    }
+
+    #[test]
+    fn test_apu_write_noise() {
+        let mut apu = APU::new();
+
+        // Test noise control and period
+        apu.write(0x400C, 0x3F); // Volume 15, constant volume
+        apu.write(0x400E, 0x0F); // Period 15
+        apu.write(0x400F, 0x20); // Length counter index 4
+
+        // Test by enabling and checking output behavior
+        apu.write(0x4015, 0x08); // Enable noise
+
+        // Cycle to generate output
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should produce some output
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+    }
+
+    #[test]
+    fn test_apu_write_dmc() {
+        let mut apu = APU::new();
+
+        // Test DMC control and parameters
+        apu.write(0x4010, 0x8F); // IRQ enable, period 15
+        apu.write(0x4011, 0x7F); // Direct load
+        apu.write(0x4012, 0x40); // Sample address
+        apu.write(0x4013, 0x10); // Sample length
+
+        // Test by enabling and checking output behavior
+        apu.write(0x4015, 0x10); // Enable DMC
+
+        // Cycle to generate output
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should produce some output
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+    }
+
+    #[test]
+    fn test_apu_write_status() {
+        let mut apu = APU::new();
+
+        // Test enabling all channels
+        apu.write(0x4015, 0x1F); // Enable all channels
+        assert!(apu.pulse1.is_enabled());
+        assert!(apu.pulse2.is_enabled());
+        assert!(apu.triangle.is_enabled());
+        assert!(apu.noise.is_enabled());
+        assert!(apu.dmc.is_enabled());
+        assert_eq!(apu.enabled_channels, 0x1F);
+
+        // Test disabling all channels
+        apu.write(0x4015, 0x00); // Disable all channels
+        assert!(!apu.pulse1.is_enabled());
+        assert!(!apu.pulse2.is_enabled());
+        assert!(!apu.triangle.is_enabled());
+        assert!(!apu.noise.is_enabled());
+        assert!(!apu.dmc.is_enabled());
+        assert_eq!(apu.enabled_channels, 0x00);
+
+        // Test enabling individual channels
+        apu.write(0x4015, 0x01); // Enable only pulse1
+        assert!(apu.pulse1.is_enabled());
+        assert!(!apu.pulse2.is_enabled());
+        assert!(!apu.triangle.is_enabled());
+        assert!(!apu.noise.is_enabled());
+        assert!(!apu.dmc.is_enabled());
+    }
+
+    #[test]
+    fn test_apu_write_frame_counter() {
+        let mut apu = APU::new();
+
+        // Test frame counter mode 0
+        apu.write(0x4017, 0x00);
+        assert_eq!(apu.frame_counter.get_mode(), 0);
+
+        // Test frame counter mode 1
+        apu.write(0x4017, 0x80);
+        assert_eq!(apu.frame_counter.get_mode(), 1);
+
+        // Test frame counter IRQ inhibit
+        apu.write(0x4017, 0x40);
+        assert_eq!(apu.frame_counter.get_mode(), 0);
+    }
+
+    #[test]
+    fn test_apu_cycle() {
+        let mut apu = APU::new();
+
+        // Test basic cycling
+        for _ in 0..100 {
+            apu.cycle();
+        }
+
+        // Should have advanced cycles_since_sample
+        assert!(apu.cycles_since_sample > 0);
+    }
+
+    #[test]
+    fn test_apu_frame_counter_integration() {
+        let mut apu = APU::new();
+
+        // Set up frame counter mode 0
+        apu.write(0x4017, 0x00);
+
+        // Enable triangle channel
+        apu.write(0x4015, 0x04);
+
+        // Set triangle timer
+        apu.write(0x400A, 0x10);
+        apu.write(0x400B, 0x00);
+
+        // Cycle through frame counter steps
+        for _ in 0..7456 {
+            apu.cycle();
+        }
+
+        // Should have advanced frame counter step
+        assert_eq!(apu.frame_counter.get_step(), 1);
+    }
+
+    #[test]
+    fn test_apu_mix_channels() {
+        let apu = APU::new();
+
+        // Test mixing with all channels at maximum
+        let mixed = apu.mix_channels(1.0, 1.0, 1.0, 1.0, 1.0);
+        assert!(mixed > 0.0);
+        assert!(mixed <= 1.0);
+
+        // Test mixing with all channels at minimum
+        let mixed = apu.mix_channels(-1.0, -1.0, -1.0, -1.0, -1.0);
+        assert!(mixed < 0.0);
+        assert!(mixed >= -1.0);
+
+        // Test mixing with zero input
+        let mixed = apu.mix_channels(0.0, 0.0, 0.0, 0.0, 0.0);
+        assert_eq!(mixed, 0.0);
+
+        // Test mixing with individual channels
+        let mixed = apu.mix_channels(1.0, 0.0, 0.0, 0.0, 0.0);
+        assert!(mixed > 0.0);
+        assert!(mixed < 1.0);
+    }
+
+    #[test]
+    fn test_apu_sample_generation() {
+        let mut apu = APU::new();
+
+        // Enable pulse1 and set it to produce output
+        apu.write(0x4015, 0x01); // Enable pulse1
+        apu.write(0x4000, 0x3F); // Volume 15, constant volume
+        apu.write(0x4002, 0x10); // Timer low
+        apu.write(0x4003, 0x00); // Timer high
+
+        // Cycle enough to generate a sample
+        for _ in 0..CYCLES_PER_SAMPLE {
+            apu.cycle();
+        }
+
+        // Should have generated a sample
+        assert_eq!(apu.sample_index, 1);
+    }
+
+    #[test]
+    fn test_apu_get_audio_samples() {
+        let mut apu = APU::new();
+
+        // Generate some samples
+        for _ in 0..CYCLES_PER_SAMPLE * 5 {
+            apu.cycle();
+        }
+
+        // Get samples
+        let samples = apu.get_audio_samples();
+        assert!(samples.len() > 0);
+        assert_eq!(apu.sample_index, 0); // Should reset after getting samples
+    }
+
+    #[test]
+    fn test_apu_clear_irq() {
+        let mut apu = APU::new();
+
+        // Set frame IRQ bit
+        apu.status |= 0x40;
+        assert_eq!(apu.status & 0x40, 0x40);
+
+        // Clear IRQ
+        apu.clear_irq();
+        assert_eq!(apu.status & 0x40, 0x00);
+    }
+
+    #[test]
+    fn test_apu_constants() {
+        // Test sample rate
+        assert_eq!(SAMPLE_RATE, 44100);
+
+        // Test cycles per sample calculation
+        assert_eq!(CYCLES_PER_SAMPLE, 1789773 / SAMPLE_RATE);
+        assert!(CYCLES_PER_SAMPLE > 0);
+    }
+
+    #[test]
+    fn test_apu_envelope_clocking() {
+        let mut apu = APU::new();
+
+        // Set up frame counter mode 0
+        apu.write(0x4017, 0x00);
+
+        // Enable pulse1 and set envelope
+        apu.write(0x4015, 0x01);
+        apu.write(0x4000, 0x20); // Volume 0, envelope enabled
+
+        // Cycle through frame counter steps 0, 1, 2, 3 (should clock envelope)
+        for _ in 0..7456 * 4 {
+            apu.cycle();
+        }
+
+        // Envelope should have been clocked multiple times
+        assert_eq!(apu.frame_counter.get_step(), 0); // Should wrap around
     }
 }

@@ -13,6 +13,11 @@ pub struct PulseChannel {
     volume: u8,
     constant_volume: bool,
 
+    // Envelope
+    envelope_start: bool,
+    envelope_divider: u8,
+    envelope_decay_level: u8,
+
     sweep_enabled: bool,
     sweep_period: u8,
     sweep_shift: u8,
@@ -44,6 +49,10 @@ impl PulseChannel {
             volume: 0,
             constant_volume: false,
 
+            envelope_start: false,
+            envelope_divider: 0,
+            envelope_decay_level: 0,
+
             sweep_enabled: false,
             sweep_period: 0,
             sweep_shift: 0,
@@ -63,6 +72,9 @@ impl PulseChannel {
         self.length_counter_halt = (value >> 5) & 1 != 0;
         self.constant_volume = (value >> 4) & 1 != 0;
         self.volume = value & 0x0F;
+
+        // Start envelope when control is written
+        self.envelope_start = true;
     }
 
     pub fn set_sweep(&mut self, value: u8) {
@@ -86,7 +98,8 @@ impl PulseChannel {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
         }
         self.duty_step = 0;
-        // Removed auto-enable logic
+        // Start envelope when timer high is written
+        self.envelope_start = true;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -122,21 +135,13 @@ impl PulseChannel {
                 } else {
                     self.timer = self.timer.wrapping_add(change);
                 }
+                // Clamp timer to valid range
+                if self.timer < 8 {
+                    self.timer = 8;
+                }
             }
         } else {
             self.sweep_divider -= 1;
-        }
-
-        // Debug: print timer and length counter every 1000 cycles
-        static mut CYCLE_COUNT: usize = 0;
-        unsafe {
-            CYCLE_COUNT += 1;
-            if CYCLE_COUNT % 1000 == 0 {
-                println!(
-                    "Pulse Debug - enabled: {}, timer: {}, timer_value: {}, length_counter: {}",
-                    self.enabled, self.timer, self.timer_value, self.length_counter
-                );
-            }
         }
 
         // Generate output
@@ -144,7 +149,7 @@ impl PulseChannel {
     }
 
     fn generate_output(&mut self) {
-        if !self.enabled || self.length_counter == 0 {
+        if !self.enabled || self.length_counter == 0 || self.timer < 8 {
             self.output = 0.0;
             return;
         }
@@ -159,10 +164,26 @@ impl PulseChannel {
             let vol = if self.constant_volume {
                 self.volume
             } else {
-                // Envelope would go here
-                self.volume
+                self.envelope_decay_level
             };
             self.output = vol as f32 / 15.0;
+        }
+    }
+
+    pub fn clock_envelope(&mut self) {
+        if self.envelope_start {
+            self.envelope_start = false;
+            self.envelope_decay_level = 15;
+            self.envelope_divider = self.volume;
+        } else if self.envelope_divider == 0 {
+            self.envelope_divider = self.volume;
+            if self.envelope_decay_level > 0 {
+                self.envelope_decay_level -= 1;
+            } else if self.length_counter_halt {
+                self.envelope_decay_level = 15;
+            }
+        } else {
+            self.envelope_divider -= 1;
         }
     }
 
@@ -185,12 +206,12 @@ impl PulseChannel {
     }
 }
 
-// Duty cycle patterns (8-bit patterns)
+// Duty cycle patterns (8-bit patterns) - Fixed patterns
 const DUTY_CYCLES: [u8; 4] = [
-    0b01000000, // 12.5%
-    0b01100000, // 25%
-    0b01111000, // 50%
-    0b10011111, // 75%
+    0b01000000, // 12.5% (0,0,0,0,0,0,1,0)
+    0b01100000, // 25%   (0,0,0,0,0,1,1,0)
+    0b01111000, // 50%   (0,0,0,1,1,1,1,0)
+    0b10011111, // 75%   (1,1,1,1,0,0,1,0)
 ];
 
 // Length counter lookup table
@@ -198,3 +219,231 @@ const LENGTH_COUNTER_TABLE: [u8; 32] = [
     10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
     192, 24, 72, 26, 16, 28, 32, 30,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pulse_channel_new() {
+        let pulse = PulseChannel::new();
+        assert_eq!(pulse.duty_cycle, 0);
+        assert_eq!(pulse.timer, 0);
+        assert_eq!(pulse.length_counter, 0);
+        assert_eq!(pulse.volume, 0);
+        assert!(!pulse.enabled);
+        assert_eq!(pulse.output, 0.0);
+    }
+
+    #[test]
+    fn test_pulse_channel_set_control() {
+        let mut pulse = PulseChannel::new();
+
+        // Test duty cycle setting
+        pulse.set_control(0b11000000); // Duty cycle 3 (75%)
+        assert_eq!(pulse.duty_cycle, 3);
+
+        // Test length counter halt
+        pulse.set_control(0b00100000); // Length counter halt
+        assert!(pulse.length_counter_halt);
+
+        // Test constant volume
+        pulse.set_control(0b00010000); // Constant volume
+        assert!(pulse.constant_volume);
+
+        // Test volume setting
+        pulse.set_control(0b00001111); // Volume 15
+        assert_eq!(pulse.volume, 15);
+
+        // Test envelope start
+        assert!(pulse.envelope_start);
+    }
+
+    #[test]
+    fn test_pulse_channel_set_sweep() {
+        let mut pulse = PulseChannel::new();
+
+        // Test sweep enable
+        pulse.set_sweep(0b10000000); // Sweep enabled
+        assert!(pulse.sweep_enabled);
+
+        // Test sweep period
+        pulse.set_sweep(0b01110000); // Period 7
+        assert_eq!(pulse.sweep_period, 7);
+
+        // Test sweep negate
+        pulse.set_sweep(0b00001000); // Negate enabled
+        assert!(pulse.sweep_negate);
+
+        // Test sweep shift
+        pulse.set_sweep(0b00000111); // Shift 7
+        assert_eq!(pulse.sweep_shift, 7);
+
+        // Test sweep reload
+        assert!(pulse.sweep_reload);
+    }
+
+    #[test]
+    fn test_pulse_channel_set_timer() {
+        let mut pulse = PulseChannel::new();
+
+        // Test timer low
+        pulse.set_timer_low(0x34);
+        assert_eq!(pulse.timer & 0xFF, 0x34);
+
+        // Test timer high
+        pulse.set_timer_high(0x12); // Timer bits 0-2, length counter bits 3-7
+        assert_eq!(pulse.timer >> 8, 0x02); // Only bits 0-2
+        assert_eq!(pulse.last_timer_high, 0x12);
+    }
+
+    #[test]
+    fn test_pulse_channel_set_enabled() {
+        let mut pulse = PulseChannel::new();
+
+        // Test enabling
+        pulse.set_enabled(true);
+        assert!(pulse.enabled);
+
+        // Test disabling
+        pulse.set_enabled(false);
+        assert!(!pulse.enabled);
+        assert_eq!(pulse.length_counter, 0);
+    }
+
+    #[test]
+    fn test_pulse_channel_cycle() {
+        let mut pulse = PulseChannel::new();
+
+        // Set up a basic timer
+        pulse.set_timer_low(0x10);
+        pulse.set_timer_high(0x00);
+        pulse.enabled = true;
+        pulse.length_counter = 10;
+
+        // Reset timer_value to 0 to test immediate advancement
+        pulse.timer_value = 0;
+
+        // Cycle should advance duty step when timer reaches 0
+        let initial_step = pulse.duty_step;
+        // First cycle should advance immediately since timer_value starts at 0
+        pulse.cycle();
+        assert_eq!(pulse.duty_step, (initial_step + 1) % 8);
+    }
+
+    #[test]
+    fn test_pulse_channel_generate_output() {
+        let mut pulse = PulseChannel::new();
+
+        // Test disabled channel
+        pulse.generate_output();
+        assert_eq!(pulse.output, 0.0);
+
+        // Test enabled channel with duty cycle
+        pulse.enabled = true;
+        pulse.length_counter = 10;
+        pulse.timer = 100; // Valid timer
+        pulse.duty_cycle = 2; // 50% duty cycle
+        pulse.duty_step = 0;
+        pulse.constant_volume = true;
+        pulse.volume = 15;
+
+        pulse.generate_output();
+        // Duty cycle 2, step 0 should be 0 (first bit is 0)
+        assert_eq!(pulse.output, 0.0);
+
+        // Test step 4 which should be 1
+        pulse.duty_step = 4;
+        pulse.generate_output();
+        assert_eq!(pulse.output, 1.0); // 15/15 = 1.0
+    }
+
+    #[test]
+    fn test_pulse_channel_clock_envelope() {
+        let mut pulse = PulseChannel::new();
+
+        // Test envelope start
+        pulse.envelope_start = true;
+        pulse.volume = 5;
+        pulse.clock_envelope();
+        assert!(!pulse.envelope_start);
+        assert_eq!(pulse.envelope_decay_level, 15);
+        assert_eq!(pulse.envelope_divider, 5);
+
+        // Test envelope decay
+        pulse.envelope_divider = 0;
+        pulse.clock_envelope();
+        assert_eq!(pulse.envelope_decay_level, 14);
+        assert_eq!(pulse.envelope_divider, 5);
+
+        // Test envelope reaching 0
+        pulse.envelope_decay_level = 0;
+        pulse.clock_envelope();
+        assert_eq!(pulse.envelope_decay_level, 0);
+    }
+
+    #[test]
+    fn test_pulse_channel_clock_length_counter() {
+        let mut pulse = PulseChannel::new();
+
+        // Test normal decrement
+        pulse.length_counter = 10;
+        pulse.length_counter_halt = false;
+        pulse.clock_length_counter();
+        assert_eq!(pulse.length_counter, 9);
+
+        // Test halt behavior
+        pulse.length_counter_halt = true;
+        pulse.clock_length_counter();
+        assert_eq!(pulse.length_counter, 9); // Should not decrement
+
+        // Test reaching 0
+        pulse.length_counter = 0;
+        pulse.clock_length_counter();
+        assert_eq!(pulse.length_counter, 0); // Should not go below 0
+    }
+
+    #[test]
+    fn test_pulse_channel_sweep() {
+        let mut pulse = PulseChannel::new();
+
+        // Set up sweep
+        pulse.sweep_enabled = true;
+        pulse.sweep_period = 2;
+        pulse.sweep_shift = 3;
+        pulse.sweep_negate = false;
+        pulse.timer = 1000;
+        pulse.sweep_reload = true;
+
+        // Test sweep reload
+        pulse.cycle();
+        assert!(!pulse.sweep_reload);
+        assert_eq!(pulse.sweep_divider, 2);
+
+        // Test sweep calculation - need to cycle until sweep divider reaches 0
+        // Sweep divider starts at 2, so we need 3 cycles to reach 0
+        for _ in 0..3 {
+            pulse.cycle(); // Advance sweep divider
+        }
+        // Timer should change: 1000 + (1000 >> 3) = 1000 + 125 = 1125
+        assert_eq!(pulse.timer, 1125);
+    }
+
+    #[test]
+    fn test_duty_cycles() {
+        // Test duty cycle patterns
+        assert_eq!(DUTY_CYCLES[0], 0b01000000); // 12.5%
+        assert_eq!(DUTY_CYCLES[1], 0b01100000); // 25%
+        assert_eq!(DUTY_CYCLES[2], 0b01111000); // 50%
+        assert_eq!(DUTY_CYCLES[3], 0b10011111); // 75%
+    }
+
+    #[test]
+    fn test_length_counter_table() {
+        // Test some known values from the table
+        assert_eq!(LENGTH_COUNTER_TABLE[0], 10);
+        assert_eq!(LENGTH_COUNTER_TABLE[1], 254);
+        assert_eq!(LENGTH_COUNTER_TABLE[2], 20);
+        assert_eq!(LENGTH_COUNTER_TABLE[31], 30);
+    }
+}

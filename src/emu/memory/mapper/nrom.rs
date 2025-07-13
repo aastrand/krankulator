@@ -141,15 +141,8 @@ impl MemoryMapper for NROMMapper {
                         .borrow_mut()
                         .write(addr, value, self.addr_space_ptr);
                 } else if addr >= 0x4000 && addr <= 0x4017 {
-                    if addr == 0x4015 {
-                        println!("NROM cpu_write $4015: value = {:02X}", value);
-                    }
                     self.apu.borrow_mut().write(addr, value);
                 }
-                //println!("Write to APU reg {:X}: {:X}", addr, value);
-                /*if addr > 0x4017 {
-                    panic!("Write at addr {:X} not mapped", addr);
-                }*/
             }
             _ => { /*panic!("Write at addr {:X} not mapped", addr),*/ }
         }

@@ -132,9 +132,16 @@ impl DmcChannel {
 
     fn load_sample(&mut self) {
         // In a real implementation, this would read from memory
-        // For now, we'll just simulate it
+        // For now, we'll simulate it with a more realistic approach
         if self.bytes_remaining > 0 {
-            self.sample_buffer = 0x80; // Default sample value
+            // Simulate reading from memory - in a real implementation,
+            // this would read from the current_address in memory
+            // For now, use a simple pattern to simulate audio data
+            self.sample_buffer = if (self.current_address & 0x01) != 0 {
+                0xFF
+            } else {
+                0x00
+            };
             self.sample_buffer_empty = false;
             self.bytes_remaining -= 1;
             self.current_address = self.current_address.wrapping_add(1);
@@ -188,3 +195,311 @@ impl DmcChannel {
 const DMC_PERIODS: [u16; 16] = [
     428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dmc_channel_new() {
+        let dmc = DmcChannel::new();
+        assert_eq!(dmc.control, 0);
+        assert_eq!(dmc.direct_load, 0);
+        assert_eq!(dmc.sample_address, 0);
+        assert_eq!(dmc.sample_length, 0);
+        assert_eq!(dmc.timer, 0);
+        assert_eq!(dmc.timer_value, 0);
+        assert!(!dmc.enabled);
+        assert_eq!(dmc.sample_buffer, 0);
+        assert!(dmc.sample_buffer_empty);
+        assert_eq!(dmc.bits_remaining, 0);
+        assert_eq!(dmc.current_address, 0);
+        assert_eq!(dmc.bytes_remaining, 0);
+        assert_eq!(dmc.output_level, 0);
+        assert_eq!(dmc.output, 0.0);
+        assert!(!dmc.irq_enabled);
+        assert!(!dmc.irq_pending);
+    }
+
+    #[test]
+    fn test_dmc_channel_set_control() {
+        let mut dmc = DmcChannel::new();
+
+        // Test IRQ enable
+        dmc.set_control(0b10000000); // IRQ enable
+        assert!(dmc.irq_enabled);
+
+        // Test period setting
+        dmc.set_control(0b00001111); // Period 15
+        assert_eq!(dmc.timer, DMC_PERIODS[15]);
+
+        // Test that timer value is also set
+        assert_eq!(dmc.timer_value, DMC_PERIODS[15]);
+    }
+
+    #[test]
+    fn test_dmc_channel_set_direct_load() {
+        let mut dmc = DmcChannel::new();
+
+        // Test direct load setting
+        dmc.set_direct_load(0x7F);
+        assert_eq!(dmc.direct_load, 0x7F);
+        assert_eq!(dmc.output_level, 0x7F);
+
+        // Test that higher bits are ignored
+        dmc.set_direct_load(0xFF);
+        assert_eq!(dmc.direct_load, 0x7F);
+    }
+
+    #[test]
+    fn test_dmc_channel_set_sample_address() {
+        let mut dmc = DmcChannel::new();
+
+        // Test sample address setting
+        dmc.set_sample_address(0x40);
+        assert_eq!(dmc.sample_address, 0x40);
+        assert_eq!(dmc.current_address, 0xC000 | (0x40 << 6)); // 0xC000 + (0x40 * 64)
+
+        // Test another address
+        dmc.set_sample_address(0x80);
+        assert_eq!(dmc.current_address, 0xC000 | (0x80 << 6)); // 0xC000 + (0x80 * 64)
+    }
+
+    #[test]
+    fn test_dmc_channel_set_sample_length() {
+        let mut dmc = DmcChannel::new();
+
+        // Test when disabled
+        dmc.set_sample_length(0x10);
+        assert_eq!(dmc.sample_length, 0x10);
+        assert_eq!(dmc.bytes_remaining, 0); // Should not change when disabled
+
+        // Test when enabled
+        dmc.enabled = true;
+        dmc.set_sample_length(0x10);
+        assert_eq!(dmc.bytes_remaining, (0x10 << 4) | 1); // (0x10 * 16) + 1
+    }
+
+    #[test]
+    fn test_dmc_channel_set_enabled() {
+        let mut dmc = DmcChannel::new();
+
+        // Test enabling
+        dmc.set_enabled(true);
+        assert!(dmc.enabled);
+
+        // Test disabling
+        dmc.set_enabled(false);
+        assert!(!dmc.enabled);
+        assert_eq!(dmc.bytes_remaining, 0);
+        assert!(!dmc.irq_pending);
+
+        // Test enabling with no bytes remaining (should restart)
+        dmc.sample_address = 0x40;
+        dmc.sample_length = 0x10;
+        dmc.set_enabled(true);
+        assert_eq!(dmc.bytes_remaining, (0x10 << 4) | 1);
+    }
+
+    #[test]
+    fn test_dmc_channel_cycle() {
+        let mut dmc = DmcChannel::new();
+
+        // Set up a basic timer
+        dmc.set_control(0x01); // Period 1
+        dmc.enabled = true;
+        dmc.bytes_remaining = 10;
+
+        // Cycle should advance timer
+        let initial_timer = dmc.timer_value;
+        dmc.cycle();
+        assert_eq!(dmc.timer_value, initial_timer - 1);
+
+        // Cycle until timer reaches 0
+        for _ in 0..initial_timer {
+            dmc.cycle();
+        }
+        assert_eq!(dmc.timer_value, dmc.timer); // Should reset to timer
+    }
+
+    #[test]
+    fn test_dmc_channel_clock_output() {
+        let mut dmc = DmcChannel::new();
+
+        // Test when disabled
+        dmc.clock_output();
+        assert_eq!(dmc.bits_remaining, 0); // Should not change
+
+        // Test when no bytes remaining
+        dmc.enabled = true;
+        dmc.bytes_remaining = 0;
+        dmc.clock_output();
+        assert_eq!(dmc.bits_remaining, 0); // Should not change
+
+        // Test when bits remaining is 0 but sample buffer is empty
+        dmc.bytes_remaining = 10;
+        dmc.bits_remaining = 0;
+        dmc.sample_buffer_empty = true;
+        dmc.current_address = 0xC001; // Set to odd address to get 0xFF sample
+        dmc.clock_output();
+        // Should try to load sample and set bits_remaining to 8, then process a bit (so 7 left)
+        assert_eq!(dmc.bits_remaining, 7);
+        assert!(!dmc.sample_buffer_empty);
+
+        // Test bit processing
+        dmc.sample_buffer = 0x80; // MSB = 1
+        dmc.output_level = 64; // Middle level
+        dmc.clock_output();
+        assert_eq!(dmc.output_level, 66); // Should increase by 2
+        assert_eq!(dmc.bits_remaining, 6); // Should be 6 after processing one bit
+
+        // Test bit processing with 0 bit
+        dmc.sample_buffer = 0x00; // MSB = 0
+        dmc.clock_output();
+        assert_eq!(dmc.output_level, 64); // Should decrease by 2
+        assert_eq!(dmc.bits_remaining, 5); // Should be 5 after processing another bit
+    }
+
+    #[test]
+    fn test_dmc_channel_load_sample() {
+        let mut dmc = DmcChannel::new();
+
+        // Set up sample parameters
+        dmc.sample_address = 0x40;
+        dmc.sample_length = 0x10;
+        dmc.bytes_remaining = 10;
+        dmc.current_address = 0xC000 | (0x40 << 6);
+
+        // Test sample loading
+        dmc.load_sample();
+        assert_eq!(dmc.bytes_remaining, 9);
+        assert!(!dmc.sample_buffer_empty);
+        assert_eq!(dmc.current_address, (0xC000 | (0x40 << 6)) + 1);
+
+        // Test reaching end of sample
+        dmc.bytes_remaining = 1;
+        dmc.irq_enabled = true;
+        dmc.load_sample();
+        assert_eq!(dmc.bytes_remaining, 0);
+        assert!(dmc.irq_pending);
+
+        // Test sample restart when enabled
+        dmc.enabled = true;
+        dmc.bytes_remaining = 1; // Set to 1 so load_sample will trigger restart
+        dmc.load_sample();
+        assert_eq!(dmc.bytes_remaining, ((0x10 as u16) << 4) | 1); // Should restart
+    }
+
+    #[test]
+    fn test_dmc_channel_restart_sample() {
+        let mut dmc = DmcChannel::new();
+
+        // Set up sample parameters
+        dmc.sample_address = 0x40;
+        dmc.sample_length = 0x10;
+
+        // Test restart
+        dmc.restart_sample();
+        assert_eq!(dmc.current_address, 0xC000 | (0x40 << 6));
+        assert_eq!(dmc.bytes_remaining, (0x10 << 4) | 1);
+    }
+
+    #[test]
+    fn test_dmc_channel_generate_output() {
+        let mut dmc = DmcChannel::new();
+
+        // Test disabled channel
+        dmc.generate_output();
+        assert_eq!(dmc.output, 0.0);
+
+        // Test enabled channel
+        dmc.enabled = true;
+        dmc.output_level = 64; // Middle level
+        dmc.generate_output();
+        assert_eq!(dmc.output, 0.0); // (64 - 64) / 64 = 0.0
+
+        // Test maximum level
+        dmc.output_level = 126;
+        dmc.generate_output();
+        assert_eq!(dmc.output, (126.0 - 64.0) / 64.0);
+
+        // Test minimum level
+        dmc.output_level = 2;
+        dmc.generate_output();
+        assert_eq!(dmc.output, (2.0 - 64.0) / 64.0);
+    }
+
+    #[test]
+    fn test_dmc_channel_irq_handling() {
+        let mut dmc = DmcChannel::new();
+
+        // Test IRQ pending
+        dmc.irq_pending = true;
+        assert!(dmc.get_irq_pending());
+
+        // Test clear IRQ
+        dmc.clear_irq();
+        assert!(!dmc.get_irq_pending());
+        assert!(!dmc.irq_pending);
+    }
+
+    #[test]
+    fn test_dmc_periods_table() {
+        // Test some known values from the table
+        assert_eq!(DMC_PERIODS[0], 428);
+        assert_eq!(DMC_PERIODS[1], 380);
+        assert_eq!(DMC_PERIODS[15], 54);
+
+        // Test that periods decrease with index (higher frequency)
+        for i in 1..16 {
+            assert!(DMC_PERIODS[i] < DMC_PERIODS[i - 1]);
+        }
+    }
+
+    #[test]
+    fn test_dmc_channel_output_level_bounds() {
+        let mut dmc = DmcChannel::new();
+        dmc.enabled = true;
+        dmc.bytes_remaining = 10;
+        dmc.bits_remaining = 8;
+
+        // Test output level upper bound
+        dmc.output_level = 126;
+        dmc.sample_buffer = 0x80; // MSB = 1
+        dmc.clock_output();
+        assert_eq!(dmc.output_level, 126); // Should not exceed 126
+
+        // Test output level lower bound
+        dmc.output_level = 1;
+        dmc.sample_buffer = 0x00; // MSB = 0
+        dmc.clock_output();
+        assert_eq!(dmc.output_level, 1); // Should not go below 1
+    }
+
+    #[test]
+    fn test_dmc_channel_address_wrapping() {
+        let mut dmc = DmcChannel::new();
+
+        // Test address wrapping
+        dmc.current_address = 0xFFFF;
+        dmc.bytes_remaining = 1;
+        dmc.load_sample();
+        assert_eq!(dmc.current_address, 0x0000); // Should wrap around
+    }
+
+    #[test]
+    fn test_dmc_channel_sample_buffer_pattern() {
+        let mut dmc = DmcChannel::new();
+
+        // Test the simulated sample pattern
+        dmc.current_address = 0xC001; // Odd address
+        dmc.bytes_remaining = 1;
+        dmc.load_sample();
+        assert_eq!(dmc.sample_buffer, 0xFF); // Should be 0xFF for odd addresses
+
+        dmc.current_address = 0xC000; // Even address
+        dmc.bytes_remaining = 1;
+        dmc.load_sample();
+        assert_eq!(dmc.sample_buffer, 0x00); // Should be 0x00 for even addresses
+    }
+}
