@@ -463,16 +463,17 @@ mod tests {
     #[test]
     fn test_write_ppu_addr() {
         let mut ppu = PPU::new();
-        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
-        ppu.write(ADDR_ADDR, 0x32, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
 
         assert_eq!(ppu.vram_addr, 0x3211);
 
-        ppu.write(ADDR_ADDR, 0x40, cpu_ram);
-        ppu.write(ADDR_ADDR, 0x1, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x40, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x1, cpu_ram_ptr);
 
         assert_eq!(ppu.vram_addr, 0x1);
     }
@@ -480,16 +481,17 @@ mod tests {
     #[test]
     fn test_write_ppu_addr_reset() {
         let mut ppu = PPU::new();
-        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
         let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
 
-        ppu.write(ADDR_ADDR, 0x82, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x82, cpu_ram_ptr);
 
         ppu.read(STATUS_REG_ADDR, mem);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x32, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
         assert_eq!(ppu.vram_addr, 0);
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
 
         assert_eq!(ppu.vram_addr, 0x3211);
     }
@@ -497,15 +499,16 @@ mod tests {
     #[test]
     fn test_write_ppu_data() {
         let mut ppu = PPU::new();
-        let cpu_ram = Box::new([0; 2 * 1024]).as_mut_ptr();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
         let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
 
         ppu.read(STATUS_REG_ADDR, mem);
-        ppu.write(ADDR_ADDR, 0x37, cpu_ram);
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram);
+        ppu.write(ADDR_ADDR, 0x37, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
 
         for b in 0..10 {
-            let should_write = ppu.write(DATA_ADDR, b, cpu_ram);
+            let should_write = ppu.write(DATA_ADDR, b, cpu_ram_ptr);
             assert_eq!(should_write.unwrap().0, (0x3711 + b as u16));
             assert_eq!(should_write.unwrap().1, b);
         }

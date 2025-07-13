@@ -28,6 +28,7 @@ pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
     fn ppu_read(&self, addr: u16) -> u8;
+    #[allow(dead_code)]
     fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize);
     fn ppu_write(&mut self, addr: u16, value: u8);
 

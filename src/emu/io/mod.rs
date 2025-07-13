@@ -2,8 +2,7 @@ pub mod controller;
 pub mod loader;
 pub mod log;
 
-use std::thread;
-use std::time::{Duration, Instant};
+
 
 use pixels::{Pixels, SurfaceTexture};
 use winit::platform::run_return::EventLoopExtRunReturn;
@@ -50,7 +49,6 @@ impl IOHandler for HeadlessIOHandler {
 }
 
 pub struct WinitPixelsIOHandler {
-    pub exit_flag: bool,
     pub pixels: Pixels,
     pub event_loop: Option<EventLoop<()>>,
     pub window: winit::window::Window,
@@ -76,7 +74,6 @@ impl WinitPixelsIOHandler {
             event_loop: Some(event_loop),
             window,
             pixels,
-            exit_flag: false,
             muted: false,
         }
     }

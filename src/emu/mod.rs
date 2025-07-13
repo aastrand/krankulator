@@ -160,8 +160,6 @@ impl Emulator {
     }
 
     pub fn cycle(&mut self) -> CycleState {
-        let start = Instant::now();
-
         let mut state = CycleState::CpuAhead;
         if self.cpu.cycle == self.cycles {
             state = CycleState::CpuExecuted;

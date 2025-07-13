@@ -4,6 +4,7 @@ const HEIGHT: usize = 240;
 pub struct Buffer {
     pub data: Vec<u8>,
     pub width: usize,
+    #[allow(dead_code)]
     pub height: usize,
 }
 

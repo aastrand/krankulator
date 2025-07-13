@@ -43,6 +43,7 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
+#[allow(dead_code)]
 pub fn filename(s: &str) -> &str {
     let i = if let Some(i) = s.rfind("/") {
         i + 1
