@@ -207,7 +207,7 @@ impl Emulator {
         };
 
         // Cycle the APU
-        self.apu.borrow_mut().cycle();
+        self.apu.borrow_mut().cycle(&mut *self.mem);
 
         // After cycling APU, push samples to audio backend
         let mut apu_borrow = self.apu.borrow_mut();

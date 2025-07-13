@@ -1,3 +1,5 @@
+use crate::emu::memory::MemoryMapper;
+
 pub struct DmcChannel {
     control: u8,
     direct_load: u8,
@@ -90,10 +92,10 @@ impl DmcChannel {
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self, memory: &mut dyn MemoryMapper) {
         if self.timer_value == 0 {
             self.timer_value = self.timer;
-            self.clock_output();
+            self.clock_output(memory);
         } else {
             self.timer_value -= 1;
         }
@@ -102,14 +104,14 @@ impl DmcChannel {
         self.generate_output();
     }
 
-    fn clock_output(&mut self) {
+    fn clock_output(&mut self, memory: &mut dyn MemoryMapper) {
         if !self.enabled || self.bytes_remaining == 0 {
             return;
         }
 
         if self.bits_remaining == 0 {
             if self.sample_buffer_empty {
-                self.load_sample();
+                self.load_sample(memory);
             }
 
             if !self.sample_buffer_empty {
@@ -130,29 +132,23 @@ impl DmcChannel {
         }
     }
 
-    fn load_sample(&mut self) {
-        // In a real implementation, this would read from memory
-        // For now, we'll simulate it with a more realistic approach
-        if self.bytes_remaining > 0 {
-            // Simulate reading from memory - in a real implementation,
-            // this would read from the current_address in memory
-            // For now, use a simple pattern to simulate audio data
-            self.sample_buffer = if (self.current_address & 0x01) != 0 {
-                0xFF
-            } else {
-                0x00
-            };
-            self.sample_buffer_empty = false;
-            self.bytes_remaining -= 1;
-            self.current_address = self.current_address.wrapping_add(1);
+    fn load_sample(&mut self, memory: &mut dyn MemoryMapper) {
+        if self.bytes_remaining == 0 {
+            return;
+        }
+        // Real memory read
+        let data = memory.cpu_read(self.current_address);
+        self.sample_buffer = data;
+        self.sample_buffer_empty = false;
+        self.bytes_remaining -= 1;
+        self.current_address = self.current_address.wrapping_add(1);
 
-            if self.bytes_remaining == 0 {
-                if self.irq_enabled {
-                    self.irq_pending = true;
-                }
-                if self.enabled {
-                    self.restart_sample();
-                }
+        if self.bytes_remaining == 0 {
+            if self.irq_enabled {
+                self.irq_pending = true;
+            }
+            if self.enabled {
+                self.restart_sample();
             }
         }
     }
@@ -199,6 +195,32 @@ const DMC_PERIODS: [u16; 16] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emu::memory::MemoryMapper;
+
+    struct DummyMemory;
+    impl MemoryMapper for DummyMemory {
+        fn cpu_read(&mut self, _addr: u16) -> u8 {
+            0xAA
+        }
+        fn cpu_write(&mut self, _addr: u16, _value: u8) {}
+        fn ppu_read(&self, _addr: u16) -> u8 {
+            0
+        }
+        fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+        fn ppu_write(&mut self, _addr: u16, _value: u8) {}
+        fn code_start(&mut self) -> u16 {
+            0
+        }
+        fn ppu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::ppu::PPU>> {
+            panic!()
+        }
+        fn apu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::apu::APU>> {
+            panic!()
+        }
+        fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
+            panic!()
+        }
+    }
 
     #[test]
     fn test_dmc_channel_new() {
@@ -304,6 +326,7 @@ mod tests {
     #[test]
     fn test_dmc_channel_cycle() {
         let mut dmc = DmcChannel::new();
+        let mut mem = DummyMemory;
 
         // Set up a basic timer
         dmc.set_control(0x01); // Period 1
@@ -312,12 +335,12 @@ mod tests {
 
         // Cycle should advance timer
         let initial_timer = dmc.timer_value;
-        dmc.cycle();
+        dmc.cycle(&mut mem);
         assert_eq!(dmc.timer_value, initial_timer - 1);
 
         // Cycle until timer reaches 0
         for _ in 0..initial_timer {
-            dmc.cycle();
+            dmc.cycle(&mut mem);
         }
         assert_eq!(dmc.timer_value, dmc.timer); // Should reset to timer
     }
@@ -325,15 +348,16 @@ mod tests {
     #[test]
     fn test_dmc_channel_clock_output() {
         let mut dmc = DmcChannel::new();
+        let mut mem = DummyMemory;
 
         // Test when disabled
-        dmc.clock_output();
+        dmc.clock_output(&mut mem);
         assert_eq!(dmc.bits_remaining, 0); // Should not change
 
         // Test when no bytes remaining
         dmc.enabled = true;
         dmc.bytes_remaining = 0;
-        dmc.clock_output();
+        dmc.clock_output(&mut mem);
         assert_eq!(dmc.bits_remaining, 0); // Should not change
 
         // Test when bits remaining is 0 but sample buffer is empty
@@ -341,7 +365,7 @@ mod tests {
         dmc.bits_remaining = 0;
         dmc.sample_buffer_empty = true;
         dmc.current_address = 0xC001; // Set to odd address to get 0xFF sample
-        dmc.clock_output();
+        dmc.clock_output(&mut mem);
         // Should try to load sample and set bits_remaining to 8, then process a bit (so 7 left)
         assert_eq!(dmc.bits_remaining, 7);
         assert!(!dmc.sample_buffer_empty);
@@ -349,13 +373,13 @@ mod tests {
         // Test bit processing
         dmc.sample_buffer = 0x80; // MSB = 1
         dmc.output_level = 64; // Middle level
-        dmc.clock_output();
+        dmc.clock_output(&mut mem);
         assert_eq!(dmc.output_level, 66); // Should increase by 2
         assert_eq!(dmc.bits_remaining, 6); // Should be 6 after processing one bit
 
         // Test bit processing with 0 bit
         dmc.sample_buffer = 0x00; // MSB = 0
-        dmc.clock_output();
+        dmc.clock_output(&mut mem);
         assert_eq!(dmc.output_level, 64); // Should decrease by 2
         assert_eq!(dmc.bits_remaining, 5); // Should be 5 after processing another bit
     }
@@ -363,6 +387,7 @@ mod tests {
     #[test]
     fn test_dmc_channel_load_sample() {
         let mut dmc = DmcChannel::new();
+        let mut mem = DummyMemory;
 
         // Set up sample parameters
         dmc.sample_address = 0x40;
@@ -371,7 +396,7 @@ mod tests {
         dmc.current_address = 0xC000 | (0x40 << 6);
 
         // Test sample loading
-        dmc.load_sample();
+        dmc.load_sample(&mut mem);
         assert_eq!(dmc.bytes_remaining, 9);
         assert!(!dmc.sample_buffer_empty);
         assert_eq!(dmc.current_address, (0xC000 | (0x40 << 6)) + 1);
@@ -379,14 +404,14 @@ mod tests {
         // Test reaching end of sample
         dmc.bytes_remaining = 1;
         dmc.irq_enabled = true;
-        dmc.load_sample();
+        dmc.load_sample(&mut mem);
         assert_eq!(dmc.bytes_remaining, 0);
         assert!(dmc.irq_pending);
 
         // Test sample restart when enabled
         dmc.enabled = true;
         dmc.bytes_remaining = 1; // Set to 1 so load_sample will trigger restart
-        dmc.load_sample();
+        dmc.load_sample(&mut mem);
         assert_eq!(dmc.bytes_remaining, ((0x10 as u16) << 4) | 1); // Should restart
     }
 
@@ -466,13 +491,13 @@ mod tests {
         // Test output level upper bound
         dmc.output_level = 126;
         dmc.sample_buffer = 0x80; // MSB = 1
-        dmc.clock_output();
+        dmc.clock_output(&mut DummyMemory);
         assert_eq!(dmc.output_level, 126); // Should not exceed 126
 
         // Test output level lower bound
         dmc.output_level = 1;
         dmc.sample_buffer = 0x00; // MSB = 0
-        dmc.clock_output();
+        dmc.clock_output(&mut DummyMemory);
         assert_eq!(dmc.output_level, 1); // Should not go below 1
     }
 
@@ -483,23 +508,51 @@ mod tests {
         // Test address wrapping
         dmc.current_address = 0xFFFF;
         dmc.bytes_remaining = 1;
-        dmc.load_sample();
+        dmc.load_sample(&mut DummyMemory);
         assert_eq!(dmc.current_address, 0x0000); // Should wrap around
     }
 
     #[test]
     fn test_dmc_channel_sample_buffer_pattern() {
         let mut dmc = DmcChannel::new();
-
-        // Test the simulated sample pattern
+        // Custom dummy memory to simulate the old pattern
+        struct DummyPatternMemory;
+        impl MemoryMapper for DummyPatternMemory {
+            fn cpu_read(&mut self, addr: u16) -> u8 {
+                if addr & 0x01 != 0 {
+                    0xFF
+                } else {
+                    0x00
+                }
+            }
+            fn cpu_write(&mut self, _addr: u16, _value: u8) {}
+            fn ppu_read(&self, _addr: u16) -> u8 {
+                0
+            }
+            fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+            fn ppu_write(&mut self, _addr: u16, _value: u8) {}
+            fn code_start(&mut self) -> u16 {
+                0
+            }
+            fn ppu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::ppu::PPU>> {
+                panic!()
+            }
+            fn apu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::apu::APU>> {
+                panic!()
+            }
+            fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
+                panic!()
+            }
+        }
+        let mut mem = DummyPatternMemory;
         dmc.current_address = 0xC001; // Odd address
         dmc.bytes_remaining = 1;
-        dmc.load_sample();
+        dmc.load_sample(&mut mem);
         assert_eq!(dmc.sample_buffer, 0xFF); // Should be 0xFF for odd addresses
 
         dmc.current_address = 0xC000; // Even address
         dmc.bytes_remaining = 1;
-        dmc.load_sample();
+        dmc.load_sample(&mut mem);
         assert_eq!(dmc.sample_buffer, 0x00); // Should be 0x00 for even addresses
     }
 }

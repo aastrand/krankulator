@@ -1,11 +1,11 @@
 pub mod channels;
 pub mod frame_counter;
 
-use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
-use frame_counter::FrameCounter;
-
 pub const SAMPLE_RATE: u32 = 44100;
 pub const CYCLES_PER_SAMPLE: u32 = 1789773 / SAMPLE_RATE; // NES CPU clock / sample rate
+
+use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
+use frame_counter::FrameCounter;
 
 pub struct APU {
     pulse1: PulseChannel,
@@ -112,7 +112,7 @@ impl APU {
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
         // Run frame counter
         let frame_irq = self.frame_counter.cycle();
 
@@ -149,7 +149,7 @@ impl APU {
         self.pulse2.cycle();
         self.triangle.cycle();
         self.noise.cycle();
-        self.dmc.cycle();
+        self.dmc.cycle(memory);
 
         // Generate audio samples
         self.cycles_since_sample += 1;
@@ -228,6 +228,32 @@ impl APU {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emu::memory::MemoryMapper;
+    struct DummyMemory;
+    impl MemoryMapper for DummyMemory {
+        fn cpu_read(&mut self, _addr: u16) -> u8 {
+            0xAA
+        }
+        fn cpu_write(&mut self, _addr: u16, _value: u8) {}
+        fn ppu_read(&self, _addr: u16) -> u8 {
+            0
+        }
+        fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+        fn ppu_write(&mut self, _addr: u16, _value: u8) {}
+        fn code_start(&mut self) -> u16 {
+            0
+        }
+        fn ppu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::ppu::PPU>> {
+            panic!()
+        }
+        fn apu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::apu::APU>> {
+            panic!()
+        }
+        fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
+            panic!()
+        }
+    }
+    // In all tests, call apu.cycle(&mut mem)
 
     #[test]
     fn test_apu_new() {
@@ -264,7 +290,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should produce some output
@@ -285,7 +311,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should produce some output
@@ -307,7 +333,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should produce some output
@@ -329,7 +355,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should produce some output
@@ -352,7 +378,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should produce some output
@@ -414,7 +440,7 @@ mod tests {
 
         // Test basic cycling
         for _ in 0..100 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should have advanced cycles_since_sample
@@ -437,7 +463,7 @@ mod tests {
 
         // Cycle through frame counter steps
         for _ in 0..7456 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should have advanced frame counter step
@@ -480,7 +506,7 @@ mod tests {
 
         // Cycle enough to generate a sample
         for _ in 0..CYCLES_PER_SAMPLE {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Should have generated a sample
@@ -493,7 +519,7 @@ mod tests {
 
         // Generate some samples
         for _ in 0..CYCLES_PER_SAMPLE * 5 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Get samples
@@ -538,7 +564,7 @@ mod tests {
 
         // Cycle through frame counter steps 0, 1, 2, 3 (should clock envelope)
         for _ in 0..7456 * 4 {
-            apu.cycle();
+            apu.cycle(&mut DummyMemory);
         }
 
         // Envelope should have been clocked multiple times
