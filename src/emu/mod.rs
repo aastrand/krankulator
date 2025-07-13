@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 pub const _NS_PER_CYCLE: std::time::Duration = std::time::Duration::from_nanos(559);
-pub const MS_PER_FRAME: Duration = Duration::from_millis(13);
+pub const FRAME_BUDGET_MS: Duration = Duration::from_millis(1000 / 60);
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -49,6 +49,7 @@ pub struct Emulator {
 
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
+    last_rendered: Instant,
 }
 
 impl Emulator {
@@ -108,6 +109,7 @@ impl Emulator {
 
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
+            last_rendered: Instant::now(),
         }
     }
 
@@ -203,10 +205,12 @@ impl Emulator {
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
+
             gfx::render(&mut *self.mem, &mut self.buf);
             self.iohandler.render(&self.buf);
 
-            thread::sleep(MS_PER_FRAME.saturating_sub(start.elapsed()));
+            thread::sleep(FRAME_BUDGET_MS.saturating_sub(self.last_rendered.elapsed()));
+            self.last_rendered = Instant::now();
         }
         if self.cycles % 16666 == 0 {
             if self.iohandler.poll(&mut *self.mem, &mut self.cpu) {
