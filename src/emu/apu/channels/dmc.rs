@@ -169,10 +169,12 @@ impl DmcChannel {
         self.output
     }
 
+    #[allow(dead_code)]
     pub fn get_irq_pending(&self) -> bool {
         self.irq_pending
     }
 
+    #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.irq_pending = false;
     }

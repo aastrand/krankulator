@@ -1,5 +1,6 @@
 pub struct PulseChannel {
     duty_cycle: u8,
+    #[allow(dead_code)]
     duty_value: u8,
     duty_step: u8,
 

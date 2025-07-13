@@ -7,7 +7,6 @@ pub mod io;
 pub mod memory;
 pub mod ppu;
 
-use apu::APU;
 use cpu::opcodes;
 
 extern crate shrust;
@@ -1143,6 +1142,7 @@ impl Emulator {
         self.cpu.cycle += 7;
     }
 
+    #[allow(dead_code)]
     pub fn get_audio_output(&mut self) -> Vec<f32> {
         let mut apu_borrow = self.apu.borrow_mut();
         apu_borrow.get_audio_samples().to_vec()

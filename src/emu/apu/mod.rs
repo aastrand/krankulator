@@ -206,6 +206,7 @@ impl APU {
         samples
     }
 
+    #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.status &= 0xBF; // Clear frame IRQ bit
     }

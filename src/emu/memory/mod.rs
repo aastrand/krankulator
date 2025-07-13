@@ -128,18 +128,6 @@ impl IdentityMapper {
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
     }
-
-    /// Copy a slice of bytes into RAM at the given offset
-    pub fn copy_to_ram(&mut self, offset: usize, data: &[u8]) {
-        for (i, &byte) in data.iter().enumerate() {
-            self.cpu_write((offset + i) as u16, byte);
-        }
-    }
-
-    /// Public getter for ram_ptr (for test use only)
-    pub fn ram_ptr(&self) -> *mut u8 {
-        self.ram_ptr
-    }
 }
 
 impl MemoryMapper for IdentityMapper {
@@ -387,10 +375,6 @@ mod tests {
 
     #[test]
     fn test_store() {
-        use crate::emu::apu::APU;
-        use std::cell::RefCell;
-        use std::rc::Rc;
-        let apu = Rc::new(RefCell::new(APU::new()));
         let mut memory: Box<dyn MemoryMapper> = Box::new(IdentityMapper::new(0));
         memory.cpu_write(0x200, 0xff);
 

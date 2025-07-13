@@ -8,6 +8,7 @@ pub trait AudioBackend {
 pub struct AudioOutput {
     pub buffer: Arc<Mutex<Vec<f32>>>,
     _stream: OutputStream,
+    #[allow(dead_code)]
     sink: Sink,
 }
 
