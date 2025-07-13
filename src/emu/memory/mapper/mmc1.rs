@@ -1,3 +1,4 @@
+use super::super::super::apu;
 use super::super::super::io;
 use super::super::ppu;
 use super::super::*;
@@ -21,6 +22,7 @@ const SR_INITIAL_VALUE: u8 = 0b1_0000;
 
 pub struct MMC1Mapper {
     ppu: Rc<RefCell<ppu::PPU>>,
+    apu: Rc<RefCell<apu::APU>>,
 
     _cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
     cpu_ram_ptr: *mut u8,
@@ -85,6 +87,7 @@ impl MMC1Mapper {
 
         let mut mapper = MMC1Mapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
+            apu: Rc::new(RefCell::new(apu::APU::new())),
 
             // 0x0000-0x07FF + mirroring to 0x1FFF
             _cpu_ram: cpu_ram,
@@ -190,6 +193,7 @@ impl MMC1Mapper {
             }
             0x40 => match addr {
                 0x4014 => self.ppu.borrow_mut().read(addr, self as _),
+                0x4015 => self.apu.borrow().read(addr),
                 0x4016 => self.controllers[0].poll(),
                 0x4017 => self.controllers[1].poll(),
                 _ => 0, //unsafe { *self.cpu_ram_ptr.offset(addr as _) },
@@ -222,6 +226,8 @@ impl MMC1Mapper {
             0x40 => {
                 if addr == 0x4014 {
                     self.ppu.borrow_mut().write(addr, value, self.cpu_ram_ptr);
+                } else if addr >= 0x4000 && addr <= 0x4017 {
+                    self.apu.borrow_mut().write(addr, value);
                 }
             }
             0x50 => {} // ??
@@ -495,6 +501,10 @@ impl MemoryMapper for MMC1Mapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::clone(&self.ppu)
+    }
+
+    fn apu(&self) -> Rc<RefCell<apu::APU>> {
+        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {

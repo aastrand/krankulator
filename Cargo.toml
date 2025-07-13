@@ -11,3 +11,4 @@ clap = { version = "3.1.1", features = ["derive"] }
 shrust = "0.0.7"
 winit = "0.28"
 pixels = "0.12"
+rodio = "0.17"

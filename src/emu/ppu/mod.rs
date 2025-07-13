@@ -594,39 +594,23 @@ mod tests {
             assert_eq!(should_write.unwrap().1, b);
         }
 
-        assert_eq!(ppu.v, 0x371b);
+        assert_eq!(ppu.vram_addr, 0x371b);
     }
 
     #[test]
     fn test_read_ppu_data() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
         let mem: &mut dyn memory::MemoryMapper = &mut memory::IdentityMapper::new(0x4000);
 
         mem.ppu_write(0x3000, 0x47);
-
-        // Set address using proper PPU interface
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
-
+        ppu.vram_addr = 0x3000;
         let first = ppu.read(DATA_ADDR, mem);
-
-        // Reset address for second read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.vram_addr = 0x3000;
         let second = ppu.read(DATA_ADDR, mem);
-
         mem.ppu_write(0x3000, 0x14);
-
-        // Reset address for third read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.vram_addr = 0x3000;
         let third = ppu.read(DATA_ADDR, mem);
-
-        // Reset address for fourth read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.vram_addr = 0x3000;
         let fourth = ppu.read(DATA_ADDR, mem);
 
         assert_eq!(first, 0);
