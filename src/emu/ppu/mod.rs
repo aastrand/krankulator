@@ -13,7 +13,6 @@ PPUDATA	$2007	dddd dddd	PPU data read/write
 OAMDMA	$4014	aaaa aaaa	OAM DMA high address
 */
 pub const CTRL_REG_ADDR: u16 = 0x2000;
-pub const CTRL_NAMETABLE_ADDR: u8 = 0b0000_0011;
 pub const CTRL_VRAM_ADDR_INC: u8 = 0b0000_0100;
 pub const CTRL_SPRITE_PATTERN_TABLE_OFFSET: u8 = 0b0000_1000;
 pub const CTRL_BG_PATTERN_TABLE_OFFSET: u8 = 0b0001_0000;
@@ -45,7 +44,6 @@ pub const VBLANK_SCANLINE: u16 = 241;
 pub const CYCLES_PER_SCANLINE: u16 = 340;
 pub const NUM_SCANLINES: u16 = PRE_RENDER_SCANLINE + 1;
 
-pub const ATTRIBUTE_TABLE_ADDR: usize = 0x23C0;
 pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
 
 /*
@@ -86,6 +84,13 @@ pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
 */
 
 pub struct PPU {
+    // Internal scroll registers (the key to proper scrolling)
+    v: u16,  // Current VRAM address during rendering
+    t: u16,  // Temporary VRAM address (top-left onscreen)
+    x: u8,   // Fine X scroll (0-7)
+    w: bool, // Write toggle (shared between PPUSCROLL and PPUADDR)
+
+    // Legacy fields - keeping for compatibility but will be replaced by internal registers
     vram_addr: u16,
     _tmp_vram_addr: u16,
 
@@ -104,6 +109,7 @@ pub struct PPU {
     ppu_status: u8,
     oam_addr: u8,
 
+    // Keep these for backward compatibility but they're now handled by internal registers
     pub ppu_scroll_positions: [u8; 2],
     ppu_scroll_idx: usize,
 
@@ -124,6 +130,12 @@ impl PPU {
         let oam_ram_ptr = oam_ram.as_mut_ptr();
 
         PPU {
+            // Initialize internal scroll registers
+            v: 0,
+            t: 0,
+            x: 0,
+            w: false,
+
             vram_addr: 0,
             _tmp_vram_addr: 0,
 
@@ -182,7 +194,9 @@ impl PPU {
 
                 // reading clears bit 7
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
-                // reset address latches
+                // reset write toggle - this is crucial for proper scrolling
+                self.w = false;
+                // Legacy support
                 self.ppu_addr_idx = 0;
                 self.ppu_addr[0] = 0;
                 self.ppu_addr[1] = 0;
@@ -201,36 +215,39 @@ impl PPU {
             SCROLL_ADDR => 0,
             ADDR_ADDR => 0, // TODO: decay
             DATA_ADDR => {
-                let page = memory::addr_to_page(self.vram_addr);
+                // Use the current v register for reads
+                let read_addr = self.v;
+                let page = memory::addr_to_page(read_addr);
 
                 let value = match page {
                     0x0 | 0x10 => {
-                        // patterntble
-                        //unsafe { *chr_ptr.offset(self.vram_addr as _) }
+                        // pattern table - buffered read
                         let r = self.ppu_data_buf;
-                        self.ppu_data_buf = mem.ppu_read(addr as _);
+                        self.ppu_data_buf = mem.ppu_read(read_addr as _);
                         r
                     }
                     0x20 | 0x30 => {
-                        // nametable
-                        // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
-                        let addr: usize = match self.vram_addr {
-                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (self.vram_addr - 0x10) as _,
-                            _ => self.vram_addr as _,
+                        // nametable/palette - handle mirrors
+                        let addr: usize = match read_addr {
+                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (read_addr - 0x10) as _,
+                            _ => read_addr as _,
                         };
-                        //self.vram[addr % VRAM_SIZE]
-                        let r = self.ppu_data_buf;
-                        self.ppu_data_buf = mem.ppu_read(addr as _);
-                        r
+
+                        if read_addr >= 0x3f00 {
+                            // Palette - immediate read
+                            mem.ppu_read(addr as u16)
+                        } else {
+                            // Nametable - buffered read
+                            let r = self.ppu_data_buf;
+                            self.ppu_data_buf = mem.ppu_read(addr as u16);
+                            r
+                        }
                     }
                     _ => 0,
                 };
 
-                if !self.ppu_data_valid {
-                    self.ppu_data_valid = true;
-                } else {
-                    self.inc_vram_addr();
-                }
+                // Increment v register
+                self.inc_vram_addr_v();
 
                 value
             }
@@ -249,11 +266,24 @@ impl PPU {
         }
     }
 
+    fn inc_vram_addr_v(&mut self) {
+        if (self.ppu_ctrl & CTRL_VRAM_ADDR_INC) == CTRL_VRAM_ADDR_INC {
+            self.v = self.v.wrapping_add(32);
+        } else {
+            self.v = self.v.wrapping_add(1);
+        }
+        self.v &= 0x3FFF; // Keep within valid range
+    }
+
     pub fn write(&mut self, addr: u16, value: u8, cpu_ram: *mut u8) -> Option<(u16, u8)> {
         let mut ret = None;
 
         match addr {
-            CTRL_REG_ADDR => self.ppu_ctrl = value, // TODO: generate nmi here?
+            CTRL_REG_ADDR => {
+                self.ppu_ctrl = value;
+                // Update nametable bits in t register
+                self.t = (self.t & 0xF3FF) | (((value & 0x03) as u16) << 10);
+            }
             MASK_REG_ADDR => self.ppu_mask = value,
             OAM_ADDR => {
                 self.oam_addr = value;
@@ -276,33 +306,60 @@ impl PPU {
                 //}
             }
             SCROLL_ADDR => {
-                self.ppu_scroll_positions[self.ppu_scroll_idx] = value;
-                self.ppu_scroll_idx = (self.ppu_scroll_idx + 1) % 2;
+                // Proper scroll register handling
+                if !self.w {
+                    // First write (X scroll)
+                    self.t = (self.t & 0xFFE0) | ((value >> 3) as u16);
+                    self.x = value & 0x07;
+
+                    // Legacy support
+                    self.ppu_scroll_positions[0] = value;
+                } else {
+                    // Second write (Y scroll)
+                    self.t = (self.t & 0x8C1F)
+                        | (((value & 0x07) as u16) << 12)
+                        | (((value & 0xF8) as u16) << 2);
+
+                    // Legacy support
+                    self.ppu_scroll_positions[1] = value;
+                }
+
+                self.w = !self.w;
+
+                // Legacy support
+                self.ppu_scroll_idx = if self.w { 1 } else { 0 };
             }
             ADDR_ADDR => {
-                self.ppu_addr[self.ppu_addr_idx] = value;
-                if self.ppu_addr_idx == 1 {
-                    // Valid addresses are $0000-$3FFF; higher addresses will be mirrored down.
-                    self.vram_addr =
-                        (((self.ppu_addr[0] as u16) << 8) + self.ppu_addr[1] as u16) % 0x4000;
-                    self.ppu_data_valid = false;
-                    //println!("Set vram_addr to {:X}", self.vram_addr);
+                if !self.w {
+                    // First write (high byte)
+                    self.t = (self.t & 0x80FF) | (((value & 0x3F) as u16) << 8);
+                } else {
+                    // Second write (low byte)
+                    self.t = (self.t & 0xFF00) | (value as u16);
+                    self.v = self.t;
                 }
-                self.ppu_addr_idx = (self.ppu_addr_idx + 1) % 2;
-                /*if self.ppu_addr_idx == 0 {
-                    self.ppu_addr[0] = 0;
-                    self.ppu_addr[1] = 0;
-                }*/
+
+                self.w = !self.w;
+
+                // Legacy support
+                self.ppu_addr[if self.w { 0 } else { 1 }] = value;
+                if !self.w {
+                    // Valid addresses are $0000-$3FFF; higher addresses will be mirrored down.
+                    self.vram_addr = self.v % 0x4000;
+                    self.ppu_data_valid = false;
+                }
+                self.ppu_addr_idx = if self.w { 1 } else { 0 };
             }
             DATA_ADDR => {
-                let page = memory::addr_to_page(self.vram_addr);
+                let write_addr = self.v;
+                let page = memory::addr_to_page(write_addr);
 
                 match page {
                     0x20 | 0x30 => {
                         // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
-                        let addr: u16 = match self.vram_addr {
-                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.vram_addr - 0x10,
-                            _ => self.vram_addr,
+                        let addr: u16 = match write_addr {
+                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => write_addr - 0x10,
+                            _ => write_addr,
                         };
                         // This should be written by the mapper, bounce it back
                         ret = Some((addr, value))
@@ -313,8 +370,14 @@ impl PPU {
                 /*println!(
                     "Wrote {:X} to vram[{:X}]",
                     value,
-                    (self.vram_addr as usize)
+                    write_addr
                 );*/
+
+                // Increment v register
+                self.inc_vram_addr_v();
+
+                // Legacy support
+                self.vram_addr = self.v;
                 self.inc_vram_addr();
             }
             OAM_DMA => {
@@ -361,6 +424,11 @@ impl PPU {
             self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
             if self.scanline == 0 {
                 self.frames += 1;
+
+                // At the start of each frame, copy t to v (scroll reset)
+                if self.mask_background_enabled() || self.mask_sprites_enabled() {
+                    self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
+                }
             }
 
             if self.scanline == VBLANK_SCANLINE {
@@ -380,6 +448,16 @@ impl PPU {
             if self.scanline == PRE_RENDER_SCANLINE {
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
                 self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            }
+
+            // Handle scroll register updates during rendering
+            if self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE {
+                if self.mask_background_enabled() || self.mask_sprites_enabled() {
+                    // Copy horizontal scroll from t to v at cycle 257
+                    if self.cycle == 257 {
+                        self.v = (self.v & 0x7BE0) | (self.t & 0x041F);
+                    }
+                }
             }
 
             return vblank;
@@ -445,14 +523,17 @@ impl PPU {
         self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE
     }
 
-    pub fn name_table_addr(&self) -> u16 {
-        match self.ppu_ctrl & CTRL_NAMETABLE_ADDR & 0b11 {
-            0 => 0x2000,
-            1 => 0x2400,
-            2 => 0x2800,
-            3 => 0x2c00,
-            _ => panic!("not possible"),
-        }
+    // New methods to access scroll information for rendering
+    pub fn get_scroll_x(&self) -> u8 {
+        self.ppu_scroll_positions[0]
+    }
+
+    pub fn get_scroll_y(&self) -> u8 {
+        self.ppu_scroll_positions[1]
+    }
+
+    pub fn get_fine_x(&self) -> u8 {
+        self.x
     }
 }
 
@@ -513,23 +594,39 @@ mod tests {
             assert_eq!(should_write.unwrap().1, b);
         }
 
-        assert_eq!(ppu.vram_addr, 0x371b);
+        assert_eq!(ppu.v, 0x371b);
     }
 
     #[test]
     fn test_read_ppu_data() {
         let mut ppu = PPU::new();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
         let mem: &mut dyn memory::MemoryMapper = &mut memory::IdentityMapper::new(0x4000);
 
         mem.ppu_write(0x3000, 0x47);
-        ppu.vram_addr = 0x3000;
+
+        // Set address using proper PPU interface
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+
         let first = ppu.read(DATA_ADDR, mem);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for second read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let second = ppu.read(DATA_ADDR, mem);
+
         mem.ppu_write(0x3000, 0x14);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for third read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let third = ppu.read(DATA_ADDR, mem);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for fourth read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let fourth = ppu.read(DATA_ADDR, mem);
 
         assert_eq!(first, 0);
