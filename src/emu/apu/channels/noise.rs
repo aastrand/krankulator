@@ -81,13 +81,14 @@ impl NoiseChannel {
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-        } else if was_disabled {
-            // If enabling and we have a valid timer, initialize length counter
-            if self.timer > 0 {
-                // Use the last length counter value to set length counter
+        } else {
+            // When enabling, set length counter from last length counter write
+            if self.last_length_counter != 0 && self.timer > 0 {
                 self.length_counter =
                     LENGTH_COUNTER_TABLE[((self.last_length_counter >> 3) & 0x1F) as usize] as u8;
             }
+            // Restart envelope when enabling
+            self.envelope_start = true;
         }
     }
 
@@ -139,9 +140,9 @@ impl NoiseChannel {
         if self.envelope_start {
             self.envelope_start = false;
             self.envelope_decay_level = 15;
-            self.envelope_divider = self.volume;
+            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
         } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.volume;
+            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
             if self.envelope_decay_level > 0 {
                 self.envelope_decay_level -= 1;
             } else if self.length_counter_halt {
@@ -361,13 +362,13 @@ mod tests {
         noise.volume = 5;
         noise.clock_envelope();
         assert_eq!(noise.envelope_decay_level, 15);
-        assert_eq!(noise.envelope_divider, 5);
+        assert_eq!(noise.envelope_divider, 6); // Should be volume + 1
         assert!(!noise.envelope_start);
 
         // Test normal divider countdown
         noise.envelope_divider = 0; // Set to 0 to trigger reset
         noise.clock_envelope();
-        assert_eq!(noise.envelope_divider, 5); // Should reset to volume
+        assert_eq!(noise.envelope_divider, 6); // Should reset to volume + 1
         assert_eq!(noise.envelope_decay_level, 14); // Should decrement
 
         // Test envelope reaching 0

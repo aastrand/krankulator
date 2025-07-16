@@ -4,6 +4,7 @@ pub mod frame_counter;
 pub const SAMPLE_RATE: u32 = 44100;
 pub const CYCLES_PER_SAMPLE: u32 = 1789773 / SAMPLE_RATE; // NES CPU clock / sample rate
 
+use crate::emu::apu::frame_counter::FrameStep;
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
 use frame_counter::FrameCounter;
 
@@ -52,36 +53,144 @@ impl APU {
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
+        // Debug: log all APU register writes
+        println!("APU write: ${:04X} = {:02X}", addr, value);
+
         match addr {
             // Pulse 1
-            0x4000 => self.pulse1.set_control(value),
-            0x4001 => self.pulse1.set_sweep(value),
-            0x4002 => self.pulse1.set_timer_low(value),
-            0x4003 => self.pulse1.set_timer_high(value),
+            0x4000 => {
+                println!(
+                    "  Pulse1 control: duty={}, constant_volume={}, volume={}",
+                    (value >> 6) & 3,
+                    (value >> 4) & 1,
+                    value & 0xF
+                );
+                self.pulse1.set_control(value)
+            }
+            0x4001 => {
+                println!(
+                    "  Pulse1 sweep: enabled={}, period={}, shift={}, negate={}",
+                    (value >> 7) & 1,
+                    (value >> 4) & 7,
+                    (value >> 0) & 7,
+                    (value >> 3) & 1
+                );
+                self.pulse1.set_sweep(value)
+            }
+            0x4002 => {
+                println!("  Pulse1 timer low: {:02X}", value);
+                self.pulse1.set_timer_low(value)
+            }
+            0x4003 => {
+                println!(
+                    "  Pulse1 timer high: {:02X}, length counter: {}",
+                    value,
+                    (value >> 3) & 0x1F
+                );
+                self.pulse1.set_timer_high(value)
+            }
 
             // Pulse 2
-            0x4004 => self.pulse2.set_control(value),
-            0x4005 => self.pulse2.set_sweep(value),
-            0x4006 => self.pulse2.set_timer_low(value),
-            0x4007 => self.pulse2.set_timer_high(value),
+            0x4004 => {
+                println!(
+                    "  Pulse2 control: duty={}, constant_volume={}, volume={}",
+                    (value >> 6) & 3,
+                    (value >> 4) & 1,
+                    value & 0xF
+                );
+                self.pulse2.set_control(value)
+            }
+            0x4005 => {
+                println!(
+                    "  Pulse2 sweep: enabled={}, period={}, shift={}, negate={}",
+                    (value >> 7) & 1,
+                    (value >> 4) & 7,
+                    (value >> 0) & 7,
+                    (value >> 3) & 1
+                );
+                self.pulse2.set_sweep(value)
+            }
+            0x4006 => {
+                println!("  Pulse2 timer low: {:02X}", value);
+                self.pulse2.set_timer_low(value)
+            }
+            0x4007 => {
+                println!(
+                    "  Pulse2 timer high: {:02X}, length counter: {}",
+                    value,
+                    (value >> 3) & 0x1F
+                );
+                self.pulse2.set_timer_high(value)
+            }
 
             // Triangle
-            0x4008 => self.triangle.set_control(value),
+            0x4008 => {
+                println!(
+                    "  Triangle control: linear_counter={}, control_flag={}",
+                    value & 0x7F,
+                    (value >> 7) & 1
+                );
+                self.triangle.set_control(value)
+            }
             0x4009 => {} // Unused
-            0x400A => self.triangle.set_timer_low(value),
-            0x400B => self.triangle.set_timer_high(value),
+            0x400A => {
+                println!("  Triangle timer low: {:02X}", value);
+                self.triangle.set_timer_low(value)
+            }
+            0x400B => {
+                println!(
+                    "  Triangle timer high: {:02X}, length counter: {}",
+                    value,
+                    (value >> 3) & 0x1F
+                );
+                self.triangle.set_timer_high(value)
+            }
 
             // Noise
-            0x400C => self.noise.set_control(value),
+            0x400C => {
+                println!(
+                    "  Noise control: constant_volume={}, volume={}",
+                    (value >> 4) & 1,
+                    value & 0xF
+                );
+                self.noise.set_control(value)
+            }
             0x400D => {} // Unused
-            0x400E => self.noise.set_period(value),
-            0x400F => self.noise.set_length_counter(value),
+            0x400E => {
+                println!(
+                    "  Noise period: mode={}, period={}",
+                    (value >> 7) & 1,
+                    value & 0xF
+                );
+                self.noise.set_period(value)
+            }
+            0x400F => {
+                println!("  Noise length counter: {}", (value >> 3) & 0x1F);
+                self.noise.set_length_counter(value)
+            }
 
             // DMC
-            0x4010 => self.dmc.set_control(value),
-            0x4011 => self.dmc.set_direct_load(value),
-            0x4012 => self.dmc.set_sample_address(value),
-            0x4013 => self.dmc.set_sample_length(value),
+            0x4010 => {
+                println!(
+                    "  DMC control: irq_enable={}, loop={}, rate={}",
+                    (value >> 7) & 1,
+                    (value >> 6) & 1,
+                    value & 0xF
+                );
+                self.dmc.set_control(value)
+            }
+            0x4011 => {
+                println!("  DMC direct load: {:02X}", value);
+                self.dmc.set_direct_load(value)
+            }
+            0x4012 => {
+                println!("  DMC sample address: {:02X}", value);
+                self.dmc.set_sample_address(value)
+            }
+            0x4013 => {
+                println!("  DMC sample length: {:02X}", value);
+                self.dmc.set_sample_length(value)
+            }
 
             // Status
             0x4015 => {
@@ -106,7 +215,28 @@ impl APU {
             }
 
             // Frame Counter
-            0x4017 => self.frame_counter.write(value),
+            0x4017 => {
+                println!(
+                    "  Frame counter: mode={}, irq_inhibit={}",
+                    (value >> 7) & 1,
+                    (value >> 6) & 1
+                );
+                let immediate_clock = self.frame_counter.write(value);
+
+                // If immediate clocking is needed, clock length counters, envelopes, and linear counter
+                if immediate_clock {
+                    self.pulse1.clock_length_counter();
+                    self.pulse2.clock_length_counter();
+                    self.triangle.clock_length_counter();
+                    self.noise.clock_length_counter();
+
+                    self.pulse1.clock_envelope();
+                    self.pulse2.clock_envelope();
+                    self.noise.clock_envelope();
+
+                    self.triangle.clock_linear_counter();
+                }
+            }
 
             _ => {}
         }
@@ -114,35 +244,37 @@ impl APU {
 
     pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
         // Run frame counter
-        let frame_irq = self.frame_counter.cycle();
-
-        // Clock length counters and linear counter on frame counter steps
+        let frame_step = self.frame_counter.cycle();
         let step = self.frame_counter.get_step();
         let mode = self.frame_counter.get_mode();
 
-        // Clock length counters on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
-        if (mode == 0 && (step == 0 || step == 2)) || (mode == 1 && step <= 3) {
-            self.pulse1.clock_length_counter();
-            self.pulse2.clock_length_counter();
-            self.triangle.clock_length_counter();
-            self.noise.clock_length_counter();
-        }
-
-        // Clock envelopes on steps 0, 1, 2, 3 (both modes)
-        if step <= 3 {
-            self.pulse1.clock_envelope();
-            self.pulse2.clock_envelope();
-            self.noise.clock_envelope();
+        // Only clock on step transitions
+        if let FrameStep::Step(step) = frame_step {
+            // Clock length counters on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
+            if (mode == 0 && (step == 0 || step == 2)) || (mode == 1 && step <= 3) {
+                self.pulse1.clock_length_counter();
+                self.pulse2.clock_length_counter();
+                self.triangle.clock_length_counter();
+                self.noise.clock_length_counter();
+            }
+            // Clock envelopes on steps 0, 1, 2, 3 (both modes)
+            if step <= 3 {
+                self.pulse1.clock_envelope();
+                self.pulse2.clock_envelope();
+                self.noise.clock_envelope();
+            }
         }
 
         // Clock linear counter on every cycle (except when reload flag is set)
         self.triangle.clock_linear_counter();
 
         // Update status register
-        self.status &= 0x40; // Keep DMC IRQ bit
-        if frame_irq {
-            self.status |= 0x40;
-        }
+        // (IRQ logic may need to be updated if you want to handle IRQs on step transitions)
+        // For now, keep as before:
+        // self.status &= 0x40; // Keep DMC IRQ bit
+        // if frame_irq {
+        //     self.status |= 0x40;
+        // }
 
         // Cycle channels
         self.pulse1.cycle();
@@ -167,7 +299,7 @@ impl APU {
         let dmc_sample = self.dmc.get_sample();
 
         // Debug: print individual channel samples and states (less frequently)
-        if self.sample_index % 10000 == 0 {
+        /*if self.sample_index % 10000 == 0 {
             // Only print every 10000th sample to avoid spam
             println!(
                 "APU Debug - Pulse1: {} (enabled: {}, len: {}), Pulse2: {} (enabled: {}, len: {}), Triangle: {} (enabled: {}, len: {}), Noise: {} (enabled: {}, len: {}), DMC: {} (enabled: {})",
@@ -177,7 +309,7 @@ impl APU {
                 noise_sample, self.noise.is_enabled(), self.noise.get_length_counter(),
                 dmc_sample, self.dmc.is_enabled()
             );
-        }
+        }*/
 
         // Mix all channels
         let mixed_sample = self.mix_channels(
@@ -187,6 +319,12 @@ impl APU {
             noise_sample,
             dmc_sample,
         );
+        // print all pre-mix samples
+        println!("Pulse1: {}", pulse1_sample);
+        println!("Pulse2: {}", pulse2_sample);
+        println!("Triangle: {}", triangle_sample);
+        println!("Noise: {}", noise_sample);
+        println!("DMC: {}", dmc_sample);
 
         // Debug: check if we're generating any samples (less frequently)
         if mixed_sample != 0.0 && self.sample_index % 10000 == 0 {
@@ -222,6 +360,11 @@ impl APU {
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.status &= 0xBF; // Clear frame IRQ bit
+    }
+
+    // Getter methods for testing
+    pub fn get_pulse2(&self) -> &PulseChannel {
+        &self.pulse2
     }
 }
 
@@ -462,7 +605,7 @@ mod tests {
         apu.write(0x400B, 0x00);
 
         // Cycle through frame counter steps
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             apu.cycle(&mut DummyMemory);
         }
 
@@ -563,7 +706,7 @@ mod tests {
         apu.write(0x4000, 0x20); // Volume 0, envelope enabled
 
         // Cycle through frame counter steps 0, 1, 2, 3 (should clock envelope)
-        for _ in 0..7456 * 4 {
+        for _ in 0..7457 * 4 {
             apu.cycle(&mut DummyMemory);
         }
 

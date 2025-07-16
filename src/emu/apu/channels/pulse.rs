@@ -94,23 +94,39 @@ impl PulseChannel {
         self.timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
         self.timer_value = self.timer;
         self.last_timer_high = value;
+
+        let length_index = ((value >> 3) & 0x1F) as usize;
+        let length_value = LENGTH_COUNTER_TABLE[length_index];
+
+        println!(
+            "  Pulse1 set_timer_high: value={:02X}, length_index={}, length_value={}, enabled={}",
+            value, length_index, length_value, self.enabled
+        );
+
         if self.enabled {
-            self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
+            self.length_counter = length_value;
+            println!("  Pulse1 length counter set to: {}", self.length_counter);
+        } else {
+            println!("  Pulse1 not enabled, length counter not set");
         }
+
         self.duty_step = 0;
         // Start envelope when timer high is written
         self.envelope_start = true;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
-        let was_disabled = !self.enabled;
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-        } else if was_disabled {
-            // If enabling, reload length counter from last timer high value
-            self.length_counter =
-                LENGTH_COUNTER_TABLE[((self.last_timer_high >> 3) & 0x1F) as usize] as u8;
+        } else {
+            // When enabling, set length counter from last timer high write
+            if self.last_timer_high != 0 {
+                let length_index = ((self.last_timer_high >> 3) & 0x1F) as usize;
+                self.length_counter = LENGTH_COUNTER_TABLE[length_index];
+            }
+            // Restart envelope when enabling
+            self.envelope_start = true;
         }
     }
 
@@ -174,9 +190,9 @@ impl PulseChannel {
         if self.envelope_start {
             self.envelope_start = false;
             self.envelope_decay_level = 15;
-            self.envelope_divider = self.volume;
+            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
         } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.volume;
+            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
             if self.envelope_decay_level > 0 {
                 self.envelope_decay_level -= 1;
             } else if self.length_counter_halt {
@@ -193,6 +209,11 @@ impl PulseChannel {
 
     pub fn clock_length_counter(&mut self) {
         if !self.length_counter_halt && self.length_counter > 0 {
+            println!(
+                "  Pulse1 clock_length_counter: before={}, after={}",
+                self.length_counter,
+                self.length_counter - 1
+            );
             self.length_counter -= 1;
         }
     }
@@ -203,6 +224,41 @@ impl PulseChannel {
 
     pub fn get_length_counter(&self) -> u8 {
         self.length_counter
+    }
+
+    pub fn get_timer(&self) -> u16 {
+        self.timer
+    }
+
+    pub fn output(&self) -> u8 {
+        let output = if !self.enabled || self.length_counter == 0 || self.timer < 8 {
+            0
+        } else {
+            // Simplified output logic for debugging
+            let env = if self.constant_volume {
+                self.volume
+            } else {
+                self.envelope_decay_level
+            };
+            let duty_val = (DUTY_CYCLES[self.duty_cycle as usize] >> (7 - self.duty_step)) & 1;
+            if duty_val == 0 {
+                0
+            } else {
+                env
+            }
+        };
+        println!(
+            "  Pulse1 output: enabled={}, length_counter={}, timer={}, duty_cycle={:02b}, duty_step={}, constant_volume={}, volume={}, output={}",
+            self.enabled,
+            self.length_counter,
+            self.timer,
+            self.duty_cycle,
+            self.duty_step,
+            self.constant_volume,
+            self.volume,
+            output
+        );
+        output
     }
 }
 
@@ -368,13 +424,13 @@ mod tests {
         pulse.clock_envelope();
         assert!(!pulse.envelope_start);
         assert_eq!(pulse.envelope_decay_level, 15);
-        assert_eq!(pulse.envelope_divider, 5);
+        assert_eq!(pulse.envelope_divider, 6); // Should be volume + 1
 
         // Test envelope decay
         pulse.envelope_divider = 0;
         pulse.clock_envelope();
         assert_eq!(pulse.envelope_decay_level, 14);
-        assert_eq!(pulse.envelope_divider, 5);
+        assert_eq!(pulse.envelope_divider, 6); // Should be volume + 1
 
         // Test envelope reaching 0
         pulse.envelope_decay_level = 0;

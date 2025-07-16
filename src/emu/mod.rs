@@ -911,6 +911,11 @@ impl Emulator {
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
+        // Debug: log all CPU writes to APU registers
+        if addr >= 0x4000 && addr <= 0x4017 {
+            println!("CPU write: ${:04X} = {:02X}", addr, value);
+        }
+
         match addr {
             0x2000 => {
                 // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),

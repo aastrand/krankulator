@@ -65,17 +65,17 @@ impl TriangleChannel {
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
-        let was_disabled = !self.enabled;
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-        } else if was_disabled {
-            // If enabling and we have a valid timer, initialize length counter
-            if self.timer > 0 {
-                // Use the last timer high value to set length counter
+        } else {
+            // When enabling, set length counter from last timer high write
+            if self.last_timer_high != 0 {
                 self.length_counter =
                     LENGTH_COUNTER_TABLE[((self.last_timer_high >> 3) & 0x1F) as usize] as u8;
             }
+            // Restart linear counter when enabling
+            self.linear_counter_reload_flag = true;
         }
     }
 
