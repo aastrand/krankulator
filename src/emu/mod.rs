@@ -42,6 +42,7 @@ pub struct Emulator {
     pub breakpoints: Box<HashSet<u16>>,
 
     logformatter: io::log::LogFormatter,
+    #[allow(dead_code)]
     pub logdata: Box<Vec<u16>>,
     should_log: bool,
     should_debug_on_infinite_loop: bool,

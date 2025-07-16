@@ -182,6 +182,7 @@ impl DmcChannel {
         self.irq_pending = false;
     }
 
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }

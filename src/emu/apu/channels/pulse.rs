@@ -218,47 +218,9 @@ impl PulseChannel {
         }
     }
 
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
-    }
-
-    pub fn get_length_counter(&self) -> u8 {
-        self.length_counter
-    }
-
-    pub fn get_timer(&self) -> u16 {
-        self.timer
-    }
-
-    pub fn output(&self) -> u8 {
-        let output = if !self.enabled || self.length_counter == 0 || self.timer < 8 {
-            0
-        } else {
-            // Simplified output logic for debugging
-            let env = if self.constant_volume {
-                self.volume
-            } else {
-                self.envelope_decay_level
-            };
-            let duty_val = (DUTY_CYCLES[self.duty_cycle as usize] >> (7 - self.duty_step)) & 1;
-            if duty_val == 0 {
-                0
-            } else {
-                env
-            }
-        };
-        println!(
-            "  Pulse1 output: enabled={}, length_counter={}, timer={}, duty_cycle={:02b}, duty_step={}, constant_volume={}, volume={}, output={}",
-            self.enabled,
-            self.length_counter,
-            self.timer,
-            self.duty_cycle,
-            self.duty_step,
-            self.constant_volume,
-            self.volume,
-            output
-        );
-        output
     }
 }
 

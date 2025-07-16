@@ -1,5 +1,4 @@
-use std::option::Option;
-
+#[derive(Debug, PartialEq)]
 pub enum FrameStep {
     None,
     Step(u8),
@@ -41,7 +40,6 @@ impl FrameCounter {
     }
 
     pub fn cycle(&mut self) -> FrameStep {
-        self.cycles += 1;
         match self.mode {
             0 => self.cycle_mode_0(),
             1 => self.cycle_mode_1(),
@@ -50,30 +48,45 @@ impl FrameCounter {
     }
 
     fn cycle_mode_0(&mut self) -> FrameStep {
-        // Mode 0: 4-step sequence
-        let frame_length = 7457; // CPU cycles per frame step (correct NES timing)
+        let frame_length = 7457;
+        self.cycles += 1;
 
-        if self.cycles >= frame_length {
+        if self.cycles == frame_length {
             self.cycles = 0;
-            let old_step = self.step;
             self.step = (self.step + 1) % 4;
-            return FrameStep::Step(self.step);
+            if self.step == 0 {
+                if !self.irq_inhibit {
+                    FrameStep::Step(0)
+                } else {
+                    FrameStep::None
+                }
+            } else {
+                FrameStep::Step(self.step)
+            }
+        } else {
+            FrameStep::None
         }
-        FrameStep::None
     }
 
     fn cycle_mode_1(&mut self) -> FrameStep {
-        // Mode 1: 5-step sequence
         let frame_length = if self.step == 3 { 7456 } else { 7457 };
+        self.cycles += 1;
 
-        if self.cycles >= frame_length {
+        if self.cycles == frame_length {
             self.cycles = 0;
             self.step = (self.step + 1) % 5;
-            return FrameStep::Step(self.step);
+            if self.step == 0 {
+                FrameStep::None
+            } else {
+                FrameStep::Step(self.step)
+            }
+        } else {
+            FrameStep::None
         }
-        FrameStep::None
     }
 
+    // only used for testing
+    #[cfg(test)]
     pub fn get_step(&self) -> u8 {
         self.step
     }
@@ -139,14 +152,16 @@ mod tests {
         assert_eq!(fc.cycles, 0);
 
         // Test step progression
-        for _ in 0..7457 {
+        for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(fc.cycle(), FrameStep::Step(2));
         assert_eq!(fc.step, 2);
 
-        for _ in 0..7457 {
+        for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(fc.cycle(), FrameStep::Step(3));
         assert_eq!(fc.step, 3);
 
         // Step 3 should generate IRQ (if not inhibited)
@@ -209,15 +224,17 @@ mod tests {
         assert_eq!(fc.cycles, 0);
 
         // Test second step (7457 cycles)
-        for _ in 0..7457 {
+        for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(fc.cycle(), FrameStep::Step(2));
         assert_eq!(fc.step, 2);
 
         // Test third step (7457 cycles)
-        for _ in 0..7457 {
+        for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(fc.cycle(), FrameStep::Step(3));
         assert_eq!(fc.step, 3);
 
         // Test fourth step (7456 cycles - shorter)
@@ -225,11 +242,13 @@ mod tests {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
         assert_eq!(fc.cycle(), FrameStep::Step(4));
+        assert_eq!(fc.step, 4);
 
         // Test fifth step (7457 cycles)
-        for _ in 0..7457 {
+        for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(fc.cycle(), FrameStep::None); // Step 0 returns None
         assert_eq!(fc.step, 0); // Should wrap around
     }
 
@@ -239,10 +258,15 @@ mod tests {
         fc.write(0x80); // Mode 1
 
         // Cycle through all steps - should never generate IRQ
+        let mut step_count = 0;
         for _ in 0..7457 * 4 + 7456 {
-            assert_eq!(fc.cycle(), FrameStep::None);
+            let result = fc.cycle();
+            if result != FrameStep::None {
+                step_count += 1;
+            }
         }
         assert_eq!(fc.step, 0);
+        assert_eq!(step_count, 4); // Should have seen 4 steps (1,2,3,4) but no step 0
     }
 
     #[test]

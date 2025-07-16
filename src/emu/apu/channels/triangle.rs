@@ -126,12 +126,9 @@ impl TriangleChannel {
         }
     }
 
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
-    }
-
-    pub fn get_length_counter(&self) -> u8 {
-        self.length_counter
     }
 }
 

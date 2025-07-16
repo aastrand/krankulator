@@ -245,7 +245,6 @@ impl APU {
     pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
         // Run frame counter
         let frame_step = self.frame_counter.cycle();
-        let step = self.frame_counter.get_step();
         let mode = self.frame_counter.get_mode();
 
         // Only clock on step transitions
@@ -360,11 +359,6 @@ impl APU {
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.status &= 0xBF; // Clear frame IRQ bit
-    }
-
-    // Getter methods for testing
-    pub fn get_pulse2(&self) -> &PulseChannel {
-        &self.pulse2
     }
 }
 

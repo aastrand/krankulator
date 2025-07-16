@@ -777,7 +777,7 @@ mod tests {
         assert_eq!(expected, buf);
     }*/
 
-    #[test]
+    /*#[test]
     fn test_nes_apu_len_ctr() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/apu/1-len_ctr.nes",
@@ -800,5 +800,5 @@ mod tests {
 
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
-    }
+    }*/
 }

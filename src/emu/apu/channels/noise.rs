@@ -77,7 +77,6 @@ impl NoiseChannel {
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
-        let was_disabled = !self.enabled;
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
@@ -163,12 +162,9 @@ impl NoiseChannel {
         }
     }
 
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
-    }
-
-    pub fn get_length_counter(&self) -> u8 {
-        self.length_counter
     }
 }
 
