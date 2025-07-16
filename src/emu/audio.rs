@@ -21,6 +21,8 @@ impl AudioOutput {
 
         // Custom source that pulls from the buffer
         let source = AudioBufferSource::new(buffer_clone, sample_rate);
+        // Up volume
+        sink.set_volume(10.0);
         sink.append(source);
         sink.play();
 
