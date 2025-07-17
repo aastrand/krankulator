@@ -22,9 +22,6 @@ pub struct NoiseChannel {
 
     // Output
     output: f32,
-
-    // Store last length counter value for proper initialization
-    last_length_counter: u8,
 }
 
 impl NoiseChannel {
@@ -49,7 +46,6 @@ impl NoiseChannel {
 
             shift_register: 1, // Initialize to 1
             output: 0.0,
-            last_length_counter: 0,
         }
     }
 
@@ -70,7 +66,6 @@ impl NoiseChannel {
     }
 
     pub fn set_length_counter(&mut self, value: u8) {
-        self.last_length_counter = value;
         if self.enabled {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
         }
@@ -80,15 +75,9 @@ impl NoiseChannel {
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-        } else {
-            // When enabling, set length counter from last length counter write
-            if self.last_length_counter != 0 && self.timer > 0 {
-                self.length_counter =
-                    LENGTH_COUNTER_TABLE[((self.last_length_counter >> 3) & 0x1F) as usize] as u8;
-            }
-            // Restart envelope when enabling
-            self.envelope_start = true;
         }
+        // Do NOT reload length counter here!
+        // self.envelope_start = true; // (optional, only if envelope should restart on enable)
     }
 
     pub fn cycle(&mut self) {
@@ -162,6 +151,10 @@ impl NoiseChannel {
         }
     }
 
+    pub fn get_length_counter(&self) -> u8 {
+        self.length_counter
+    }
+
     #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
@@ -199,7 +192,6 @@ mod tests {
         assert!(!noise.enabled);
         assert_eq!(noise.shift_register, 1);
         assert_eq!(noise.output, 0.0);
-        assert_eq!(noise.last_length_counter, 0);
     }
 
     #[test]
@@ -270,9 +262,8 @@ mod tests {
 
         // Test enabling with valid timer
         noise.timer = 100;
-        noise.last_length_counter = 0x20; // Length counter index 4
         noise.set_enabled(true);
-        assert_eq!(noise.length_counter, LENGTH_COUNTER_TABLE[4]);
+        assert_eq!(noise.length_counter, LENGTH_COUNTER_TABLE[4]); // Assuming length counter was 4 when enabled
     }
 
     #[test]

@@ -15,9 +15,6 @@ pub struct TriangleChannel {
     // Output
     step: u8,
     output: f32,
-
-    // Store last timer high value for proper length counter initialization
-    last_timer_high: u8,
 }
 
 impl TriangleChannel {
@@ -38,7 +35,6 @@ impl TriangleChannel {
 
             step: 0,
             output: 0.0,
-            last_timer_high: 0,
         }
     }
 
@@ -55,7 +51,6 @@ impl TriangleChannel {
     pub fn set_timer_high(&mut self, value: u8) {
         self.timer = (self.timer & 0x00FF) | ((value & 7) as u16) << 8;
         self.timer_value = self.timer;
-        self.last_timer_high = value;
 
         if self.enabled {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
@@ -68,15 +63,9 @@ impl TriangleChannel {
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-        } else {
-            // When enabling, set length counter from last timer high write
-            if self.last_timer_high != 0 {
-                self.length_counter =
-                    LENGTH_COUNTER_TABLE[((self.last_timer_high >> 3) & 0x1F) as usize] as u8;
-            }
-            // Restart linear counter when enabling
-            self.linear_counter_reload_flag = true;
         }
+        // Do NOT reload length counter here!
+        // self.linear_counter_reload_flag = true; // (optional, only if linear counter should restart on enable)
     }
 
     pub fn cycle(&mut self) {
@@ -106,6 +95,10 @@ impl TriangleChannel {
 
     pub fn get_sample(&self) -> f32 {
         self.output
+    }
+
+    pub fn get_length_counter(&self) -> u8 {
+        self.length_counter
     }
 
     pub fn clock_linear_counter(&mut self) {
@@ -184,7 +177,6 @@ mod tests {
         // Test timer high
         triangle.set_timer_high(0x12); // Timer bits 0-2, length counter bits 3-7
         assert_eq!(triangle.timer >> 8, 0x02); // Only bits 0-2
-        assert_eq!(triangle.last_timer_high, 0x12);
         assert!(triangle.linear_counter_reload_flag);
     }
 

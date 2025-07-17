@@ -186,6 +186,10 @@ impl DmcChannel {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
+
+    pub fn is_active(&self) -> bool {
+        self.bytes_remaining > 0
+    }
 }
 
 // DMC period lookup table

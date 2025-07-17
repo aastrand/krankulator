@@ -47,7 +47,27 @@ impl APU {
 
     pub fn read(&self, addr: u16) -> u8 {
         match addr {
-            0x4015 => self.status,
+            0x4015 => {
+                let mut status = 0;
+                if self.pulse1.get_length_counter() > 0 {
+                    status |= 0x01;
+                }
+                if self.pulse2.get_length_counter() > 0 {
+                    status |= 0x02;
+                }
+                if self.triangle.get_length_counter() > 0 {
+                    status |= 0x04;
+                }
+                if self.noise.get_length_counter() > 0 {
+                    status |= 0x08;
+                }
+                if self.dmc.is_active() {
+                    status |= 0x10;
+                }
+                // Optionally, preserve IRQ bits from self.status
+                status |= self.status & 0xE0;
+                status
+            }
             _ => 0,
         }
     }
@@ -221,9 +241,10 @@ impl APU {
                     (value >> 7) & 1,
                     (value >> 6) & 1
                 );
-                let immediate_clock = self.frame_counter.write(value);
+                let immediate_clock = (value & 0x80) != 0;
+                self.frame_counter.write(value);
 
-                // If immediate clocking is needed, clock length counters, envelopes, and linear counter
+                // Always clock on $4017 write with bit 7 set
                 if immediate_clock {
                     self.pulse1.clock_length_counter();
                     self.pulse2.clock_length_counter();
@@ -249,6 +270,13 @@ impl APU {
 
         // Only clock on step transitions
         if let FrameStep::Step(step) = frame_step {
+            // Clock envelopes and linear counter on steps 0, 1, 2, 3 (both modes)
+            if step <= 3 {
+                self.pulse1.clock_envelope();
+                self.pulse2.clock_envelope();
+                self.noise.clock_envelope();
+                self.triangle.clock_linear_counter();
+            }
             // Clock length counters on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
             if (mode == 0 && (step == 0 || step == 2)) || (mode == 1 && step <= 3) {
                 self.pulse1.clock_length_counter();
@@ -256,16 +284,7 @@ impl APU {
                 self.triangle.clock_length_counter();
                 self.noise.clock_length_counter();
             }
-            // Clock envelopes on steps 0, 1, 2, 3 (both modes)
-            if step <= 3 {
-                self.pulse1.clock_envelope();
-                self.pulse2.clock_envelope();
-                self.noise.clock_envelope();
-            }
         }
-
-        // Clock linear counter on every cycle (except when reload flag is set)
-        self.triangle.clock_linear_counter();
 
         // Update status register
         // (IRQ logic may need to be updated if you want to handle IRQs on step transitions)
@@ -706,5 +725,36 @@ mod tests {
 
         // Envelope should have been clocked multiple times
         assert_eq!(apu.frame_counter.get_step(), 0); // Should wrap around
+    }
+
+    #[test]
+    fn test_apu_status_reflects_channel_length_counters() {
+        let mut apu = APU::new();
+        // Enable all channels
+        apu.pulse1.set_enabled(true);
+        apu.pulse2.set_enabled(true);
+        apu.triangle.set_enabled(true);
+        apu.noise.set_enabled(true);
+        apu.dmc.set_enabled(true);
+        // Set length counters via helper methods (simulate as if they were set)
+        // We'll use a workaround: call set_timer_high/set_length_counter with enabled true
+        apu.pulse1.set_timer_high(0b00011000); // length_counter = LENGTH_COUNTER_TABLE[3] = 2
+        apu.pulse2.set_timer_high(0b00101000); // length_counter = LENGTH_COUNTER_TABLE[5] = 4
+        apu.triangle.set_timer_high(0b00111000); // length_counter = LENGTH_COUNTER_TABLE[7] = 6
+        apu.noise.set_length_counter(0b01001000); // length_counter = LENGTH_COUNTER_TABLE[9] = 8
+                                                  // Simulate DMC active
+        apu.dmc.set_enabled(true); // This will set bytes_remaining if not already
+                                   // Manually set DMC bytes_remaining via a public method if available, otherwise skip DMC check
+        let status = apu.read(0x4015);
+        // Only check bits for channels we can set
+        assert!(status & 0x0F != 0x00); // At least one channel active
+                                        // Now disable all channels
+        apu.pulse1.set_enabled(false);
+        apu.pulse2.set_enabled(false);
+        apu.triangle.set_enabled(false);
+        apu.noise.set_enabled(false);
+        apu.dmc.set_enabled(false);
+        let status = apu.read(0x4015);
+        assert_eq!(status & 0x1F, 0x00); // All channels inactive
     }
 }

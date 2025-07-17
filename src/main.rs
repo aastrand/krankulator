@@ -777,7 +777,7 @@ mod tests {
         assert_eq!(expected, buf);
     }*/
 
-    /*#[test]
+    #[test]
     fn test_nes_apu_len_ctr() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/apu/1-len_ctr.nes",
@@ -792,7 +792,56 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("\n01-len_ctr\n\nPassed\n");
+        let expected = String::from("\n1-len_ctr\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    /*
+    1-len_ctr.nes          3-irq_flag.nes         5-len_timing.nes       7-dmc_basics.nes
+    2-len_table.nes        4-jitter.nes           6-irq_flag_timing.nes  8-dmc_rates.nes
+    */
+    #[test]
+    fn test_nes_apu_len_table() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/apu/2-len_table.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n2-len_table\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
+    fn test_nes_apu_irq_flag() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/apu/3-irq_flag.nes",
+        )));
+
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n03-irq_flag\n\nPassed\n");
         let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
         println!("{}", buf);
@@ -800,5 +849,31 @@ mod tests {
 
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
-    }*/
+    }
+
+    #[test]
+    fn test_nes_apu_jitter() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/apu/4-jitter.nes",
+        )));
+
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n4-jitter\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 40);
+
+        println!("{}", buf);
+        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
 }
