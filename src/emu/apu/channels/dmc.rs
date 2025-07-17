@@ -59,9 +59,13 @@ impl DmcChannel {
 
     pub fn set_control(&mut self, value: u8) {
         self.control = value;
-        self.irq_enabled = (value >> 7) & 1 != 0;
+        let irq_enable = (value >> 7) & 1 != 0;
+        self.irq_enabled = irq_enable;
         self.timer = DMC_PERIODS[(value & 0x0F) as usize];
         self.timer_value = self.timer;
+        if !irq_enable {
+            self.irq_pending = false; // Clear IRQ flag when disabling IRQ
+        }
     }
 
     pub fn set_direct_load(&mut self, value: u8) {
@@ -76,10 +80,7 @@ impl DmcChannel {
 
     pub fn set_sample_length(&mut self, value: u8) {
         self.sample_length = value;
-        if self.enabled {
-            self.bytes_remaining = ((value as u16) << 4) | 1;
-        }
-        // Removed auto-enable logic
+        // NES-accurate: do not update bytes_remaining here
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -93,6 +94,10 @@ impl DmcChannel {
     }
 
     pub fn cycle(&mut self, memory: &mut dyn MemoryMapper) {
+        // Immediately fill sample buffer if empty and bytes remain
+        if self.sample_buffer_empty && self.bytes_remaining > 0 {
+            self.load_sample(memory);
+        }
         if self.timer_value == 0 {
             self.timer_value = self.timer;
             self.clock_output(memory);
@@ -124,10 +129,22 @@ impl DmcChannel {
             self.sample_buffer <<= 1;
             self.bits_remaining -= 1;
 
-            if bit == 1 && self.output_level < 126 {
-                self.output_level += 2;
-            } else if bit == 0 && self.output_level > 1 {
-                self.output_level -= 2;
+            if bit == 1 {
+                if self.output_level <= 124 {
+                    self.output_level += 2;
+                } else {
+                    self.output_level = 126;
+                }
+            } else {
+                if self.output_level >= 3 {
+                    self.output_level -= 2;
+                } else {
+                    self.output_level = 1;
+                }
+            }
+
+            if self.bits_remaining == 0 {
+                self.sample_buffer_empty = true;
             }
         }
     }
@@ -142,12 +159,18 @@ impl DmcChannel {
         self.sample_buffer_empty = false;
         self.bytes_remaining -= 1;
         self.current_address = self.current_address.wrapping_add(1);
+        if self.current_address == 0x0000 {
+            self.current_address = 0x8000;
+        }
 
         if self.bytes_remaining == 0 {
-            if self.irq_enabled {
+            // Only set IRQ if IRQ is enabled and loop is NOT enabled
+            let loop_enabled = (self.control & 0x40) != 0;
+            if self.irq_enabled && !loop_enabled {
                 self.irq_pending = true;
             }
-            if self.enabled {
+            // Only restart if loop bit (bit 6) is set
+            if self.enabled && loop_enabled {
                 self.restart_sample();
             }
         }
@@ -304,7 +327,7 @@ mod tests {
         // Test when enabled
         dmc.enabled = true;
         dmc.set_sample_length(0x10);
-        assert_eq!(dmc.bytes_remaining, (0x10 << 4) | 1); // (0x10 * 16) + 1
+        assert_eq!(dmc.bytes_remaining, 0); // Should not change when enabled (NES-accurate)
     }
 
     #[test]
@@ -413,8 +436,9 @@ mod tests {
         assert_eq!(dmc.bytes_remaining, 0);
         assert!(dmc.irq_pending);
 
-        // Test sample restart when enabled
+        // Test sample restart when enabled and looping
         dmc.enabled = true;
+        dmc.control = 0x40; // Set loop bit
         dmc.bytes_remaining = 1; // Set to 1 so load_sample will trigger restart
         dmc.load_sample(&mut mem);
         assert_eq!(dmc.bytes_remaining, ((0x10 as u16) << 4) | 1); // Should restart
@@ -514,7 +538,7 @@ mod tests {
         dmc.current_address = 0xFFFF;
         dmc.bytes_remaining = 1;
         dmc.load_sample(&mut DummyMemory);
-        assert_eq!(dmc.current_address, 0x0000); // Should wrap around
+        assert_eq!(dmc.current_address, 0x8000); // Should wrap around to 0x8000 (NES-accurate)
     }
 
     #[test]

@@ -64,8 +64,12 @@ impl APU {
                 if self.dmc.is_active() {
                     status |= 0x10;
                 }
-                status |= self.status & 0xE0;
-                self.clear_irq(); // Clear frame IRQ on read
+                // Set DMC IRQ flag (bit 7) if pending
+                if self.dmc.get_irq_pending() {
+                    status |= 0x80;
+                }
+                status |= self.status & 0x40; // Only frame IRQ bit (bit 6)
+                self.clear_irq(); // Clear frame IRQ on read (do not clear DMC IRQ)
                 status
             }
             _ => 0,
@@ -232,6 +236,8 @@ impl APU {
                 self.triangle.set_enabled(value & 0x04 != 0);
                 self.noise.set_enabled(value & 0x08 != 0);
                 self.dmc.set_enabled(value & 0x10 != 0);
+                // Clear DMC IRQ on $4015 write (as per NES APU)
+                self.dmc.clear_irq();
             }
 
             // Frame Counter
