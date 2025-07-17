@@ -260,10 +260,10 @@ mod tests {
         assert!(!noise.enabled);
         assert_eq!(noise.length_counter, 0);
 
-        // Test enabling with valid timer
-        noise.timer = 100;
+        // Test enabling does not reload length counter
+        noise.length_counter = 5;
         noise.set_enabled(true);
-        assert_eq!(noise.length_counter, LENGTH_COUNTER_TABLE[4]); // Assuming length counter was 4 when enabled
+        assert_eq!(noise.length_counter, 5); // Should remain unchanged
     }
 
     #[test]
