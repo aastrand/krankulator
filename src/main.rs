@@ -776,4 +776,29 @@ mod tests {
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }*/
+
+    /*#[test]
+    fn test_nes_apu_len_ctr() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/apu/1-len_ctr.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n01-len_ctr\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, expected.len());
+
+        println!("{}", buf);
+        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }*/
 }

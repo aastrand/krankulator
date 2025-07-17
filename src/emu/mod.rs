@@ -1,3 +1,5 @@
+pub mod apu;
+pub mod audio;
 pub mod cpu;
 pub mod dbg;
 pub mod gfx;
@@ -8,11 +10,13 @@ pub mod ppu;
 use cpu::opcodes;
 
 extern crate shrust;
-use std::thread;
-use std::time::{Duration, Instant};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::thread;
+use std::time::{Duration, Instant};
+
+use self::audio::{AudioBackend, AudioOutput, SilentAudioOutput};
 
 pub const _NS_PER_CYCLE: std::time::Duration = std::time::Duration::from_nanos(559);
 pub const FRAME_BUDGET_MS: Duration = Duration::from_millis(1000 / 60);
@@ -29,6 +33,7 @@ pub struct Emulator {
     lookup: Box<opcodes::Lookup>,
     pub mem: Box<dyn memory::MemoryMapper>,
     pub ppu: Rc<RefCell<ppu::PPU>>,
+    pub apu: Rc<RefCell<apu::APU>>,
     buf: Box<gfx::buf::Buffer>,
 
     iohandler: Box<dyn io::IOHandler>,
@@ -37,6 +42,7 @@ pub struct Emulator {
     pub breakpoints: Box<HashSet<u16>>,
 
     logformatter: io::log::LogFormatter,
+    #[allow(dead_code)]
     pub logdata: Box<Vec<u16>>,
     should_log: bool,
     should_debug_on_infinite_loop: bool,
@@ -50,30 +56,33 @@ pub struct Emulator {
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
     last_rendered: Instant,
+    pub audio: Box<dyn AudioBackend>,
 }
 
 impl Emulator {
     pub fn new(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
-        Emulator::new_base(
-            Box::new(io::WinitPixelsIOHandler::new(256, 240)),
-            mapper,
-        )
+        let audio = Box::new(AudioOutput::new(apu::SAMPLE_RATE)) as Box<dyn AudioBackend>;
+        let iohandler = Box::new(io::WinitPixelsIOHandler::new(256, 240));
+
+        Emulator::new_base(iohandler, mapper, audio)
     }
 
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
-        Emulator::new_base(Box::new(io::HeadlessIOHandler {}), mapper)
+        let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let iohandler = Box::new(io::HeadlessIOHandler {});
+
+        Emulator::new_base(iohandler, mapper, audio)
     }
 
     pub fn _new() -> Emulator {
-        Emulator::new_base(
-            Box::new(io::HeadlessIOHandler {}),
-            Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR)),
-        )
+        let mapper = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        Emulator::new_headless(mapper)
     }
 
     fn new_base(
         iohandler: Box<dyn io::IOHandler>,
         mut mapper: Box<dyn memory::MemoryMapper>,
+        audio: Box<dyn AudioBackend>,
     ) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
 
@@ -81,6 +90,7 @@ impl Emulator {
         cpu.pc = mapper.code_start();
 
         let ppu = mapper.ppu();
+        let apu = mapper.apu();
 
         let buf = gfx::buf::Buffer::new();
 
@@ -89,13 +99,11 @@ impl Emulator {
             lookup: lookup,
             mem: mapper,
             ppu: ppu,
+            apu: apu,
             buf: Box::new(buf),
-
             iohandler: iohandler,
-
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
-
             logformatter: io::log::LogFormatter::new(30),
             logdata: Box::new(Vec::<u16>::new()),
             should_log: true,
@@ -103,13 +111,12 @@ impl Emulator {
             should_exit_on_infinite_loop: true,
             verbose: true,
             start_time: Instant::now(),
-
             instructions: 0,
             cycles: 0,
-
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
             last_rendered: Instant::now(),
+            audio: audio,
         }
     }
 
@@ -199,6 +206,17 @@ impl Emulator {
             let mut ppu = self.ppu.borrow_mut();
             ppu.cycle()
         };
+
+        // Cycle the APU
+        self.apu.borrow_mut().cycle(&mut *self.mem);
+
+        // After cycling APU, push samples to audio backend
+        let mut apu_borrow = self.apu.borrow_mut();
+        let samples = apu_borrow.get_audio_samples();
+        if !samples.is_empty() {
+            self.audio.push_samples(samples);
+        }
+        drop(apu_borrow);
 
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
@@ -894,6 +912,11 @@ impl Emulator {
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
+        // Debug: log all CPU writes to APU registers
+        if addr >= 0x4000 && addr <= 0x4017 {
+            println!("CPU write: ${:04X} = {:02X}", addr, value);
+        }
+
         match addr {
             0x2000 => {
                 // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
@@ -1123,6 +1146,12 @@ impl Emulator {
 
         self.cpu.pc = addr;
         self.cpu.cycle += 7;
+    }
+
+    #[allow(dead_code)]
+    pub fn get_audio_output(&mut self) -> Vec<f32> {
+        let mut apu_borrow = self.apu.borrow_mut();
+        apu_borrow.get_audio_samples().to_vec()
     }
 
     pub fn log_str(&mut self) -> String {
@@ -2214,9 +2243,11 @@ mod emu_tests {
         let mut emu: Emulator = Emulator::_new();
         let start: u16 = memory::CODE_START_ADDR;
         emu.cpu.x = 8;
+
         emu.mem.cpu_write(start, opcodes::LDY_ZPX);
         emu.mem.cpu_write(start + 1, 0x10);
         emu.mem.cpu_write(0x18, 0x15);
+
         emu.run();
 
         assert_eq!(emu.cpu.y, 0x15);

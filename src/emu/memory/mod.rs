@@ -1,4 +1,5 @@
 pub mod mapper;
+use super::apu;
 use super::io::controller;
 use super::ppu;
 
@@ -34,6 +35,7 @@ pub trait MemoryMapper {
 
     fn code_start(&mut self) -> u16;
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
+    fn apu(&self) -> Rc<RefCell<apu::APU>>;
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
@@ -157,6 +159,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::new(RefCell::new(ppu::PPU::new()))
+    }
+
+    fn apu(&self) -> Rc<RefCell<apu::APU>> {
+        Rc::new(RefCell::new(apu::APU::new()))
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {

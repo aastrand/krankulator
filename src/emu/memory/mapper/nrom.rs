@@ -23,6 +23,7 @@ pub struct NROMMapper {
     _flags: u8,
 
     ppu: Rc<RefCell<ppu::PPU>>,
+    apu: Rc<RefCell<apu::APU>>,
 
     _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
@@ -75,6 +76,7 @@ impl NROMMapper {
             _flags: flags,
 
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
+            apu: Rc::new(RefCell::new(apu::APU::new())),
 
             _addr_space: mem,
             addr_space_ptr: addr_space_ptr,
@@ -107,6 +109,7 @@ impl MemoryMapper for NROMMapper {
             }
             0x40 => match addr {
                 0x4014 => self.ppu.borrow_mut().read(addr, self as _),
+                0x4015 => self.apu.borrow().read(addr),
                 0x4016 => self.controllers[0].poll(),
                 0x4017 => self.controllers[1].poll(),
                 _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
@@ -137,11 +140,9 @@ impl MemoryMapper for NROMMapper {
                     self.ppu
                         .borrow_mut()
                         .write(addr, value, self.addr_space_ptr);
+                } else if addr >= 0x4000 && addr <= 0x4017 {
+                    self.apu.borrow_mut().write(addr, value);
                 }
-                //println!("Write to APU reg {:X}: {:X}", addr, value);
-                /*if addr > 0x4017 {
-                    panic!("Write at addr {:X} not mapped", addr);
-                }*/
             }
             _ => { /*panic!("Write at addr {:X} not mapped", addr),*/ }
         }
@@ -206,6 +207,10 @@ impl MemoryMapper for NROMMapper {
 
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
         Rc::clone(&self.ppu)
+    }
+
+    fn apu(&self) -> Rc<RefCell<apu::APU>> {
+        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
