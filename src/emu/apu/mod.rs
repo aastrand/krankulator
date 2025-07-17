@@ -78,20 +78,23 @@ impl APU {
 
     pub fn write(&mut self, addr: u16, value: u8) {
         // Debug: log all APU register writes
-        println!("APU write: ${:04X} = {:02X}", addr, value);
+        //println!("APU write: ${:04X} = {:02X}", addr, value);
 
         match addr {
             // Pulse 1
             0x4000 => {
+                /*
                 println!(
                     "  Pulse1 control: duty={}, constant_volume={}, volume={}",
                     (value >> 6) & 3,
                     (value >> 4) & 1,
                     value & 0xF
                 );
+                */
                 self.pulse1.set_control(value)
             }
             0x4001 => {
+                /*
                 println!(
                     "  Pulse1 sweep: enabled={}, period={}, shift={}, negate={}",
                     (value >> 7) & 1,
@@ -99,32 +102,38 @@ impl APU {
                     (value >> 0) & 7,
                     (value >> 3) & 1
                 );
+                */
                 self.pulse1.set_sweep(value)
             }
             0x4002 => {
-                println!("  Pulse1 timer low: {:02X}", value);
+                //println!("  Pulse1 timer low: {:02X}", value);
                 self.pulse1.set_timer_low(value)
             }
             0x4003 => {
+                /*
                 println!(
                     "  Pulse1 timer high: {:02X}, length counter: {}",
                     value,
                     (value >> 3) & 0x1F
                 );
+                */
                 self.pulse1.set_timer_high(value)
             }
 
             // Pulse 2
             0x4004 => {
+                /*
                 println!(
                     "  Pulse2 control: duty={}, constant_volume={}, volume={}",
                     (value >> 6) & 3,
                     (value >> 4) & 1,
                     value & 0xF
                 );
+                */
                 self.pulse2.set_control(value)
             }
             0x4005 => {
+                /*
                 println!(
                     "  Pulse2 sweep: enabled={}, period={}, shift={}, negate={}",
                     (value >> 7) & 1,
@@ -132,87 +141,100 @@ impl APU {
                     (value >> 0) & 7,
                     (value >> 3) & 1
                 );
+                */
                 self.pulse2.set_sweep(value)
             }
             0x4006 => {
-                println!("  Pulse2 timer low: {:02X}", value);
+                //println!("  Pulse2 timer low: {:02X}", value);
                 self.pulse2.set_timer_low(value)
             }
             0x4007 => {
+                /*
                 println!(
                     "  Pulse2 timer high: {:02X}, length counter: {}",
                     value,
                     (value >> 3) & 0x1F
                 );
+                */
                 self.pulse2.set_timer_high(value)
             }
 
             // Triangle
             0x4008 => {
+                /*
                 println!(
                     "  Triangle control: linear_counter={}, control_flag={}",
                     value & 0x7F,
                     (value >> 7) & 1
                 );
+                */
                 self.triangle.set_control(value)
             }
             0x4009 => {} // Unused
             0x400A => {
-                println!("  Triangle timer low: {:02X}", value);
+                //println!("  Triangle timer low: {:02X}", value);
                 self.triangle.set_timer_low(value)
             }
             0x400B => {
+                /*
                 println!(
                     "  Triangle timer high: {:02X}, length counter: {}",
                     value,
                     (value >> 3) & 0x1F
                 );
+                */
                 self.triangle.set_timer_high(value)
             }
 
             // Noise
             0x400C => {
+                /*
                 println!(
                     "  Noise control: constant_volume={}, volume={}",
                     (value >> 4) & 1,
                     value & 0xF
                 );
+                */
                 self.noise.set_control(value)
             }
             0x400D => {} // Unused
             0x400E => {
+                /*
                 println!(
                     "  Noise period: mode={}, period={}",
                     (value >> 7) & 1,
                     value & 0xF
                 );
+                */
                 self.noise.set_period(value)
             }
             0x400F => {
-                println!("  Noise length counter: {}", (value >> 3) & 0x1F);
+                //println!("  Noise length counter: {}", (value >> 3) & 0x1F);
                 self.noise.set_length_counter(value)
             }
 
             // DMC
             0x4010 => {
+                /*
                 println!(
                     "  DMC control: irq_enable={}, loop={}, rate={}",
                     (value >> 7) & 1,
                     (value >> 6) & 1,
                     value & 0xF
                 );
+                */
                 self.dmc.set_control(value)
             }
             0x4011 => {
-                println!("  DMC direct load: {:02X}", value);
+                //println!("  DMC direct load: {:02X}", value);
                 self.dmc.set_direct_load(value)
             }
             0x4012 => {
-                println!("  DMC sample address: {:02X}", value);
+                //println!("  DMC sample address: {:02X}", value);
                 self.dmc.set_sample_address(value)
             }
             0x4013 => {
-                println!("  DMC sample length: {:02X}", value);
+                //println!("  DMC sample length: {:02X}", value);
                 self.dmc.set_sample_length(value)
             }
 
@@ -223,12 +245,12 @@ impl APU {
 
                 // Only print when there are actual changes
                 if old_enabled != value {
-                    println!("APU $4015 write: value = {:02X}", value);
-                    println!("  pulse1 enable: {}", value & 0x01 != 0);
-                    println!("  pulse2 enable: {}", value & 0x02 != 0);
-                    println!("  triangle enable: {}", value & 0x04 != 0);
-                    println!("  noise enable: {}", value & 0x08 != 0);
-                    println!("  dmc enable: {}", value & 0x10 != 0);
+                    //println!("APU $4015 write: value = {:02X}", value);
+                    //println!("  pulse1 enable: {}", value & 0x01 != 0);
+                    //println!("  pulse2 enable: {}", value & 0x02 != 0);
+                    //println!("  triangle enable: {}", value & 0x04 != 0);
+                    //println!("  noise enable: {}", value & 0x08 != 0);
+                    //println!("  dmc enable: {}", value & 0x10 != 0);
                 }
 
                 self.pulse1.set_enabled(value & 0x01 != 0);
@@ -242,11 +264,13 @@ impl APU {
 
             // Frame Counter
             0x4017 => {
+                /*
                 println!(
                     "  Frame counter: mode={}, irq_inhibit={}",
                     (value >> 7) & 1,
                     (value >> 6) & 1
                 );
+                */
                 let immediate_clock = (value & 0x80) != 0;
                 self.frame_counter.write(value);
                 if value & 0x40 != 0 {
@@ -352,15 +376,17 @@ impl APU {
             dmc_sample,
         );
         // print all pre-mix samples
+        /*
         println!("Pulse1: {}", pulse1_sample);
         println!("Pulse2: {}", pulse2_sample);
         println!("Triangle: {}", triangle_sample);
         println!("Noise: {}", noise_sample);
         println!("DMC: {}", dmc_sample);
+        */
 
         // Debug: check if we're generating any samples (less frequently)
         if mixed_sample != 0.0 && self.sample_index % 10000 == 0 {
-            println!("APU generating sample: {}", mixed_sample);
+            //println!("APU generating sample: {}", mixed_sample);
         }
 
         // Store in buffer

@@ -191,11 +191,11 @@ impl PulseChannel {
 
     pub fn clock_length_counter(&mut self) {
         if !self.length_counter_halt && self.length_counter > 0 {
-            println!(
+            /*println!(
                 "  Pulse1 clock_length_counter: before={}, after={}",
                 self.length_counter,
                 self.length_counter - 1
-            );
+            );*/
             self.length_counter -= 1;
         }
     }

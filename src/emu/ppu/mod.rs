@@ -263,7 +263,7 @@ impl PPU {
                 {
                     self.oam_addr = (self.oam_addr.wrapping_add(1) & 0b1111_1100)
                         + (self.oam_addr & 0b0000_0011);
-                    println!("Glitch-increased oam_addr to {:X}]", self.oam_addr);
+                    //println!("Glitch-increased oam_addr to {:X}]", self.oam_addr);
                 } else {*/
                 self.oam_ram[self.oam_addr as usize] = value;
                 //println!("Wrote to {:X} oam_ram[{:X}]", value, self.oam_addr);

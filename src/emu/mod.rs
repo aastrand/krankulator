@@ -913,9 +913,9 @@ impl Emulator {
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
         // Debug: log all CPU writes to APU registers
-        if addr >= 0x4000 && addr <= 0x4017 {
+        /*if addr >= 0x4000 && addr <= 0x4017 {
             println!("CPU write: ${:04X} = {:02X}", addr, value);
-        }
+        }*/
 
         match addr {
             0x2000 => {
