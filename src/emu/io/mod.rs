@@ -2,8 +2,6 @@ pub mod controller;
 pub mod loader;
 pub mod log;
 
-
-
 use pixels::{Pixels, SurfaceTexture};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::{
