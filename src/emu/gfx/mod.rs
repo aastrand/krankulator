@@ -15,13 +15,15 @@ fn tile_to_attribute_pos(x: u8, y: u8, attribute_byte: u8) -> u8 {
 
     match y {
         0 | 1 => match x {
-            0 | 1 => attribute_byte & 0b0000_0011,
-            2 | 3 => (attribute_byte & 0b0000_1100) >> 2,
+            // top
+            0 | 1 => attribute_byte & 0b0000_0011, // left
+            2 | 3 => (attribute_byte & 0b0000_1100) >> 2, // right
             _ => panic!("This can't happen"),
         },
         2 | 3 => match x {
-            0 | 1 => (attribute_byte & 0b0011_0000) >> 4,
-            2 | 3 => (attribute_byte & 0b1100_0000) >> 6,
+            // bottom
+            0 | 1 => (attribute_byte & 0b0011_0000) >> 4, // left
+            2 | 3 => (attribute_byte & 0b1100_0000) >> 6, // right
             _ => panic!("This can't happen"),
         },
         _ => panic!("This can't happen"),
