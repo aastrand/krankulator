@@ -90,10 +90,6 @@ pub struct PPU {
     x: u8,   // Fine X scroll (0-7)
     w: bool, // Write toggle (shared between PPUSCROLL and PPUADDR)
 
-    // Legacy fields - keeping for compatibility but will be replaced by internal registers
-    vram_addr: u16,
-    _tmp_vram_addr: u16,
-
     /*
       The PPU internally contains 256 bytes of memory known as Object Attribute Memory which determines how sprites are rendered.
       The CPU can manipulate this memory through memory mapped registers at OAMADDR ($2003), OAMDATA ($2004), and OAMDMA ($4014).
@@ -135,9 +131,6 @@ impl PPU {
             t: 0,
             x: 0,
             w: false,
-
-            vram_addr: 0,
-            _tmp_vram_addr: 0,
 
             oam_ram: oam_ram,
             oam_ram_ptr: oam_ram_ptr,
@@ -215,54 +208,26 @@ impl PPU {
             SCROLL_ADDR => 0,
             ADDR_ADDR => 0, // TODO: decay
             DATA_ADDR => {
-                // Use the current v register for reads
                 let read_addr = self.v;
-                let page = memory::addr_to_page(read_addr);
-
-                let value = match page {
-                    0x0 | 0x10 => {
-                        // pattern table - buffered read
-                        let r = self.ppu_data_buf;
-                        self.ppu_data_buf = mem.ppu_read(read_addr as _);
-                        r
-                    }
-                    0x20 | 0x30 => {
-                        // nametable/palette - handle mirrors
-                        let addr: usize = match read_addr {
-                            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => (read_addr - 0x10) as _,
-                            _ => read_addr as _,
-                        };
-
-                        if read_addr >= 0x3f00 {
-                            // Palette - immediate read
-                            mem.ppu_read(addr as u16)
-                        } else {
-                            // Nametable - buffered read
-                            let r = self.ppu_data_buf;
-                            self.ppu_data_buf = mem.ppu_read(addr as u16);
-                            r
-                        }
-                    }
-                    _ => 0,
+                let value = if read_addr >= 0x3f00 && read_addr <= 0x3fff {
+                    // Palette read: return actual value, buffer is updated with mirrored nametable
+                    let mirrored_addr = read_addr & 0x2fff;
+                    let result = mem.ppu_read(read_addr as _);
+                    self.ppu_data_buf = mem.ppu_read(mirrored_addr as _);
+                    result
+                } else {
+                    // Pattern/nametable: return buffer, update buffer
+                    let r = self.ppu_data_buf;
+                    self.ppu_data_buf = mem.ppu_read(read_addr as _);
+                    r
                 };
-
-                // Increment v register
                 self.inc_vram_addr_v();
-
                 value
             }
             _ => {
                 //println!("addr {:X} not mapped for read!", addr);
                 0
             }
-        }
-    }
-
-    fn inc_vram_addr(&mut self) {
-        if (self.ppu_ctrl & CTRL_VRAM_ADDR_INC) == CTRL_VRAM_ADDR_INC {
-            self.vram_addr = self.vram_addr.wrapping_add(32);
-        } else {
-            self.vram_addr = self.vram_addr.wrapping_add(1);
         }
     }
 
@@ -345,7 +310,6 @@ impl PPU {
                 self.ppu_addr[if self.w { 0 } else { 1 }] = value;
                 if !self.w {
                     // Valid addresses are $0000-$3FFF; higher addresses will be mirrored down.
-                    self.vram_addr = self.v % 0x4000;
                     self.ppu_data_valid = false;
                 }
                 self.ppu_addr_idx = if self.w { 1 } else { 0 };
@@ -353,7 +317,6 @@ impl PPU {
             DATA_ADDR => {
                 let write_addr = self.v;
                 let page = memory::addr_to_page(write_addr);
-
                 match page {
                     0x20 | 0x30 => {
                         // Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C.
@@ -364,21 +327,12 @@ impl PPU {
                         // This should be written by the mapper, bounce it back
                         ret = Some((addr, value))
                     }
-                    _ => {}
+                    _ => {
+                        // Write to VRAM/CHR
+                        ret = Some((write_addr, value));
+                    }
                 }
-
-                /*println!(
-                    "Wrote {:X} to vram[{:X}]",
-                    value,
-                    write_addr
-                );*/
-
-                // Increment v register
                 self.inc_vram_addr_v();
-
-                // Legacy support
-                self.vram_addr = self.v;
-                self.inc_vram_addr();
             }
             OAM_DMA => {
                 // Writing $XX will upload 256 bytes of data from CPU page $XX00-$XXFF to the internal PPU OAM.
@@ -548,15 +502,13 @@ mod tests {
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
         ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
-        assert_eq!(ppu.vram_addr, 0);
+        // v is not updated yet, only t is
         ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
-
-        assert_eq!(ppu.vram_addr, 0x3211);
-
+        assert_eq!(ppu.v, 0x3211);
         ppu.write(ADDR_ADDR, 0x40, cpu_ram_ptr);
+        // v is not updated yet, only t is
         ppu.write(ADDR_ADDR, 0x1, cpu_ram_ptr);
-
-        assert_eq!(ppu.vram_addr, 0x1);
+        assert_eq!(ppu.v, 0x0001);
     }
 
     #[test]
@@ -569,12 +521,12 @@ mod tests {
         ppu.write(ADDR_ADDR, 0x82, cpu_ram_ptr);
 
         ppu.read(STATUS_REG_ADDR, mem);
-        assert_eq!(ppu.vram_addr, 0);
+        assert_eq!(ppu.v, 0);
         ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
-        assert_eq!(ppu.vram_addr, 0);
+        assert_eq!(ppu.v, 0);
         ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
 
-        assert_eq!(ppu.vram_addr, 0x3211);
+        assert_eq!(ppu.v, 0x3211);
     }
 
     #[test]
@@ -594,23 +546,39 @@ mod tests {
             assert_eq!(should_write.unwrap().1, b);
         }
 
-        assert_eq!(ppu.vram_addr, 0x371b);
+        assert_eq!(ppu.v, 0x371b);
     }
 
     #[test]
     fn test_read_ppu_data() {
         let mut ppu = PPU::new();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
         let mem: &mut dyn memory::MemoryMapper = &mut memory::IdentityMapper::new(0x4000);
 
         mem.ppu_write(0x3000, 0x47);
-        ppu.vram_addr = 0x3000;
+
+        // Set address using proper PPU interface
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+
         let first = ppu.read(DATA_ADDR, mem);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for second read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let second = ppu.read(DATA_ADDR, mem);
+
         mem.ppu_write(0x3000, 0x14);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for third read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let third = ppu.read(DATA_ADDR, mem);
-        ppu.vram_addr = 0x3000;
+
+        // Reset address for fourth read
+        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
         let fourth = ppu.read(DATA_ADDR, mem);
 
         assert_eq!(first, 0);
