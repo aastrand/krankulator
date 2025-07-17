@@ -208,7 +208,7 @@ impl MMC1Mapper {
             0x20 => self.ppu.borrow_mut().read(addr, self as _),
             0x40 => match addr {
                 0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-                0x4015 => self.apu.borrow().read(addr),
+                0x4015 => self.apu.borrow_mut().read(addr),
                 0x4016 => self.controllers[0].poll(),
                 0x4017 => self.controllers[1].poll(),
                 _ => 0,

@@ -45,7 +45,7 @@ impl APU {
         }
     }
 
-    pub fn read(&self, addr: u16) -> u8 {
+    pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             0x4015 => {
                 let mut status = 0;
@@ -64,8 +64,8 @@ impl APU {
                 if self.dmc.is_active() {
                     status |= 0x10;
                 }
-                // Optionally, preserve IRQ bits from self.status
                 status |= self.status & 0xE0;
+                self.clear_irq(); // Clear frame IRQ on read
                 status
             }
             _ => 0,
@@ -243,7 +243,9 @@ impl APU {
                 );
                 let immediate_clock = (value & 0x80) != 0;
                 self.frame_counter.write(value);
-
+                if value & 0x40 != 0 {
+                    self.clear_irq(); // Clear frame IRQ immediately if inhibit set
+                }
                 // Always clock on $4017 write with bit 7 set
                 if immediate_clock {
                     self.pulse1.clock_length_counter();
@@ -284,6 +286,12 @@ impl APU {
                 self.triangle.clock_length_counter();
                 self.noise.clock_length_counter();
             }
+            // Set frame IRQ at the correct time (mode 0, step 0, IRQ not inhibited)
+            if mode == 0 && step == 0 && !self.frame_counter.irq_inhibit() {
+                self.status |= 0x40; // Set frame IRQ bit
+            }
+            // Never set frame IRQ in 5-step mode (mode 1)
+            // (No action needed, as above condition only applies in mode 0)
         }
 
         // Update status register
@@ -423,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_apu_read() {
-        let apu = APU::new();
+        let mut apu = APU::new();
 
         // Test status register read
         assert_eq!(apu.read(0x4015), 0);

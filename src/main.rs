@@ -841,7 +841,7 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("\n03-irq_flag\n\nPassed\n");
+        let expected = String::from("\n3-irq_flag\n\nPassed\n");
         let buf = get_status_str(&mut emu, 0x6004, expected.len());
 
         println!("{}", buf);

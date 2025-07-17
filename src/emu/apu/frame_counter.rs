@@ -94,6 +94,10 @@ impl FrameCounter {
     pub fn get_mode(&self) -> u8 {
         self.mode
     }
+
+    pub fn irq_inhibit(&self) -> bool {
+        self.irq_inhibit
+    }
 }
 
 #[cfg(test)]
