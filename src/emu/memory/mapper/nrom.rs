@@ -232,6 +232,10 @@ impl MemoryMapper for NROMMapper {
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
         &mut self.controllers
     }
+
+    fn poll_irq(&mut self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

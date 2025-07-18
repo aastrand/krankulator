@@ -197,6 +197,11 @@ impl Emulator {
             let opcode = self.execute_instruction();
             self.log_instruction(opcode, self.cpu.last_instruction);
 
+            // --- MMC3 IRQ support ---
+            if self.mem.poll_irq() {
+                self.trigger_irq();
+            }
+
             if self.nmi_triggered_countdown > 0 {
                 self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
             }
@@ -1144,6 +1149,16 @@ impl Emulator {
         // we set the I flag
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
 
+        self.cpu.pc = addr;
+        self.cpu.cycle += 7;
+    }
+
+    pub fn trigger_irq(&mut self) {
+        let addr: u16 = self.mem.get_16b_addr(memory::BRK_TARGET_ADDR);
+        self.push_pc_to_stack(0);
+        // hardware interrupts IRQ & NMI will push the B flag as being 0.
+        self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
+        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         self.cpu.pc = addr;
         self.cpu.cycle += 7;
     }

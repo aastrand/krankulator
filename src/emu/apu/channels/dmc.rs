@@ -248,6 +248,9 @@ mod tests {
         fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
             panic!()
         }
+        fn poll_irq(&mut self) -> bool {
+            false
+        }
     }
 
     #[test]
@@ -571,6 +574,9 @@ mod tests {
             }
             fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
                 panic!()
+            }
+            fn poll_irq(&mut self) -> bool {
+                false
             }
         }
         let mut mem = DummyPatternMemory;

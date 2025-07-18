@@ -37,6 +37,7 @@ pub trait MemoryMapper {
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
     fn apu(&self) -> Rc<RefCell<apu::APU>>;
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
+    fn poll_irq(&mut self) -> bool;
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
@@ -167,6 +168,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
         &mut self.controllers
+    }
+
+    fn poll_irq(&mut self) -> bool {
+        false
     }
 }
 
