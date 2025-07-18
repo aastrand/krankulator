@@ -58,11 +58,16 @@ pub struct MMC1Mapper {
 impl MMC1Mapper {
     pub fn new(
         _flags: u8,
-        prg_banks: Vec<[u8; BANK_SIZE]>,
+        mut prg_banks: Vec<[u8; BANK_SIZE]>,
         chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]>,
     ) -> MMC1Mapper {
         if prg_banks.len() < 2 {
-            panic!("Expected at least two PRG banks");
+            if prg_banks.len() == 1 {
+                // Mirror the single PRG bank to create a second bank
+                prg_banks.push(prg_banks[0].clone());
+            } else {
+                panic!("Expected at least one PRG bank");
+            }
         }
         let mut cpu_ram = Box::new([0; CPU_RAM_SIZE]);
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
