@@ -27,18 +27,21 @@ pub enum NametableMirror {
 }
 
 fn mirror_nametable_addr(addr: u16, mirroring: NametableMirror) -> u16 {
-    match mirroring {
-        NametableMirror::Horizontal => match addr & 0xff00 {
-            0x2400 | 0x2500 | 0x2600 | 0x2700 | 0x2c00 | 0x2d00 | 0x200e | 0x2f00 => addr - 0x400,
-            _ => addr,
-        },
-        NametableMirror::Vertical => match addr & 0xff00 {
-            0x2800 | 0x2900 | 0x2a00 | 0x2b00 | 0x2c00 | 0x2d00 | 0x2e00 | 0x2f00 => addr - 0x800,
-            _ => addr,
-        },
+    // NESDev-correct mirroring logic
+    let vram_index = match mirroring {
+        NametableMirror::Vertical => {
+            // $2000-$27FF -> 0x000-0x7FF, $2800-$2FFF -> 0x000-0x7FF
+            addr & 0x07FF
+        }
+        NametableMirror::Horizontal => {
+            // $2000-$23FF, $2800-$2BFF -> 0x000-0x3FF
+            // $2400-$27FF, $2C00-$2FFF -> 0x400-0x7FF
+            (addr & 0x0400) | (addr & 0x03FF)
+        }
         NametableMirror::Lower => 0x2000 + (addr % 0x400),
         NametableMirror::Higher => 0x2800 + (addr % 0x400),
-    }
+    };
+    vram_index
 }
 
 #[cfg(test)]
@@ -55,40 +58,78 @@ mod tests {
 
     #[test]
     fn test_mirror_nametable_addr() {
+        // Horizontal mirroring (NESDev-correct)
+        // $2000-$23FF, $2800-$2BFF -> 0x000-0x3FF
+        // $2400-$27FF, $2C00-$2FFF -> 0x400-0x7FF
         assert_eq!(
-            mirror_nametable_addr(0x2123, NametableMirror::Horizontal),
-            0x2123
+            mirror_nametable_addr(0x2000, NametableMirror::Horizontal),
+            0x0000
         );
         assert_eq!(
-            mirror_nametable_addr(0x2523, NametableMirror::Horizontal),
-            0x2123
+            mirror_nametable_addr(0x23FF, NametableMirror::Horizontal),
+            0x03FF
         );
         assert_eq!(
-            mirror_nametable_addr(0x2823, NametableMirror::Horizontal),
-            0x2823
+            mirror_nametable_addr(0x2400, NametableMirror::Horizontal),
+            0x0400
         );
         assert_eq!(
-            mirror_nametable_addr(0x2c23, NametableMirror::Horizontal),
-            0x2823
+            mirror_nametable_addr(0x27FF, NametableMirror::Horizontal),
+            0x07FF
+        );
+        assert_eq!(
+            mirror_nametable_addr(0x2800, NametableMirror::Horizontal),
+            0x0000
+        );
+        assert_eq!(
+            mirror_nametable_addr(0x2BFF, NametableMirror::Horizontal),
+            0x03FF
+        );
+        assert_eq!(
+            mirror_nametable_addr(0x2C00, NametableMirror::Horizontal),
+            0x0400
+        );
+        assert_eq!(
+            mirror_nametable_addr(0x2FFF, NametableMirror::Horizontal),
+            0x07FF
         );
 
+        // Vertical mirroring (NESDev-correct)
+        // $2000-$27FF -> 0x000-0x7FF, $2800-$2FFF -> 0x000-0x7FF
         assert_eq!(
-            mirror_nametable_addr(0x2123, NametableMirror::Vertical),
-            0x2123
+            mirror_nametable_addr(0x2000, NametableMirror::Vertical),
+            0x0000
         );
         assert_eq!(
-            mirror_nametable_addr(0x2523, NametableMirror::Vertical),
-            0x2523
+            mirror_nametable_addr(0x23FF, NametableMirror::Vertical),
+            0x03FF
         );
         assert_eq!(
-            mirror_nametable_addr(0x2923, NametableMirror::Vertical),
-            0x2123
+            mirror_nametable_addr(0x2400, NametableMirror::Vertical),
+            0x0400
         );
         assert_eq!(
-            mirror_nametable_addr(0x2c23, NametableMirror::Vertical),
-            0x2423
+            mirror_nametable_addr(0x27FF, NametableMirror::Vertical),
+            0x07FF
         );
+        assert_eq!(
+            mirror_nametable_addr(0x2800, NametableMirror::Vertical),
+            0x0800 & 0x07FF
+        ); // 0x0000
+        assert_eq!(
+            mirror_nametable_addr(0x2BFF, NametableMirror::Vertical),
+            0x0BFF & 0x07FF
+        ); // 0x03FF
+        assert_eq!(
+            mirror_nametable_addr(0x2C00, NametableMirror::Vertical),
+            0x0C00 & 0x07FF
+        ); // 0x0400
+        assert_eq!(
+            mirror_nametable_addr(0x2FFF, NametableMirror::Vertical),
+            0x0FFF & 0x07FF
+        ); // 0x07FF
 
+        // Lower and Higher mirroring (unchanged)
         assert_eq!(
             mirror_nametable_addr(0x2123, NametableMirror::Lower),
             0x2123
