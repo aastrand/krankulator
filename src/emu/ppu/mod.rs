@@ -50,7 +50,6 @@ pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
         RAM Memory Map
       +---------+-------+----------------+
       | Address | Size  | Description    |
-      +---------+-------+----------------+
       | $0000   | $2000 | Pattern Tables |
       | $2000   | $800  | Name Tables    |
       | $3F00   | $20   | Palettes       |
@@ -59,7 +58,6 @@ pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
         Programmer Memory Map
       +---------+-------+-------+--------------------+
       | Address | Size  | Flags | Description        |
-      +---------+-------+-------+--------------------+
       | $0000   | $1000 | C     | Pattern Table #0   |
       | $1000   | $1000 | C     | Pattern Table #1   |
       | $2000   | $3C0  |       | Name Table #0      |
@@ -118,6 +116,10 @@ pub struct PPU {
     pub cycle: u16,
     pub scanline: u16,
     pub frames: u64,
+    // Per-scanline scroll tracking
+    pub scroll_x_per_scanline: [u8; 262],
+    pub scroll_y_per_scanline: [u8; 262],
+    pub fine_x_per_scanline: [u8; 262],
 }
 
 impl PPU {
@@ -152,6 +154,9 @@ impl PPU {
             cycle: 0,
             scanline: 0,
             frames: 0,
+            scroll_x_per_scanline: [0; 262],
+            scroll_y_per_scanline: [0; 262],
+            fine_x_per_scanline: [0; 262],
         }
     }
 
@@ -293,6 +298,13 @@ impl PPU {
 
                 // Legacy support
                 self.ppu_scroll_idx = if self.w { 1 } else { 0 };
+                // Per-scanline scroll tracking
+                if self.scanline < 240 {
+                    let idx = self.scanline as usize;
+                    self.scroll_x_per_scanline[idx] = self.get_scroll_x();
+                    self.scroll_y_per_scanline[idx] = self.get_scroll_y();
+                    self.fine_x_per_scanline[idx] = self.get_fine_x();
+                }
             }
             ADDR_ADDR => {
                 if !self.w {
@@ -376,9 +388,9 @@ impl PPU {
 
             self.cycle = self.cycle % (CYCLES_PER_SCANLINE + 1);
             self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
+            self.begin_scanline();
             if self.scanline == 0 {
                 self.frames += 1;
-
                 // At the start of each frame, copy t to v (scroll reset)
                 if self.mask_background_enabled() || self.mask_sprites_enabled() {
                     self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
@@ -420,8 +432,27 @@ impl PPU {
         return false;
     }
 
+    pub fn begin_scanline(&mut self) {
+        // Call this at the start of each scanline (in your PPU cycle/scanline logic)
+        if self.scanline > 0 && self.scanline < 240 {
+            let idx = self.scanline as usize;
+            self.scroll_x_per_scanline[idx] = self.scroll_x_per_scanline[idx - 1];
+            self.scroll_y_per_scanline[idx] = self.scroll_y_per_scanline[idx - 1];
+            self.fine_x_per_scanline[idx] = self.fine_x_per_scanline[idx - 1];
+        }
+    }
+
+    pub fn get_scanline_scroll_x(&self, scanline: usize) -> u8 {
+        self.scroll_x_per_scanline[scanline]
+    }
+    pub fn get_scanline_scroll_y(&self, scanline: usize) -> u8 {
+        self.scroll_y_per_scanline[scanline]
+    }
+    pub fn get_scanline_fine_x(&self, scanline: usize) -> u8 {
+        self.fine_x_per_scanline[scanline]
+    }
+
     pub fn sprite_zero_hit(&self, num_cycles: u16) -> bool {
-        //self.cycle > 0 && self.cycle < (1 + num_cycles)
         let y = self.oam_ram[0] as usize;
         let x = self.oam_ram[3] as usize;
         (y == self.scanline as usize) && x <= num_cycles as usize && self.mask_sprites_enabled()
