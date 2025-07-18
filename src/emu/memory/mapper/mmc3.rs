@@ -34,9 +34,11 @@ impl MMC3Mapper {
     pub fn new(_flags: u8, prg_banks: Vec<[u8; 16384]>, chr_banks: Vec<[u8; 8192]>) -> MMC3Mapper {
         // Flatten PRG/CHR banks into 8K/1K chunks
         let mut prg_rom = vec![];
-        for bank in prg_banks {
+        for bank in prg_banks.iter() {
             prg_rom.push(<[u8; PRG_BANK_SIZE]>::try_from(&bank[0..PRG_BANK_SIZE]).unwrap());
-            prg_rom.push(<[u8; PRG_BANK_SIZE]>::try_from(&bank[PRG_BANK_SIZE..]).unwrap());
+            prg_rom.push(
+                <[u8; PRG_BANK_SIZE]>::try_from(&bank[PRG_BANK_SIZE..2 * PRG_BANK_SIZE]).unwrap(),
+            );
         }
         let (chr_mem, chr_is_ram) = if chr_banks.is_empty() {
             (vec![[0; CHR_BANK_SIZE]; 8], true)
@@ -108,6 +110,11 @@ impl MMC3Mapper {
 impl MemoryMapper for MMC3Mapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
+            0x2000..=0x2007 => self.ppu.borrow_mut().read(addr, self as _),
+            0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().read(addr),
+            0x4014 => self.ppu.borrow_mut().read(addr, self as _),
+            0x4016 => self.controllers[0].poll(),
+            0x4017 => self.controllers[1].poll(),
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xFFFF => {
                 if let Some(bank) = self.map_prg(addr) {
@@ -116,8 +123,6 @@ impl MemoryMapper for MMC3Mapper {
                     0
                 }
             }
-            0x4016 => self.controllers[0].poll(),
-            0x4017 => self.controllers[1].poll(),
             _ => 0,
         }
     }
