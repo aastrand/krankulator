@@ -52,6 +52,7 @@ pub struct MMC1Mapper {
     reg3: u8,
 
     pub controllers: [controller::Controller; 2],
+    palette_ram: [u8; 32],
 }
 
 impl MMC1Mapper {
@@ -117,6 +118,7 @@ impl MMC1Mapper {
             reg3: 0,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
+            palette_ram: [0; 32],
         };
 
         mapper.high_bank_idx = mapper.banks.len() - 1;
@@ -271,7 +273,16 @@ impl MMC1Mapper {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment()) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) }
             }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
+            0x30 => {
+                // $3F00–$3FFF: Palette RAM, 32 bytes, mirrored every 32 bytes
+                let mut palette_addr = (addr.wrapping_sub(0x3F00) as usize) % 32;
+                // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
+                palette_addr &= 0x1F;
+                if palette_addr & 0x13 == 0x10 {
+                    palette_addr &= !0x10;
+                }
+                self.palette_ram[palette_addr]
+            }
             _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
         }
     }
@@ -326,7 +337,15 @@ impl MMC1Mapper {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment()) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as _) = value }
             }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },
+            0x30 => {
+                // $3F00–$3FFF: Palette RAM, 32 bytes, mirrored every 32 bytes
+                let mut palette_addr = (addr.wrapping_sub(0x3F00) as usize) % 32;
+                palette_addr &= 0x1F;
+                if palette_addr & 0x13 == 0x10 {
+                    palette_addr &= !0x10;
+                }
+                self.palette_ram[palette_addr] = value;
+            }
 
             _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
         }
