@@ -1,4 +1,5 @@
 pub struct PulseChannel {
+    channel_index: u8, // 0 for pulse 1, 1 for pulse 2
     duty_cycle: u8,
     #[allow(dead_code)]
     duty_value: u8,
@@ -32,8 +33,9 @@ pub struct PulseChannel {
 }
 
 impl PulseChannel {
-    pub fn new() -> Self {
+    pub fn new(channel_index: u8) -> Self {
         Self {
+            channel_index,
             duty_cycle: 0,
             duty_value: 0,
             duty_step: 0,
@@ -129,13 +131,19 @@ impl PulseChannel {
             if self.sweep_enabled && self.sweep_shift > 0 {
                 let change = self.timer >> self.sweep_shift;
                 if self.sweep_negate {
-                    self.timer = self.timer.wrapping_sub(change);
+                    // For pulse 1, subtract change+1; for pulse 2, subtract change
+                    let sub = if self.channel_index == 0 {
+                        change + 1
+                    } else {
+                        change
+                    };
+                    self.timer = self.timer.wrapping_sub(sub);
                 } else {
                     self.timer = self.timer.wrapping_add(change);
                 }
-                // Clamp timer to valid range
-                if self.timer < 8 {
-                    self.timer = 8;
+                // Mute channel if timer is out of range
+                if self.timer < 8 || self.timer > 0x7FF {
+                    self.length_counter = 0; // Mute by zeroing length counter
                 }
             }
         } else {
@@ -230,7 +238,8 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_new() {
-        let pulse = PulseChannel::new();
+        let pulse = PulseChannel::new(0);
+        assert_eq!(pulse.channel_index, 0);
         assert_eq!(pulse.duty_cycle, 0);
         assert_eq!(pulse.timer, 0);
         assert_eq!(pulse.length_counter, 0);
@@ -241,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_set_control() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test duty cycle setting
         pulse.set_control(0b11000000); // Duty cycle 3 (75%)
@@ -265,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_set_sweep() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test sweep enable
         pulse.set_sweep(0b10000000); // Sweep enabled
@@ -289,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_set_timer() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test timer low
         pulse.set_timer_low(0x34);
@@ -302,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_set_enabled() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test enabling
         pulse.set_enabled(true);
@@ -316,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_cycle() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Set up a basic timer
         pulse.set_timer_low(0x10);
@@ -336,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_generate_output() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test disabled channel
         pulse.generate_output();
@@ -363,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_clock_envelope() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test envelope start
         pulse.envelope_start = true;
@@ -387,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_clock_length_counter() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Test normal decrement
         pulse.length_counter = 10;
@@ -408,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_pulse_channel_sweep() {
-        let mut pulse = PulseChannel::new();
+        let mut pulse = PulseChannel::new(0);
 
         // Set up sweep
         pulse.sweep_enabled = true;

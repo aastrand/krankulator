@@ -29,8 +29,8 @@ pub struct APU {
 impl APU {
     pub fn new() -> Self {
         Self {
-            pulse1: PulseChannel::new(),
-            pulse2: PulseChannel::new(),
+            pulse1: PulseChannel::new(0),
+            pulse2: PulseChannel::new(1),
             triangle: TriangleChannel::new(),
             noise: NoiseChannel::new(),
             dmc: DmcChannel::new(),
