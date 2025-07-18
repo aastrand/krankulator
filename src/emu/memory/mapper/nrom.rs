@@ -37,6 +37,7 @@ pub struct NROMMapper {
     nametable_alignment: NametableMirror,
 
     pub controllers: [controller::Controller; 2],
+    palette_ram: [u8; 32],
 }
 
 impl NROMMapper {
@@ -90,6 +91,7 @@ impl NROMMapper {
             nametable_alignment: nametable_alignment,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
+            palette_ram: [0x0F; 32],
         }
     }
 }
@@ -151,7 +153,13 @@ impl MemoryMapper for NROMMapper {
     fn ppu_read(&self, addr: u16) -> u8 {
         let mut addr = addr;
         let page = addr_to_page(addr);
-
+        if addr >= 0x3F00 && addr < 0x4000 {
+            let mut palette_addr = (addr as usize - 0x3F00) % 32;
+            if palette_addr & 0x13 == 0x10 {
+                palette_addr &= !0x10;
+            }
+            return self.palette_ram[palette_addr];
+        }
         match page {
             0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
             0x20 => {
@@ -188,6 +196,14 @@ impl MemoryMapper for NROMMapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         let mut addr = addr % MAX_VRAM_ADDR;
+        if addr >= 0x3F00 && addr < 0x4000 {
+            let mut palette_addr = (addr as usize - 0x3F00) % 32;
+            if palette_addr & 0x13 == 0x10 {
+                palette_addr &= !0x10;
+            }
+            self.palette_ram[palette_addr] = value;
+            return;
+        }
         let page = addr_to_page(addr);
         match page {
             0x20 => {
