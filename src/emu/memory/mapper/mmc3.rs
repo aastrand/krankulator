@@ -40,6 +40,9 @@ pub struct MMC3Mapper {
 
     // CPU RAM (0x0000-0x07FF, mirrored to 0x1FFF)
     cpu_ram: Box<[u8; 0x800]>,
+
+    // Palette RAM for colors
+    palette_ram: [u8; 32],
 }
 
 impl MMC3Mapper {
@@ -104,6 +107,7 @@ impl MMC3Mapper {
             },
             vram: Box::new([0; 0x800]),
             cpu_ram: Box::new([0; 0x800]),
+            palette_ram: [0x0F; 32],
         }
     }
 
@@ -371,8 +375,13 @@ impl MemoryMapper for MMC3Mapper {
                 self.vram[vram_addr]
             }
             0x3F00..=0x3FFF => {
-                // Palette RAM - should be handled by PPU
-                0
+                // Palette RAM access with proper mirroring
+                let mut palette_addr = (addr as usize - 0x3F00) % 32;
+                // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
+                if palette_addr & 0x13 == 0x10 {
+                    palette_addr &= !0x10;
+                }
+                self.palette_ram[palette_addr]
             }
             _ => 0,
         }
@@ -416,6 +425,15 @@ impl MemoryMapper for MMC3Mapper {
                 let mirrored_addr = mirror_nametable_addr(addr, self.mirroring);
                 let vram_addr = (mirrored_addr & 0x7FF) as usize;
                 self.vram[vram_addr] = value;
+            }
+            0x3F00..=0x3FFF => {
+                // Palette RAM write with proper mirroring
+                let mut palette_addr = (addr as usize - 0x3F00) % 32;
+                // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
+                if palette_addr & 0x13 == 0x10 {
+                    palette_addr &= !0x10;
+                }
+                self.palette_ram[palette_addr] = value;
             }
             _ => {}
         }
