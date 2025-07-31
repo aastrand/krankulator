@@ -92,7 +92,7 @@ impl MMC3Mapper {
             prg_bank_mode: 0,
             chr_bank_mode: 0,
             bank_select: 0,
-            // Initialize bank registers to valid values for compatibility
+            // Initialize bank registers to provide better sprite data
             bank_regs: [0, 2, 4, 5, 6, 7, 0, 1],
             irq_counter: 0,
             irq_latch: 0,
@@ -289,16 +289,28 @@ impl MemoryMapper for MMC3Mapper {
                 let should_write =
                     self.ppu
                         .borrow_mut()
-                        .write(addr, value, self.prg_ram.as_mut_ptr());
+                        .write(addr, value, self.cpu_ram.as_mut_ptr());
                 if let Some((addr, value)) = should_write {
                     self.ppu_write(addr, value);
                 }
             }
             0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().write(addr, value),
             0x4014 => {
-                self.ppu
-                    .borrow_mut()
-                    .write(addr, value, self.prg_ram.as_mut_ptr());
+                // OAM DMA - read 256 bytes from CPU memory through mapper
+                let page = (value as u16) << 8;
+                let mut oam_data = [0u8; 256];
+
+                // First, read all data through mapper
+                for i in 0..256 {
+                    oam_data[i] = self.cpu_read(page + i as u16);
+                }
+
+                // Then write to PPU OAM
+                let mut ppu = self.ppu.borrow_mut();
+                ppu.write(0x2003, 0, std::ptr::null_mut()); // Set OAMADDR to 0
+                for i in 0..256 {
+                    ppu.write(0x2004, oam_data[i], std::ptr::null_mut()); // Write to OAMDATA
+                }
             }
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = value,
             0x8000..=0x9FFF => {

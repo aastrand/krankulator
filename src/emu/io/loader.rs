@@ -91,8 +91,7 @@ impl Loader for InesLoader {
         let num_prg_blocks = bytes[4];
         let num_chr_blocks = bytes[5];
         let flags = bytes[6];
-        let flags7 = bytes[7];
-        let mapper = (flags7 & 0xF0) | (flags >> 4);
+        let mapper = flags >> 4;
         let prg_ram_units = bytes[8];
         let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
