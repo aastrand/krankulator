@@ -39,6 +39,11 @@ pub trait MemoryMapper {
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
     fn poll_irq(&mut self) -> bool;
 
+    // Called on PPU cycle 260 of visible and pre-render scanlines for MMC3 IRQ counter
+    fn ppu_cycle_260(&mut self, _scanline: u16) {
+        // Default implementation does nothing
+    }
+
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
     }

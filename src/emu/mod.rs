@@ -209,7 +209,21 @@ impl Emulator {
 
         let fire_vblank_nmi = {
             let mut ppu = self.ppu.borrow_mut();
-            ppu.cycle()
+            let old_cycle = ppu.cycle;
+            let old_scanline = ppu.scanline;
+            let result = ppu.cycle();
+
+            // Check if we crossed cycle 260 during this PPU tick
+            let new_cycle = ppu.cycle;
+
+            // If we're on a visible or pre-render scanline and just hit or passed cycle 260
+            if (old_scanline < 240 || old_scanline == 261) && (old_cycle < 260 && new_cycle >= 260)
+            {
+                drop(ppu); // Release the borrow before calling the mapper
+                self.mem.ppu_cycle_260(old_scanline);
+            }
+
+            result
         };
 
         // Cycle the APU
