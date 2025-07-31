@@ -105,42 +105,52 @@ fn render_background(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
     let ppu_ref = ppu.borrow();
 
     let pattern_table_base = ppu_ref.ctrl_background_pattern_addr();
+
+    // Use the scroll register values that the game writes
+    let scroll_x = ppu_ref.get_scroll_x() as usize;
+    let scroll_y = ppu_ref.get_scroll_y() as usize;
+    let fine_x = ppu_ref.get_fine_x() as usize;
+
+    // Get the current nametable from PPUCTRL
     let base_nametable = ppu_ref.ppu_ctrl & 0x03;
+
     drop(ppu_ref); // Release the borrow
+
+    // Calculate starting tile positions from scroll values
+    let start_tile_x = scroll_x / 8;
+    let start_tile_y = scroll_y / 8;
+    let pixel_offset_x = scroll_x % 8;
+    let pixel_offset_y = scroll_y % 8;
 
     // We need to draw 33x31 tiles to cover the screen plus scrolling
     for screen_tile_y in 0..31 {
-        // Use per-scanline scroll values
-        let scanline = screen_tile_y * 8; // Each tile is 8 pixels high
-        let scanline = scanline.min(239); // Clamp to visible scanlines
-        let ppu = mem.ppu();
-        let ppu_ref = ppu.borrow();
-        let scroll_x = ppu_ref.get_scanline_scroll_x(scanline) as usize;
-        let scroll_y = ppu_ref.get_scanline_scroll_y(scanline) as usize;
-        let fine_x = ppu_ref.get_scanline_fine_x(scanline) as usize;
-        drop(ppu_ref);
-
-        let start_tile_x = scroll_x / 8;
-        let start_tile_y = scroll_y / 8;
-        let pixel_offset_x = scroll_x % 8;
-        let pixel_offset_y = scroll_y % 8;
-
         for screen_tile_x in 0..33 {
             // Calculate the tile coordinates in the scrolled world
             let world_tile_x = start_tile_x + screen_tile_x;
             let world_tile_y = start_tile_y + screen_tile_y;
 
             // Determine which nametable to use based on mirroring
+            // NES has 4 nametables but only 2 are physically present, mirrored
             let nt_x = (world_tile_x / 32) % 2;
             let nt_y = (world_tile_y / 30) % 2;
+
+            // Calculate nametable ID - use the base nametable and add offsets
+            // This handles the standard NES mirroring pattern
             let nametable_id = (base_nametable + (nt_x as u8) + ((nt_y * 2) as u8)) % 4;
+
+            // Calculate tile position within the selected nametable
             let tile_x = world_tile_x % 32;
             let tile_y = world_tile_y % 30;
+
             let nametable_addr = get_nametable_base_addr(nametable_id as u8);
 
+            // Calculate screen position with proper offset
+            // Each tile is 8x8 pixels, and we need to account for scroll offsets
+            // The screen coordinates should be positive and represent the actual pixel position on screen
             let screen_x = (screen_tile_x * 8) as isize - pixel_offset_x as isize - fine_x as isize;
             let screen_y = (screen_tile_y * 8) as isize - pixel_offset_y as isize;
 
+            // Ensure we only render tiles that are at least partially visible
             if screen_x < -8 || screen_x >= 256 || screen_y < -8 || screen_y >= 240 {
                 continue;
             }
