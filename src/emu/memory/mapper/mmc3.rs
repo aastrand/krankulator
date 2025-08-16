@@ -3,6 +3,8 @@ use super::super::super::io;
 use super::super::ppu;
 use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
 use crate::emu::memory::MemoryMapper;
+#[allow(unused_imports)]
+use crate::util::get_status_str;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -31,6 +33,9 @@ pub struct MMC3Mapper {
     irq_enable: bool,
     irq_reload: bool,
     irq_pending: bool,
+
+    // A12 tracking for IRQ
+    a12_state: bool,
 
     // Mirroring
     mirroring: NametableMirror,
@@ -78,6 +83,7 @@ impl MMC3Mapper {
             }
             (chr_mem, false)
         };
+        // Creating new MMC3Mapper instance
         MMC3Mapper {
             ppu: Rc::new(RefCell::new(ppu::PPU::new())),
             apu: Rc::new(RefCell::new(apu::APU::new())),
@@ -99,6 +105,7 @@ impl MMC3Mapper {
             irq_enable: false,
             irq_reload: false,
             irq_pending: false,
+            a12_state: false,
             // Initialize mirroring from iNES header flags
             mirroring: if flags & 1 == 0 {
                 NametableMirror::Horizontal
@@ -246,6 +253,46 @@ impl MMC3Mapper {
         let offset = addr as usize % CHR_BANK_SIZE;
         (bank_idx, offset)
     }
+
+    fn check_a12_transition(&mut self, addr: u16) {
+        // A12 is bit 12 of the PPU address (0x1000)
+        let current_a12 = (addr & 0x1000) != 0;
+
+        // Clock IRQ counter on A12 rising edge (low to high transition)
+        if !self.a12_state && current_a12 {
+            //println!("A12 transition: 0->1 at addr {:04X}, clocking IRQ counter (was {})", addr, self.irq_counter);
+            self.clock_irq_counter();
+        }
+
+        self.a12_state = current_a12;
+    }
+
+    fn clock_irq_counter(&mut self) {
+        // MMC3 counter behavior:
+        // 1. If reload flag is set, reload counter and clear flag (no decrement)
+        // 2. Else if counter is 0, reload counter
+        // 3. Else decrement counter
+        // 4. If counter reaches 0 and IRQ enabled, trigger IRQ
+
+        //println!("Clock IRQ: reload={}, counter={}, latch={}", self.irq_reload, self.irq_counter, self.irq_latch);
+
+        if self.irq_reload {
+            self.irq_counter = self.irq_latch;
+            self.irq_reload = false;
+            //println!("  -> Reloaded counter to {}", self.irq_counter);
+        } else if self.irq_counter == 0 {
+            self.irq_counter = self.irq_latch;
+            //println!("  -> Counter was 0, reloaded to {}", self.irq_counter);
+        } else {
+            self.irq_counter = self.irq_counter.wrapping_sub(1);
+            //println!("  -> Decremented counter to {}", self.irq_counter);
+            // Check for IRQ trigger AFTER decrementing
+            if self.irq_counter == 0 && self.irq_enable {
+                //println!("MMC3: IRQ triggered! counter=0, enabled=true");
+                self.irq_pending = true;
+            }
+        }
+    }
 }
 
 impl MemoryMapper for MMC3Mapper {
@@ -257,7 +304,20 @@ impl MemoryMapper for MMC3Mapper {
                 let ram_addr = addr & 0x07FF;
                 unsafe { *self.cpu_ram.as_ptr().offset(ram_addr as isize) }
             }
-            0x2000..=0x2007 => self.ppu.borrow_mut().read(addr, self as _),
+            0x2000..=0x2007 => {
+                let result = self.ppu.borrow_mut().read(addr, self as _);
+
+                // Check for A12 transitions when PPUDATA is read
+                if addr == 0x2007 {
+                    let ppu_addr = {
+                        let ppu = self.ppu.borrow();
+                        ppu.get_current_vram_addr()
+                    };
+                    self.ppu_a12_transition(ppu_addr);
+                }
+
+                result
+            }
             0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().read(addr),
             0x4014 => self.ppu.borrow_mut().read(addr, self as _),
             0x4016 => self.controllers[0].poll(),
@@ -292,6 +352,22 @@ impl MemoryMapper for MMC3Mapper {
                         .write(addr, value, self.cpu_ram.as_mut_ptr());
                 if let Some((addr, value)) = should_write {
                     self.ppu_write(addr, value);
+                }
+
+                // Check for A12 transitions when PPUADDR is written or PPUDATA is accessed
+                if addr == 0x2006 || addr == 0x2007 {
+                    // For PPUADDR, we need to check A12 transitions on each write
+                    // The internal PPU address register 't' changes on each PPUADDR write
+                    let ppu_addr = if addr == 0x2006 {
+                        // For PPUADDR, use the temporary address register that gets updated immediately
+                        let ppu = self.ppu.borrow();
+                        ppu.get_temp_vram_addr()
+                    } else {
+                        // For PPUDATA, use the current VRAM address
+                        let ppu = self.ppu.borrow();
+                        ppu.get_current_vram_addr()
+                    };
+                    self.ppu_a12_transition(ppu_addr);
                 }
             }
             0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().write(addr, value),
@@ -346,20 +422,23 @@ impl MemoryMapper for MMC3Mapper {
             0xC000..=0xDFFF => {
                 if addr & 1 == 0 {
                     // IRQ latch - set the value to reload the counter with
+                    //println!("MMC3: Setting IRQ latch to {} (was {})", value, self.irq_latch);
                     self.irq_latch = value;
                 } else {
                     // IRQ reload - reload the counter on next tick
+                    //println!("MMC3: Setting IRQ reload flag");
                     self.irq_reload = true;
-                    self.irq_counter = 0; // Clear counter immediately
                 }
             }
             0xE000..=0xFFFF => {
                 if addr & 1 == 0 {
                     // IRQ disable
+                    //println!("MMC3: IRQ disabled at addr {:04X}", addr);
                     self.irq_enable = false;
                     self.irq_pending = false;
                 } else {
                     // IRQ enable
+                    //println!("MMC3: IRQ enabled at addr {:04X}", addr);
                     self.irq_enable = true;
                 }
             }
@@ -474,6 +553,7 @@ impl MemoryMapper for MMC3Mapper {
 
     fn poll_irq(&mut self) -> bool {
         if self.irq_pending {
+            //println!("MMC3: IRQ polled - was pending, clearing");
             self.irq_pending = false;
             true
         } else {
@@ -484,16 +564,73 @@ impl MemoryMapper for MMC3Mapper {
     fn ppu_cycle_260(&mut self, scanline: u16) {
         // MMC3 IRQ counter ticks on cycle 260 of visible and pre-render scanlines
         if scanline < 240 || scanline == 261 {
-            if self.irq_reload || self.irq_counter == 0 {
-                self.irq_counter = self.irq_latch;
-                self.irq_reload = false;
-            } else {
-                self.irq_counter = self.irq_counter.saturating_sub(1);
-            }
-
-            if self.irq_counter == 0 && self.irq_enable {
-                self.irq_pending = true;
-            }
+            self.clock_irq_counter();
         }
+    }
+
+    fn ppu_a12_transition(&mut self, addr: u16) {
+        // Check for A12 transitions on CHR memory access
+        if addr <= 0x1FFF {
+            self.check_a12_transition(addr);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::emu;
+    use crate::emu::io::loader;
+
+    #[test]
+    fn test_mmc3_clocking() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/mappers/mmc3/1-clocking.nes",
+        )));
+
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n1-clocking\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 80);
+
+        println!("{}", buf);
+        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
+    fn test_mmc3_details() {
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/mappers/mmc3/2-details.nes",
+        )));
+
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run();
+
+        let expected = String::from("\n2-details\n\nPassed\n");
+        let buf = get_status_str(&mut emu, 0x6004, 80);
+
+        println!("{}", buf);
+        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
+
+        assert_eq!(0, emu.mem.cpu_read(0x6000));
+        assert_eq!(expected, buf);
     }
 }

@@ -3,6 +3,8 @@ mod util;
 
 use clap::Parser;
 use emu::io::loader;
+#[allow(unused_imports)]
+use util::get_status_str;
 
 /// Krankulator
 #[derive(Parser, Debug)]
@@ -365,22 +367,6 @@ mod tests {
         } else {
             panic!("{}", "Could not read nestest.log");
         }
-    }
-
-    fn get_status_str(emu: &mut emu::Emulator, addr: u16, len: usize) -> String {
-        let mut buf = String::new();
-        let mut idx = addr;
-        for _ in 0..len {
-            let chr = emu.mem.cpu_read(idx);
-            if chr == 0 {
-                break;
-            } else {
-                buf.push(chr as char);
-            }
-            idx += 1;
-        }
-
-        buf
     }
 
     #[test]

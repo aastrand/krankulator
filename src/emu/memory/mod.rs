@@ -44,6 +44,11 @@ pub trait MemoryMapper {
         // Default implementation does nothing
     }
 
+    // Called when PPU address changes to detect A12 transitions for MMC3
+    fn ppu_a12_transition(&mut self, _addr: u16) {
+        // Default implementation does nothing
+    }
+
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
     }

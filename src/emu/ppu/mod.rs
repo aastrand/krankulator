@@ -354,6 +354,14 @@ impl PPU {
         ret
     }
 
+    pub fn get_current_vram_addr(&self) -> u16 {
+        self.v
+    }
+
+    pub fn get_temp_vram_addr(&self) -> u16 {
+        self.t
+    }
+
     pub fn cycle(&mut self) -> bool {
         // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
         // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
@@ -516,11 +524,11 @@ mod tests {
         let mut ppu = PPU::new();
         let mut cpu_ram = [0u8; 2 * 1024];
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
-        let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
+        let mem = memory::IdentityMapper::new(0);
 
         ppu.write(ADDR_ADDR, 0x82, cpu_ram_ptr);
 
-        ppu.read(STATUS_REG_ADDR, mem);
+        ppu.read(STATUS_REG_ADDR, &mem);
         assert_eq!(ppu.v, 0);
         ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
         assert_eq!(ppu.v, 0);
@@ -534,9 +542,9 @@ mod tests {
         let mut ppu = PPU::new();
         let mut cpu_ram = [0u8; 2 * 1024];
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
-        let mem: &dyn memory::MemoryMapper = &memory::IdentityMapper::new(0);
+        let mem = memory::IdentityMapper::new(0);
 
-        ppu.read(STATUS_REG_ADDR, mem);
+        ppu.read(STATUS_REG_ADDR, &mem);
         ppu.write(ADDR_ADDR, 0x37, cpu_ram_ptr);
         ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
 

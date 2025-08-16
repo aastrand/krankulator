@@ -243,7 +243,6 @@ impl Emulator {
 
             gfx::render(&mut *self.mem, &mut self.buf);
             self.iohandler.render(&self.buf);
-
             thread::sleep(FRAME_BUDGET_MS.saturating_sub(self.last_rendered.elapsed()));
             self.last_rendered = Instant::now();
         }
