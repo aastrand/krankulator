@@ -183,6 +183,29 @@ impl Loader for InesLoader {
                 Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
             }
             4 => Box::new(MMC3Mapper::new(flags, prg_banks, chr_banks)),
+            5 => {
+                // MMC5 expects 8KB PRG banks
+                let mut mmc5_prg_banks = Vec::new();
+                for i in (0..prg_banks.len()).step_by(1) {
+                    // MMC5 uses 8KB banks, but loader provides 16KB banks
+                    // Split each 16KB bank into two 8KB banks
+                    let bank_16k = &prg_banks[i];
+                    let mut bank1_8k = [0; 8 * 1024];
+                    let mut bank2_8k = [0; 8 * 1024];
+                    bank1_8k.copy_from_slice(&bank_16k[0..8192]);
+                    bank2_8k.copy_from_slice(&bank_16k[8192..16384]);
+                    mmc5_prg_banks.push(bank1_8k);
+                    mmc5_prg_banks.push(bank2_8k);
+                }
+                
+                // Convert CHR banks from 8KB to 8KB (no change needed)
+                let mut mmc5_chr_banks = Vec::new();
+                for chr_bank in chr_banks {
+                    mmc5_chr_banks.push(chr_bank);
+                }
+                
+                Box::new(mapper::mmc5::MMC5Mapper::new(flags, mmc5_prg_banks, mmc5_chr_banks))
+            },
             7 => {
                 // AxROM expects 32KB PRG banks
                 let mut axrom_banks = Vec::new();
@@ -200,6 +223,35 @@ impl Loader for InesLoader {
                     axrom_banks.push(bank_32k);
                 }
                 Box::new(mapper::axrom::AxROMMapper::new(flags, axrom_banks))
+            }
+            9 => {
+                // MMC2 expects 8KB PRG banks
+                let mut mmc2_prg_banks = Vec::new();
+                for i in (0..prg_banks.len()).step_by(1) {
+                    // MMC2 uses 8KB banks, but loader provides 16KB banks
+                    // Split each 16KB bank into two 8KB banks
+                    let bank_16k = &prg_banks[i];
+                    let mut bank1_8k = [0; 8 * 1024];
+                    let mut bank2_8k = [0; 8 * 1024];
+                    bank1_8k.copy_from_slice(&bank_16k[0..8192]);
+                    bank2_8k.copy_from_slice(&bank_16k[8192..16384]);
+                    mmc2_prg_banks.push(bank1_8k);
+                    mmc2_prg_banks.push(bank2_8k);
+                }
+                
+                // Convert CHR banks from 8KB to 4KB
+                let mut mmc2_chr_banks = Vec::new();
+                for chr_bank in chr_banks {
+                    // Split 8KB CHR bank into two 4KB banks
+                    let mut chr1_4k = [0; 4 * 1024];
+                    let mut chr2_4k = [0; 4 * 1024];
+                    chr1_4k.copy_from_slice(&chr_bank[0..4096]);
+                    chr2_4k.copy_from_slice(&chr_bank[4096..8192]);
+                    mmc2_chr_banks.push(chr1_4k);
+                    mmc2_chr_banks.push(chr2_4k);
+                }
+                
+                Box::new(mapper::mmc2::MMC2Mapper::new(flags, mmc2_prg_banks, mmc2_chr_banks))
             }
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
