@@ -193,23 +193,35 @@ fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
         let palette_idx = attributes & 0b11;
         let sprite_palette = (palette_idx & 0b0000_0011) + 4;
 
-        let bank: u16 = match tile_size {
-            8 => ppu.ctrl_sprite_pattern_table_addr(),
+        let (bank, actual_tile_idx) = match tile_size {
+            8 => (ppu.ctrl_sprite_pattern_table_addr(), tile_idx),
             16 => {
-                if tile_idx & 0b0000_0001 == 1 {
-                    0x1000
-                } else {
-                    0x0000
-                }
+                // For 8x16 sprites, the pattern table is determined by bit 0 of the tile index
+                // and the tile index should have its LSB cleared for addressing
+                let pattern_table = if tile_idx & 0x01 == 1 { 0x1000 } else { 0x0000 };
+                let tile_index = tile_idx & 0xFE; // Clear LSB
+                (pattern_table, tile_index)
             }
             _ => panic!("Invalid tile size"),
         };
 
-        let tile_offset = (bank + tile_idx * 16) as usize;
-
         for y in 0..tile_size as usize {
-            let upper = mem.ppu_read((y + tile_offset) as u16);
-            let lower = mem.ppu_read((y + 8 + tile_offset) as u16);
+            // For 8x16 sprites, we need to handle two 8x8 tiles stacked vertically
+            let (current_tile_offset, current_y) = if tile_size == 16 {
+                if y < 8 {
+                    // Top 8x8 tile
+                    ((bank + actual_tile_idx * 16) as usize, y)
+                } else {
+                    // Bottom 8x8 tile (next tile in pattern table)
+                    ((bank + (actual_tile_idx + 1) * 16) as usize, y - 8)
+                }
+            } else {
+                // 8x8 sprite
+                ((bank + actual_tile_idx * 16) as usize, y)
+            };
+
+            let upper = mem.ppu_read((current_y + current_tile_offset) as u16);
+            let lower = mem.ppu_read((current_y + 8 + current_tile_offset) as u16);
 
             for x in 0..8 {
                 // Fix bit extraction to match background rendering
