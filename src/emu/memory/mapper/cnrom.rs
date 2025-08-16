@@ -40,7 +40,7 @@ pub struct CNROMMapper {
     // CHR ROM banks
     _chr_banks: Vec<[u8; CNROM_CHR_BANK_SIZE]>,
     selected_chr_bank: usize,
-    
+
     // Current CHR data pointer
     _current_chr_bank: Box<[u8; CNROM_CHR_BANK_SIZE]>,
     chr_ptr: *mut u8,
@@ -65,7 +65,7 @@ impl CNROMMapper {
         }
 
         let mut mem: Box<[u8; MAX_RAM_SIZE]> = Box::new([0; MAX_RAM_SIZE]);
-        
+
         // Load 32KB PRG ROM at $8000-$FFFF
         mem[PRG_ROM_ADDR..PRG_ROM_ADDR + CNROM_PRG_SIZE].clone_from_slice(&prg_rom);
 
@@ -113,7 +113,7 @@ impl CNROMMapper {
         let bank_index = (bank as usize) % self._chr_banks.len();
         if bank_index != self.selected_chr_bank {
             self.selected_chr_bank = bank_index;
-            
+
             // Update the current CHR bank
             self._current_chr_bank = Box::new(self._chr_banks[bank_index]);
             self.chr_ptr = self._current_chr_bank.as_mut_ptr();
@@ -272,7 +272,7 @@ mod tests {
         let chr_bank2 = [2; CNROM_CHR_BANK_SIZE];
         let chr_bank3 = [3; CNROM_CHR_BANK_SIZE];
         let chr_bank4 = [4; CNROM_CHR_BANK_SIZE];
-        
+
         let mut mapper: Box<dyn MemoryMapper> = Box::new(CNROMMapper::new(
             0,
             prg_rom,
@@ -281,7 +281,7 @@ mod tests {
 
         // Initially CHR bank 0 should be selected
         assert_eq!(mapper.ppu_read(0x0000), 1);
-        
+
         // Switch to CHR bank 1
         mapper.cpu_write(0x8000, 1);
         assert_eq!(mapper.ppu_read(0x0000), 2);
@@ -302,16 +302,13 @@ mod tests {
     #[test]
     fn test_cnrom_prg_rom_fixed() {
         let mut prg_rom = [0; CNROM_PRG_SIZE];
-        prg_rom[0] = 0x42;  // At $8000
-        prg_rom[CNROM_PRG_SIZE - 1] = 0x84;  // At $FFFF
-        
+        prg_rom[0] = 0x42; // At $8000
+        prg_rom[CNROM_PRG_SIZE - 1] = 0x84; // At $FFFF
+
         let chr_bank = [0; CNROM_CHR_BANK_SIZE];
-        
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(CNROMMapper::new(
-            0,
-            prg_rom,
-            vec![chr_bank],
-        ));
+
+        let mut mapper: Box<dyn MemoryMapper> =
+            Box::new(CNROMMapper::new(0, prg_rom, vec![chr_bank]));
 
         // PRG ROM should be fixed at $8000-$FFFF
         assert_eq!(mapper.cpu_read(0x8000), 0x42);
@@ -327,16 +324,13 @@ mod tests {
     fn test_cnrom_chr_rom_read_only() {
         let prg_rom = [0; CNROM_PRG_SIZE];
         let chr_bank = [0x55; CNROM_CHR_BANK_SIZE];
-        
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(CNROMMapper::new(
-            0,
-            prg_rom,
-            vec![chr_bank],
-        ));
+
+        let mut mapper: Box<dyn MemoryMapper> =
+            Box::new(CNROMMapper::new(0, prg_rom, vec![chr_bank]));
 
         // CHR ROM should be readable
         assert_eq!(mapper.ppu_read(0x0100), 0x55);
-        
+
         // CHR ROM should be read-only (writes ignored)
         mapper.ppu_write(0x0100, 0xAA);
         assert_eq!(mapper.ppu_read(0x0100), 0x55);
@@ -346,25 +340,19 @@ mod tests {
     fn test_cnrom_mirroring() {
         let prg_rom = [0; CNROM_PRG_SIZE];
         let chr_bank = [0; CNROM_CHR_BANK_SIZE];
-        
+
         // Test vertical mirroring (flags = 0)
-        let mut mapper_v: Box<dyn MemoryMapper> = Box::new(CNROMMapper::new(
-            0,
-            prg_rom,
-            vec![chr_bank],
-        ));
-        
+        let mut mapper_v: Box<dyn MemoryMapper> =
+            Box::new(CNROMMapper::new(0, prg_rom, vec![chr_bank]));
+
         // Test horizontal mirroring (flags = 1)
-        let mut mapper_h: Box<dyn MemoryMapper> = Box::new(CNROMMapper::new(
-            1,
-            prg_rom,
-            vec![chr_bank],
-        ));
+        let mut mapper_h: Box<dyn MemoryMapper> =
+            Box::new(CNROMMapper::new(1, prg_rom, vec![chr_bank]));
 
         // Write to nametable and verify mirroring behavior
         mapper_v.ppu_write(0x2000, 0x10);
         mapper_h.ppu_write(0x2000, 0x20);
-        
+
         // The specific mirroring behavior is handled by the mirror_nametable_addr function
         assert_eq!(mapper_v.ppu_read(0x2000), 0x10);
         assert_eq!(mapper_h.ppu_read(0x2000), 0x20);
