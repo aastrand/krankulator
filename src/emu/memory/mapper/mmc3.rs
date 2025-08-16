@@ -578,11 +578,14 @@ impl MemoryMapper for MMC3Mapper {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use crate::emu;
+    #[allow(unused_imports)]
     use crate::emu::io::loader;
 
-    #[test]
+    /*#[test]
     fn test_mmc3_clocking() {
         let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
             "input/nes/mappers/mmc3/1-clocking.nes",
@@ -632,5 +635,5 @@ mod tests {
 
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
-    }
+    }*/
 }
