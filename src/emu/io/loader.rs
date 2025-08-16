@@ -166,6 +166,22 @@ impl Loader for InesLoader {
             )),
             1 => Box::new(mapper::mmc1::MMC1Mapper::new(flags, prg_banks, chr_banks)),
             2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
+            3 => {
+                // CNROM expects 32KB PRG ROM and CHR banks
+                let mut prg_32k = [0; 32 * 1024];
+                if prg_banks.len() >= 2 {
+                    // Combine two 16KB banks into 32KB
+                    prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
+                    prg_32k[16384..32768].copy_from_slice(&prg_banks[1]);
+                } else if prg_banks.len() == 1 {
+                    // Mirror single 16KB bank
+                    prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
+                    prg_32k[16384..32768].copy_from_slice(&prg_banks[0]);
+                } else {
+                    panic!("CNROM requires at least one PRG bank");
+                }
+                Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
+            },
             4 => Box::new(MMC3Mapper::new(flags, prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
