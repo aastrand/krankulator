@@ -448,6 +448,9 @@ mod tests {
         fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
             panic!()
         }
+        fn poll_irq(&mut self) -> bool {
+            false
+        }
     }
     // In all tests, call apu.cycle(&mut mem)
 

@@ -1,5 +1,6 @@
 use super::super::memory;
 use super::super::{super::util, memory::mapper};
+use crate::emu::memory::mapper::mmc3::MMC3Mapper;
 
 extern crate hex;
 
@@ -90,8 +91,8 @@ impl Loader for InesLoader {
         let num_prg_blocks = bytes[4];
         let num_chr_blocks = bytes[5];
         let flags = bytes[6];
-        let prg_ram_units = bytes[8];
         let mapper = flags >> 4;
+        let prg_ram_units = bytes[8];
         let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
@@ -164,6 +165,7 @@ impl Loader for InesLoader {
                 chr_banks.pop(),
             )),
             1 => Box::new(mapper::mmc1::MMC1Mapper::new(flags, prg_banks, chr_banks)),
+            4 => Box::new(MMC3Mapper::new(flags, prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 

@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
+use crate::emu;
+
 pub fn strip_hex_str(s: &str) -> &str {
     if s.len() > 1 {
         match &s[..2] {
@@ -56,6 +58,23 @@ pub fn filename(s: &str) -> &str {
     };
 
     &s[i..]
+}
+
+#[allow(dead_code)]
+pub fn get_status_str(emu: &mut emu::Emulator, addr: u16, len: usize) -> String {
+    let mut buf = String::new();
+    let mut idx = addr;
+    for _ in 0..len {
+        let chr = emu.mem.cpu_read(idx);
+        if chr == 0 {
+            break;
+        } else {
+            buf.push(chr as char);
+        }
+        idx += 1;
+    }
+
+    buf
 }
 
 #[cfg(test)]

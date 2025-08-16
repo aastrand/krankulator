@@ -37,6 +37,17 @@ pub trait MemoryMapper {
     fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
     fn apu(&self) -> Rc<RefCell<apu::APU>>;
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
+    fn poll_irq(&mut self) -> bool;
+
+    // Called on PPU cycle 260 of visible and pre-render scanlines for MMC3 IRQ counter
+    fn ppu_cycle_260(&mut self, _scanline: u16) {
+        // Default implementation does nothing
+    }
+
+    // Called when PPU address changes to detect A12 transitions for MMC3
+    fn ppu_a12_transition(&mut self, _addr: u16) {
+        // Default implementation does nothing
+    }
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
@@ -167,6 +178,10 @@ impl MemoryMapper for IdentityMapper {
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
         &mut self.controllers
+    }
+
+    fn poll_irq(&mut self) -> bool {
+        false
     }
 }
 
