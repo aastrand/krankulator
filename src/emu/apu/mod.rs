@@ -309,12 +309,16 @@ impl APU {
                 self.noise.clock_envelope();
                 self.triangle.clock_linear_counter();
             }
-            // Clock length counters on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
+            // Clock length counters and sweep on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
             if (mode == 0 && (step == 0 || step == 2)) || (mode == 1 && step <= 3) {
                 self.pulse1.clock_length_counter();
                 self.pulse2.clock_length_counter();
                 self.triangle.clock_length_counter();
                 self.noise.clock_length_counter();
+
+                // Clock sweep units (same timing as length counters)
+                self.pulse1.clock_sweep();
+                self.pulse2.clock_sweep();
             }
             // Set frame IRQ at the correct time (mode 0, step 0, IRQ not inhibited)
             if mode == 0 && step == 0 && !self.frame_counter.irq_inhibit() {
