@@ -165,6 +165,7 @@ impl Loader for InesLoader {
                 chr_banks.pop(),
             )),
             1 => Box::new(mapper::mmc1::MMC1Mapper::new(flags, prg_banks, chr_banks)),
+            2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
             4 => Box::new(MMC3Mapper::new(flags, prg_banks, chr_banks)),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };

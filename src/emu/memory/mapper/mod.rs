@@ -1,6 +1,7 @@
 pub mod mmc1;
 pub mod mmc3;
 pub mod nrom;
+pub mod uxrom;
 
 pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 pub const NAMETABLE_ALIGNMENT_BIT: u8 = 0b0000_0001;
