@@ -105,10 +105,6 @@ pub struct PPU {
     ppu_status: u8,
     oam_addr: u8,
 
-    // Keep these for backward compatibility but they're now handled by internal registers
-    pub ppu_scroll_positions: [u8; 2],
-    ppu_scroll_idx: usize,
-
     ppu_addr: [u8; 2],
     ppu_addr_idx: usize,
     ppu_data_valid: bool,
@@ -139,9 +135,6 @@ impl PPU {
             ppu_mask: 0,
             ppu_status: 0x0,
             oam_addr: 0,
-
-            ppu_scroll_positions: [0; 2],
-            ppu_scroll_idx: 0,
 
             ppu_addr: [0; 2],
             ppu_addr_idx: 0,
@@ -193,7 +186,7 @@ impl PPU {
                 self.ppu_addr_idx = 0;
                 self.ppu_addr[0] = 0;
                 self.ppu_addr[1] = 0;
-                self.ppu_scroll_idx = 0;
+                self.ppu_data_valid = false;
 
                 status
             }
@@ -276,23 +269,14 @@ impl PPU {
                     // First write (X scroll)
                     self.t = (self.t & 0xFFE0) | ((value >> 3) as u16);
                     self.x = value & 0x07;
-
-                    // Legacy support
-                    self.ppu_scroll_positions[0] = value;
                 } else {
                     // Second write (Y scroll)
                     self.t = (self.t & 0x8C1F)
                         | (((value & 0x07) as u16) << 12)
                         | (((value & 0xF8) as u16) << 2);
-
-                    // Legacy support
-                    self.ppu_scroll_positions[1] = value;
                 }
 
                 self.w = !self.w;
-
-                // Legacy support
-                self.ppu_scroll_idx = if self.w { 1 } else { 0 };
             }
             ADDR_ADDR => {
                 if !self.w {
@@ -419,6 +403,49 @@ impl PPU {
                     if self.cycle == 257 {
                         self.v = (self.v & 0x7BE0) | (self.t & 0x041F);
                     }
+
+                    // During dots 280-304 of the pre-render scanline, copy vertical bits from t to v
+                    if self.scanline == PRE_RENDER_SCANLINE
+                        && self.cycle >= 280
+                        && self.cycle <= 304
+                    {
+                        self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
+                    }
+
+                    // Increment Y scroll at the end of each scanline
+                    if self.cycle == 256 {
+                        // Increment coarse Y
+                        if (self.v & 0x7000) == 0x7000 {
+                            // Fine Y overflow, increment coarse Y
+                            self.v &= 0x8FFF; // Clear fine Y
+                            let coarse_y = (self.v & 0x3E0) >> 5;
+                            if coarse_y == 29 {
+                                // Coarse Y overflow, switch nametable
+                                self.v &= 0x7BFF; // Clear coarse Y
+                                self.v ^= 0x0800; // Toggle nametable Y bit
+                            } else {
+                                self.v += 0x20; // Increment coarse Y
+                            }
+                        } else {
+                            // Increment fine Y
+                            self.v += 0x1000;
+                        }
+                    }
+
+                    // Increment horizontal scroll every 8 dots across the scanline
+                    // This happens at dots 328, 336, 8, 16, 24... 240, 248, 256
+                    if self.cycle >= 328
+                        || (self.cycle >= 8 && self.cycle <= 256 && self.cycle % 8 == 0)
+                    {
+                        // Increment coarse X
+                        if (self.v & 0x1F) == 0x1F {
+                            // Coarse X overflow, switch nametable
+                            self.v &= 0x7FE0; // Clear coarse X
+                            self.v ^= 0x0400; // Toggle nametable X bit
+                        } else {
+                            self.v += 1; // Increment coarse X
+                        }
+                    }
                 }
             }
 
@@ -486,16 +513,27 @@ impl PPU {
     }
 
     // New methods to access scroll information for rendering
+    // Based on NES documentation: t register contains the address of the top-left onscreen tile
     pub fn get_scroll_x(&self) -> u8 {
-        self.ppu_scroll_positions[0]
+        // Extract coarse X scroll from internal t register
+        // t register bits 0-4 contain coarse X (tile X coordinate)
+        ((self.t & 0x1F) << 3) as u8
     }
 
     pub fn get_scroll_y(&self) -> u8 {
-        self.ppu_scroll_positions[1]
+        // Extract coarse Y scroll from internal t register
+        // t register bits 5-9 contain coarse Y (tile Y coordinate)
+        ((self.t & 0x3E0) >> 2) as u8
     }
 
     pub fn get_fine_x(&self) -> u8 {
         self.x
+    }
+
+    pub fn get_fine_y(&self) -> u8 {
+        // Extract fine Y scroll from internal t register
+        // t register bits 12-14 contain fine Y
+        ((self.t & 0x7000) >> 12) as u8
     }
 }
 

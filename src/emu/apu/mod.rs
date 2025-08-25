@@ -405,10 +405,6 @@ impl APU {
         }
         if self.mute_mask & 0x04 != 0 {
             triangle_sample = 0.0;
-            // Debug: show when triangle is muted
-            if self.sample_index % 1000 == 0 {
-                println!("Triangle muted by override (mask: {:02X})", self.mute_mask);
-            }
         }
         if self.mute_mask & 0x08 != 0 {
             noise_sample = 0.0;

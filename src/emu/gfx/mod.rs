@@ -106,64 +106,66 @@ fn render_background(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
 
     let pattern_table_base = ppu_ref.ctrl_background_pattern_addr();
 
-    // Use the scroll register values that the game writes
-    let scroll_x = ppu_ref.get_scroll_x() as usize;
-    let scroll_y = ppu_ref.get_scroll_y() as usize;
-    let fine_x = ppu_ref.get_fine_x() as usize;
+    // Get scroll values from PPU internal registers
+    // These represent the tile coordinates of the top-left visible tile
+    let scroll_x = ppu_ref.get_scroll_x() as i32;
+    let scroll_y = ppu_ref.get_scroll_y() as i32;
+    let fine_x = ppu_ref.get_fine_x() as i32;
+    let fine_y = ppu_ref.get_fine_y() as i32;
 
     // Get the current nametable from PPUCTRL
     let base_nametable = ppu_ref.ppu_ctrl & 0x03;
 
     drop(ppu_ref); // Release the borrow
 
-    // Calculate starting tile positions from scroll values
+    // The scroll values represent tile coordinates, not pixel offsets
+    // We need to render tiles starting from the scrolled position
     let start_tile_x = scroll_x / 8;
     let start_tile_y = scroll_y / 8;
     let pixel_offset_x = scroll_x % 8;
     let pixel_offset_y = scroll_y % 8;
 
-    // We need to draw 33x31 tiles to cover the screen plus scrolling
+    // We need to draw 34x31 tiles to cover the screen plus scrolling
     for screen_tile_y in 0..31 {
-        for screen_tile_x in 0..33 {
+        for screen_tile_x in 0..34 {
             // Calculate the tile coordinates in the scrolled world
+            // These represent which tiles from the nametable we need to render
             let world_tile_x = start_tile_x + screen_tile_x;
             let world_tile_y = start_tile_y + screen_tile_y;
 
             // Determine which nametable to use based on mirroring
             // NES has 4 nametables but only 2 are physically present, mirrored
-            let nt_x = (world_tile_x / 32) % 2;
-            let nt_y = (world_tile_y / 30) % 2;
+            let nt_x = if world_tile_x >= 32 { 1 } else { 0 };
+            let nt_y = if world_tile_y >= 30 { 1 } else { 0 };
 
             // Calculate nametable ID - use the base nametable and add offsets
-            // This handles the standard NES mirroring pattern
-            let nametable_id = (base_nametable + (nt_x as u8) + ((nt_y * 2) as u8)) % 4;
+            let nametable_id = (base_nametable + nt_x + (nt_y * 2)) % 4;
 
             // Calculate tile position within the selected nametable
-            let tile_x = world_tile_x % 32;
-            let tile_y = world_tile_y % 30;
+            let tile_x = ((world_tile_x % 32) + 32) % 32;
+            let tile_y = ((world_tile_y % 30) + 30) % 30;
 
             let nametable_addr = get_nametable_base_addr(nametable_id as u8);
 
-            // Calculate screen position with proper offset
+            // Calculate screen position
             // Each tile is 8x8 pixels, and we need to account for scroll offsets
-            // The screen coordinates should be positive and represent the actual pixel position on screen
-            let screen_x = (screen_tile_x * 8) as isize - pixel_offset_x as isize - fine_x as isize;
-            let screen_y = (screen_tile_y * 8) as isize - pixel_offset_y as isize;
+            let screen_x = (screen_tile_x * 8) as i32 - pixel_offset_x - fine_x;
+            let screen_y = (screen_tile_y * 8) as i32 - pixel_offset_y - fine_y;
 
             // Ensure we only render tiles that are at least partially visible
-            if screen_x < -8 || screen_x >= 256 || screen_y < -8 || screen_y >= 240 {
+            if screen_x < -8 || screen_x >= 264 || screen_y < -8 || screen_y >= 248 {
                 continue;
             }
 
             render_tile(
                 mem,
                 buf,
-                tile_x,
-                tile_y,
+                tile_x as usize,
+                tile_y as usize,
                 nametable_addr,
                 pattern_table_base,
-                screen_x,
-                screen_y,
+                screen_x as isize,
+                screen_y as isize,
             );
         }
     }
@@ -261,6 +263,7 @@ fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
                         let background_color = palette::PALETTE[background_color_index];
 
                         // If the background pixel is the universal background color, it's transparent
+                        // Also check if it's the same as the background color (meaning no tile was drawn there)
                         if background_pixel == background_color {
                             buf.set_pixel(pixel_x, pixel_y, rgb);
                         }
