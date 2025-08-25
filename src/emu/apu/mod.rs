@@ -24,11 +24,13 @@ pub struct APU {
     // Status
     status: u8,
     enabled_channels: u8,
+    // Debug override mute independent of $4015 (bit0..bit4: p1,p2,tri,noise,dmc)
+    mute_mask: u8,
 }
 
 impl APU {
     pub fn new() -> Self {
-        Self {
+        let mut apu = Self {
             pulse1: PulseChannel::new(0),
             pulse2: PulseChannel::new(1),
             triangle: TriangleChannel::new(),
@@ -42,7 +44,50 @@ impl APU {
 
             status: 0,
             enabled_channels: 0,
+            mute_mask: 0,
+        };
+        apu.reset();
+        apu
+    }
+
+    pub fn reset(&mut self) {
+        self.pulse1.hard_reset();
+        self.pulse2.hard_reset();
+        self.triangle.hard_reset();
+        self.noise.hard_reset();
+        self.dmc.hard_reset();
+        self.frame_counter = FrameCounter::new();
+        self.sample_index = 0;
+        self.cycles_since_sample = 0;
+        self.status = 0;
+        self.enabled_channels = 0;
+        self.mute_mask = 0;
+        for s in &mut self.sample_buffer {
+            *s = 0.0;
         }
+    }
+
+    // Public API for UI to control per-channel mute without touching $4015
+    pub fn set_master_mute(&mut self, muted: bool) {
+        self.mute_mask = if muted { 0x1F } else { 0x00 };
+        // println!("APU: MASTER {}", if muted { "MUTED" } else { "ENABLED" });
+    }
+
+    pub fn get_master_mute(&self) -> bool {
+        self.mute_mask == 0x1F
+    }
+
+    pub fn toggle_mute_bit(&mut self, bit: u8, label: &str) {
+        let old_mask = self.mute_mask;
+        self.mute_mask ^= bit;
+        let now_muted = self.mute_mask & bit != 0;
+        println!(
+            "APU: {} {} (mask: {:02X} -> {:02X})",
+            label,
+            if now_muted { "MUTED" } else { "ENABLED" },
+            old_mask,
+            self.mute_mask
+        );
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -78,7 +123,7 @@ impl APU {
 
     pub fn write(&mut self, addr: u16, value: u8) {
         // Debug: log all APU register writes
-        //println!("APU write: ${:04X} = {:02X}", addr, value);
+        // println!("APU write: ${:04X} = {:02X}", addr, value);
 
         match addr {
             // Pulse 1
@@ -240,24 +285,14 @@ impl APU {
 
             // Status
             0x4015 => {
-                let old_enabled = self.enabled_channels;
                 self.enabled_channels = value;
-
-                // Only print when there are actual changes
-                if old_enabled != value {
-                    //println!("APU $4015 write: value = {:02X}", value);
-                    //println!("  pulse1 enable: {}", value & 0x01 != 0);
-                    //println!("  pulse2 enable: {}", value & 0x02 != 0);
-                    //println!("  triangle enable: {}", value & 0x04 != 0);
-                    //println!("  noise enable: {}", value & 0x08 != 0);
-                    //println!("  dmc enable: {}", value & 0x10 != 0);
-                }
 
                 self.pulse1.set_enabled(value & 0x01 != 0);
                 self.pulse2.set_enabled(value & 0x02 != 0);
                 self.triangle.set_enabled(value & 0x04 != 0);
                 self.noise.set_enabled(value & 0x08 != 0);
                 self.dmc.set_enabled(value & 0x10 != 0);
+
                 // Clear DMC IRQ on $4015 write (as per NES APU)
                 self.dmc.clear_irq();
             }
@@ -339,7 +374,10 @@ impl APU {
         // Cycle channels
         self.pulse1.cycle();
         self.pulse2.cycle();
-        self.triangle.cycle();
+        // Only cycle triangle if it's actually enabled and active
+        if self.triangle.is_enabled() && self.triangle.get_length_counter() > 0 {
+            self.triangle.cycle();
+        }
         self.noise.cycle();
         self.dmc.cycle(memory);
 
@@ -352,24 +390,32 @@ impl APU {
     }
 
     fn generate_sample(&mut self) {
-        let pulse1_sample = self.pulse1.get_sample();
-        let pulse2_sample = self.pulse2.get_sample();
-        let triangle_sample = self.triangle.get_sample();
-        let noise_sample = self.noise.get_sample();
-        let dmc_sample = self.dmc.get_sample();
+        let mut pulse1_sample = self.pulse1.get_sample();
+        let mut pulse2_sample = self.pulse2.get_sample();
+        let mut triangle_sample = self.triangle.get_sample();
+        let mut noise_sample = self.noise.get_sample();
+        let mut dmc_sample = self.dmc.get_sample();
 
-        // Debug: print individual channel samples and states (less frequently)
-        /*if self.sample_index % 10000 == 0 {
-            // Only print every 10000th sample to avoid spam
-            println!(
-                "APU Debug - Pulse1: {} (enabled: {}, len: {}), Pulse2: {} (enabled: {}, len: {}), Triangle: {} (enabled: {}, len: {}), Noise: {} (enabled: {}, len: {}), DMC: {} (enabled: {})",
-                pulse1_sample, self.pulse1.is_enabled(), self.pulse1.get_length_counter(),
-                pulse2_sample, self.pulse2.is_enabled(), self.pulse2.get_length_counter(),
-                triangle_sample, self.triangle.is_enabled(), self.triangle.get_length_counter(),
-                noise_sample, self.noise.is_enabled(), self.noise.get_length_counter(),
-                dmc_sample, self.dmc.is_enabled()
-            );
-        }*/
+        // Apply debug mute overrides
+        if self.mute_mask & 0x01 != 0 {
+            pulse1_sample = 0.0;
+        }
+        if self.mute_mask & 0x02 != 0 {
+            pulse2_sample = 0.0;
+        }
+        if self.mute_mask & 0x04 != 0 {
+            triangle_sample = 0.0;
+            // Debug: show when triangle is muted
+            if self.sample_index % 1000 == 0 {
+                println!("Triangle muted by override (mask: {:02X})", self.mute_mask);
+            }
+        }
+        if self.mute_mask & 0x08 != 0 {
+            noise_sample = 0.0;
+        }
+        if self.mute_mask & 0x10 != 0 {
+            dmc_sample = 0.0;
+        }
 
         // Mix all channels
         let mixed_sample = self.mix_channels(
@@ -379,19 +425,6 @@ impl APU {
             noise_sample,
             dmc_sample,
         );
-        // print all pre-mix samples
-        /*
-        println!("Pulse1: {}", pulse1_sample);
-        println!("Pulse2: {}", pulse2_sample);
-        println!("Triangle: {}", triangle_sample);
-        println!("Noise: {}", noise_sample);
-        println!("DMC: {}", dmc_sample);
-        */
-
-        // Debug: check if we're generating any samples (less frequently)
-        if mixed_sample != 0.0 && self.sample_index % 10000 == 0 {
-            //println!("APU generating sample: {}", mixed_sample);
-        }
 
         // Store in buffer
         if self.sample_index < self.sample_buffer.len() {

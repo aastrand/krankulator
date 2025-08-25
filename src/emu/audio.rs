@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 pub trait AudioBackend {
     fn push_samples(&self, samples: &[f32]);
+    fn clear(&self);
 }
 
 pub struct AudioOutput {
@@ -39,6 +40,11 @@ impl AudioBackend for AudioOutput {
         let mut buf = self.buffer.lock().unwrap();
         buf.extend_from_slice(samples);
     }
+
+    fn clear(&self) {
+        let mut buf = self.buffer.lock().unwrap();
+        buf.clear();
+    }
 }
 
 pub struct SilentAudioOutput;
@@ -51,6 +57,10 @@ impl SilentAudioOutput {
 
 impl AudioBackend for SilentAudioOutput {
     fn push_samples(&self, _samples: &[f32]) {
+        // Do nothing
+    }
+
+    fn clear(&self) {
         // Do nothing
     }
 }

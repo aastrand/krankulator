@@ -66,6 +66,29 @@ impl PulseChannel {
         }
     }
 
+    pub fn hard_reset(&mut self) {
+        self.duty_cycle = 0;
+        self.duty_value = 0;
+        self.duty_step = 0;
+        self.timer = 0;
+        self.timer_value = 0;
+        self.length_counter = 0;
+        self.length_counter_halt = false;
+        self.volume = 0;
+        self.constant_volume = false;
+        self.envelope_start = false;
+        self.envelope_divider = 0;
+        self.envelope_decay_level = 0;
+        self.sweep_enabled = false;
+        self.sweep_period = 0;
+        self.sweep_shift = 0;
+        self.sweep_negate = false;
+        self.sweep_reload = false;
+        self.sweep_divider = 0;
+        self.enabled = false;
+        self.output = 0.0;
+    }
+
     pub fn set_control(&mut self, value: u8) {
         self.duty_cycle = (value >> 6) & 3;
         self.length_counter_halt = (value >> 5) & 1 != 0;

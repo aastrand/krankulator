@@ -57,6 +57,25 @@ impl DmcChannel {
         }
     }
 
+    pub fn hard_reset(&mut self) {
+        self.control = 0;
+        self.direct_load = 0;
+        self.sample_address = 0;
+        self.sample_length = 0;
+        self.timer = 0;
+        self.timer_value = 0;
+        self.enabled = false;
+        self.sample_buffer = 0;
+        self.sample_buffer_empty = true;
+        self.bits_remaining = 0;
+        self.current_address = 0;
+        self.bytes_remaining = 0;
+        self.output_level = 0;
+        self.output = 0.0;
+        self.irq_enabled = false;
+        self.irq_pending = false;
+    }
+
     pub fn set_control(&mut self, value: u8) {
         self.control = value;
         let irq_enable = (value >> 7) & 1 != 0;
@@ -187,7 +206,7 @@ impl DmcChannel {
             return;
         }
 
-        // Convert 7-bit output level to float
+        // Convert 7-bit output level to float centered at 0
         self.output = (self.output_level as f32 - 64.0) / 64.0;
     }
 

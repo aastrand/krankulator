@@ -19,7 +19,7 @@ pub struct TriangleChannel {
 
 impl TriangleChannel {
     pub fn new() -> Self {
-        Self {
+        let mut triangle = Self {
             control: 0,
             linear_counter: 0,
             linear_counter_reload: 0,
@@ -35,7 +35,28 @@ impl TriangleChannel {
 
             step: 0,
             output: 0.0,
-        }
+        };
+
+        // Ensure timer_value is valid
+        triangle.timer_value = triangle.timer;
+        triangle
+    }
+
+    pub fn hard_reset(&mut self) {
+        self.control = 0;
+        self.linear_counter = 0;
+        self.linear_counter_reload = 0;
+        self.linear_counter_reload_flag = false;
+        self.timer = 0;
+        self.timer_value = 0;
+        self.length_counter = 0;
+        self.length_counter_halt = false;
+        self.enabled = false;
+        self.step = 0;
+        self.output = 0.0;
+
+        // Ensure all output is completely zeroed
+        self.output = 0.0;
     }
 
     pub fn set_control(&mut self, value: u8) {
@@ -46,10 +67,21 @@ impl TriangleChannel {
 
     pub fn set_timer_low(&mut self, value: u8) {
         self.timer = (self.timer & 0xFF00) | value as u16;
+        self.timer_value = self.timer;
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
-        self.timer = (self.timer & 0x00FF) | ((value & 7) as u16) << 8;
+        // Timer is 11 bits: (high & 0x07) << 8 | low
+        let new_timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
+
+        // Allow timer to be 0 (silent) or >= 2 (valid frequency)
+        if new_timer == 1 {
+            // Timer value 1 is invalid in real NES, set to 0 (silent)
+            self.timer = 0;
+        } else {
+            self.timer = new_timer;
+        }
+
         self.timer_value = self.timer;
 
         if self.enabled {
@@ -63,38 +95,55 @@ impl TriangleChannel {
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
+            self.linear_counter = 0;
+            self.linear_counter_reload = 0;
+            self.linear_counter_reload_flag = false;
+            self.step = 0;
+            self.output = 0.0;
+            self.timer_value = 0;
+        } else {
+            // When enabled, reload linear counter
+            self.linear_counter_reload_flag = true;
         }
-        // Do NOT reload length counter here!
-        // self.linear_counter_reload_flag = true; // (optional, only if linear counter should restart on enable)
     }
 
     pub fn cycle(&mut self) {
-        if self.timer_value == 0 {
-            self.timer_value = self.timer;
-            if self.linear_counter > 0 && self.length_counter > 0 {
-                self.step = (self.step + 1) % 32;
-            }
-        } else {
-            self.timer_value -= 1;
-        }
-
-        // Generate output
-        self.generate_output();
-    }
-
-    fn generate_output(&mut self) {
+        // Only process if channel is active
         if !self.enabled || self.length_counter == 0 || self.linear_counter == 0 {
+            // Ensure output is zero when inactive
             self.output = 0.0;
             return;
         }
 
-        // Triangle wave pattern
-        let triangle_value = TRIANGLE_WAVE[self.step as usize];
-        self.output = (triangle_value as f32 - 7.5) / 7.5; // Normalize to [-1.0, 1.0]
+        // Prevent infinite loop if timer is 0
+        if self.timer == 0 {
+            self.output = 0.0;
+            return;
+        }
+
+        if self.timer_value == 0 {
+            self.timer_value = self.timer;
+            self.step = (self.step + 1) % 32;
+            self.generate_output();
+        } else {
+            self.timer_value -= 1;
+        }
     }
 
+    fn generate_output(&mut self) {
+        // Triangle wave pattern
+        let triangle_value = TRIANGLE_WAVE[self.step as usize];
+        // Normalize to [-1.0, 1.0]
+        self.output = (triangle_value as f32 - 7.5) / 7.5;
+    }
+
+    // Ensure output is zero when channel is inactive
     pub fn get_sample(&self) -> f32 {
-        self.output
+        if !self.enabled || self.length_counter == 0 || self.linear_counter == 0 {
+            0.0
+        } else {
+            self.output
+        }
     }
 
     pub fn get_length_counter(&self) -> u8 {
@@ -102,6 +151,11 @@ impl TriangleChannel {
     }
 
     pub fn clock_linear_counter(&mut self) {
+        // Don't update linear counter if channel is disabled
+        if !self.enabled {
+            return;
+        }
+
         if self.linear_counter_reload_flag {
             self.linear_counter = self.linear_counter_reload;
         } else if self.linear_counter > 0 {
@@ -114,12 +168,16 @@ impl TriangleChannel {
     }
 
     pub fn clock_length_counter(&mut self) {
+        // Don't update length counter if channel is disabled
+        if !self.enabled {
+            return;
+        }
+
         if !self.length_counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
     }
 
-    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -219,9 +277,8 @@ mod tests {
     fn test_triangle_channel_generate_output() {
         let mut triangle = TriangleChannel::new();
 
-        // Test disabled channel
-        triangle.generate_output();
-        assert_eq!(triangle.output, 0.0);
+        // Test disabled channel - get_sample should return 0.0
+        assert_eq!(triangle.get_sample(), 0.0);
 
         // Test enabled channel with valid conditions
         triangle.enabled = true;
@@ -229,6 +286,7 @@ mod tests {
         triangle.linear_counter = 5;
         triangle.step = 0;
 
+        // generate_output is internal and should always work
         triangle.generate_output();
         // Step 0 should be 15, normalized to (15 - 7.5) / 7.5 = 1.0
         assert_eq!(triangle.output, 1.0);
@@ -242,6 +300,9 @@ mod tests {
     #[test]
     fn test_triangle_channel_clock_linear_counter() {
         let mut triangle = TriangleChannel::new();
+
+        // Enable the channel first since clock methods now require it to be enabled
+        triangle.enabled = true;
 
         // Test linear counter reload
         triangle.linear_counter_reload_flag = true;
@@ -264,6 +325,9 @@ mod tests {
     #[test]
     fn test_triangle_channel_clock_length_counter() {
         let mut triangle = TriangleChannel::new();
+
+        // Enable the channel first since clock methods now require it to be enabled
+        triangle.enabled = true;
 
         // Test normal decrement
         triangle.length_counter = 10;

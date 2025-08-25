@@ -51,6 +51,7 @@ pub struct WinitPixelsIOHandler {
     pub event_loop: Option<EventLoop<()>>,
     pub window: winit::window::Window,
     pub muted: bool,
+    // (deprecated) APU $4015 masking removed; using APU override instead
 }
 
 impl WinitPixelsIOHandler {
@@ -130,6 +131,41 @@ impl IOHandler for WinitPixelsIOHandler {
                                 VirtualKeyCode::R => {
                                     if pressed {
                                         cpu.pc = mem.get_16b_addr(memory::RESET_TARGET_ADDR);
+                                        mem.apu().borrow_mut().reset();
+                                    }
+                                }
+                                // APU channel mute toggles for quick isolation (override mute)
+                                // 1..5 toggle Pulse1, Pulse2, Triangle, Noise, DMC respectively
+                                VirtualKeyCode::Key1 => {
+                                    if pressed {
+                                        mem.apu().borrow_mut().toggle_mute_bit(0x01, "Pulse1");
+                                    }
+                                }
+                                VirtualKeyCode::Key2 => {
+                                    if pressed {
+                                        mem.apu().borrow_mut().toggle_mute_bit(0x02, "Pulse2");
+                                    }
+                                }
+                                VirtualKeyCode::Key3 => {
+                                    if pressed {
+                                        mem.apu().borrow_mut().toggle_mute_bit(0x04, "Triangle");
+                                    }
+                                }
+                                VirtualKeyCode::Key4 => {
+                                    if pressed {
+                                        mem.apu().borrow_mut().toggle_mute_bit(0x08, "Noise");
+                                    }
+                                }
+                                VirtualKeyCode::Key5 => {
+                                    if pressed {
+                                        mem.apu().borrow_mut().toggle_mute_bit(0x10, "DMC");
+                                    }
+                                }
+                                // 0 toggles master mute (all channels)
+                                VirtualKeyCode::Key0 => {
+                                    if pressed {
+                                        let on = !mem.apu().borrow().get_master_mute();
+                                        mem.apu().borrow_mut().set_master_mute(on);
                                     }
                                 }
                                 VirtualKeyCode::Z => {

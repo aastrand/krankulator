@@ -148,6 +148,9 @@ impl Emulator {
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         self.cpu.sp = self.cpu.sp.wrapping_sub(3);
         self.cpu.pc = addr;
+        // Also reset the APU and clear any pending audio to avoid residual noise
+        self.apu.borrow_mut().reset();
+        self.audio.clear();
     }
 
     pub fn run(&mut self) {

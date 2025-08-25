@@ -36,8 +36,8 @@ impl NoiseChannel {
             envelope_decay_level: 0,
 
             period: 0,
-            timer: 0,
-            timer_value: 0,
+            timer: NOISE_PERIODS[0],       // Start with a valid timer value
+            timer_value: NOISE_PERIODS[0], // Start with a valid timer value
 
             length_counter: 0,
             length_counter_halt: false,
@@ -47,6 +47,23 @@ impl NoiseChannel {
             shift_register: 1, // Initialize to 1
             output: 0.0,
         }
+    }
+
+    pub fn hard_reset(&mut self) {
+        self.control = 0;
+        self.volume = 0;
+        self.constant_volume = false;
+        self.envelope_start = false;
+        self.envelope_divider = 0;
+        self.envelope_decay_level = 0;
+        self.period = 0;
+        self.timer = NOISE_PERIODS[0];
+        self.timer_value = NOISE_PERIODS[0];
+        self.length_counter = 0;
+        self.length_counter_halt = false;
+        self.enabled = false;
+        self.shift_register = 1;
+        self.output = 0.0;
     }
 
     pub fn set_control(&mut self, value: u8) {
@@ -60,9 +77,15 @@ impl NoiseChannel {
     }
 
     pub fn set_period(&mut self, value: u8) {
+        // Bit 7: Mode (0 = 1-bit feedback, 1 = 6-bit feedback)
+        // Bits 3-0: Period index
         self.period = value & 0x0F;
         self.timer = NOISE_PERIODS[self.period as usize];
         self.timer_value = self.timer;
+
+        // Update the control register's mode bit based on the period register
+        // This ensures the feedback mode is properly set
+        self.control = (self.control & 0x7F) | (value & 0x80);
     }
 
     pub fn set_length_counter(&mut self, value: u8) {
@@ -84,25 +107,34 @@ impl NoiseChannel {
         if self.timer_value == 0 {
             self.timer_value = self.timer;
             self.clock_shift_register();
+            // Only generate output when the shift register changes
+            self.generate_output();
         } else {
             self.timer_value -= 1;
         }
-
-        // Generate output
-        self.generate_output();
+        // Ensure immediate silence when disabled or length counter is zero
+        if !self.enabled || self.length_counter == 0 {
+            self.output = 0.0;
+        }
     }
 
     fn clock_shift_register(&mut self) {
         let feedback = if (self.control & 0x80) != 0 {
-            // Mode 1: 6-bit feedback
+            // Mode 1: 6-bit feedback (bit 6 XOR bit 5)
             ((self.shift_register >> 6) & 1) ^ ((self.shift_register >> 5) & 1)
         } else {
-            // Mode 0: 1-bit feedback
+            // Mode 0: 1-bit feedback (bit 1 XOR bit 0)
             ((self.shift_register >> 1) & 1) ^ (self.shift_register & 1)
         };
 
+        // Shift right by 1 and insert feedback at bit 14
         self.shift_register >>= 1;
         self.shift_register |= feedback << 14;
+
+        // Ensure the shift register never becomes 0 (NES behavior)
+        if self.shift_register == 0 {
+            self.shift_register = 1;
+        }
     }
 
     fn generate_output(&mut self) {
@@ -120,6 +152,7 @@ impl NoiseChannel {
             } else {
                 self.envelope_decay_level
             };
+            // Output in [0.0, 1.0]
             self.output = vol as f32 / 15.0;
         }
     }
@@ -186,7 +219,8 @@ mod tests {
         assert_eq!(noise.envelope_divider, 0);
         assert_eq!(noise.envelope_decay_level, 0);
         assert_eq!(noise.period, 0);
-        assert_eq!(noise.timer, 0);
+        assert_eq!(noise.timer, NOISE_PERIODS[0]);
+        assert_eq!(noise.timer_value, NOISE_PERIODS[0]);
         assert_eq!(noise.length_counter, 0);
         assert!(!noise.length_counter_halt);
         assert!(!noise.enabled);
@@ -331,13 +365,13 @@ mod tests {
         // Test enabled channel with LSB = 1 and constant volume
         noise.shift_register = 0x0001; // LSB = 1
         noise.generate_output();
-        assert_eq!(noise.output, 8.0 / 15.0); // Volume 8 normalized
+        assert_eq!(noise.output, 8.0 / 15.0); // Volume 8 normalized to [0.0, 1.0]
 
         // Test enabled channel with envelope volume
         noise.constant_volume = false;
         noise.envelope_decay_level = 12;
         noise.generate_output();
-        assert_eq!(noise.output, 12.0 / 15.0); // Envelope level 12 normalized
+        assert_eq!(noise.output, 12.0 / 15.0); // Envelope level 12 normalized to [0.0, 1.0]
     }
 
     #[test]
@@ -428,6 +462,6 @@ mod tests {
         // Test minimum volume
         noise.volume = 0;
         noise.generate_output();
-        assert_eq!(noise.output, 0.0); // 0/15 = 0.0
+        assert_eq!(noise.output, 0.0); // 0/15 = 0.0 (minimum volume)
     }
 }
