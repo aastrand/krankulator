@@ -80,7 +80,13 @@ impl ApplicationHandler for InitHandler {
         self.pixels = Some(pixels);
     }
 
-    fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: winit::window::WindowId, _event: WindowEvent) {}
+    fn window_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _id: winit::window::WindowId,
+        _event: WindowEvent,
+    ) {
+    }
 }
 
 impl WinitPixelsIOHandler {
@@ -121,7 +127,12 @@ struct PollHandler<'a> {
 impl ApplicationHandler for PollHandler<'_> {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::Resized(size) => {
                 let _ = self.pixels.resize_surface(size.width, size.height);
@@ -162,7 +173,10 @@ impl ApplicationHandler for PollHandler<'_> {
                         }
                         KeyCode::Digit3 => {
                             if pressed {
-                                self.mem.apu().borrow_mut().toggle_mute_bit(0x04, "Triangle");
+                                self.mem
+                                    .apu()
+                                    .borrow_mut()
+                                    .toggle_mute_bit(0x04, "Triangle");
                             }
                         }
                         KeyCode::Digit4 => {
