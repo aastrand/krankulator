@@ -79,11 +79,6 @@ fn main() -> Result<(), String> {
                     emu.toggle_should_trigger_nmi(true);
                     emu.toggle_should_exit_on_infinite_loop(false);
 
-                    // Enable PPU rendering for graphical mode
-                    if !args.headless {
-                        emu.ppu.borrow_mut().ppu_mask = 0x18; // Enable background and sprites
-                    }
-
                     emu
                 }
                 Err(msg) => panic!("{}", msg),

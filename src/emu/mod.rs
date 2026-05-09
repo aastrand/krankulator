@@ -51,6 +51,9 @@ pub struct Emulator {
 
     pub instructions: u64,
     pub cycles: u64,
+    pub master_clock: u64,
+    instruction_start_dot: u64,
+    cpu_bus_cycle_offset: u8,
 
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
@@ -112,6 +115,9 @@ impl Emulator {
             start_time: Instant::now(),
             instructions: 0,
             cycles: 0,
+            master_clock: 0,
+            instruction_start_dot: 0,
+            cpu_bus_cycle_offset: 0,
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
             last_rendered: Instant::now(),
@@ -209,24 +215,9 @@ impl Emulator {
             }
         }
 
-        let fire_vblank_nmi = {
-            let mut ppu = self.ppu.borrow_mut();
-            let old_cycle = ppu.cycle;
-            let old_scanline = ppu.scanline;
-            let result = ppu.cycle();
-
-            // Check if we crossed cycle 260 during this PPU tick
-            let new_cycle = ppu.cycle;
-
-            // If we're on a visible or pre-render scanline and just hit or passed cycle 260
-            if (old_scanline < 240 || old_scanline == 261) && (old_cycle < 260 && new_cycle >= 260)
-            {
-                drop(ppu); // Release the borrow before calling the mapper
-                self.mem.ppu_cycle_260(old_scanline);
-            }
-
-            result
-        };
+        let target_dot = self.master_clock + 3;
+        let fire_vblank_nmi = self.sync_ppu_to_dot(target_dot);
+        self.master_clock = target_dot;
 
         // Cycle the APU
         self.apu.borrow_mut().cycle(&mut *self.mem);
@@ -243,7 +234,9 @@ impl Emulator {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
 
-            gfx::render(&mut *self.mem, &mut self.buf);
+            if self.ppu.borrow().mask_sprites_enabled() {
+                gfx::render_sprites(&mut *self.mem, &mut self.buf);
+            }
             self.iohandler.render(&self.buf);
             thread::sleep(FRAME_BUDGET.saturating_sub(self.last_rendered.elapsed()));
             self.last_rendered = Instant::now();
@@ -301,11 +294,68 @@ impl Emulator {
     #[cfg(not(debug_assertions))]
     pub fn log_instruction(&mut self, _opcode: u8, _pc: u16) {}
 
+    fn begin_cpu_instruction_timing(&mut self) {
+        self.instruction_start_dot = self.master_clock;
+        self.cpu_bus_cycle_offset = 0;
+    }
+
+    fn cpu_bus_access_dot(&self) -> u64 {
+        self.instruction_start_dot + u64::from(self.cpu_bus_cycle_offset) * 3
+    }
+
+    fn cpu_access_needs_ppu_sync(addr: u16, is_write: bool) -> bool {
+        (0x2000..=0x3fff).contains(&addr) || addr == ppu::OAM_DMA || (is_write && addr >= 0x4020)
+    }
+
+    fn sync_ppu_to_dot(&mut self, target_dot: u64) -> bool {
+        let mut cycle_260_scanlines = Vec::new();
+        let fire_vblank_nmi = {
+            let mut ppu = self.ppu.borrow_mut();
+            let mut fire_vblank_nmi = false;
+            while ppu.last_synced_dot < target_dot {
+                let step = ppu.step_dot_with_rendering(&*self.mem, &mut self.buf);
+                fire_vblank_nmi |= step.fire_vblank_nmi;
+                if let Some(scanline) = step.ppu_cycle_260_scanline {
+                    cycle_260_scanlines.push(scanline);
+                }
+            }
+            fire_vblank_nmi
+        };
+
+        for scanline in cycle_260_scanlines {
+            self.mem.ppu_cycle_260(scanline);
+        }
+
+        fire_vblank_nmi
+    }
+
+    fn sync_for_cpu_access(&mut self, addr: u16, is_write: bool) {
+        if Self::cpu_access_needs_ppu_sync(addr, is_write) {
+            let target_dot = self.cpu_bus_access_dot();
+            if self.sync_ppu_to_dot(target_dot) && self.should_trigger_nmi {
+                self.nmi_triggered_countdown = 0;
+            }
+        }
+    }
+
+    fn cpu_read(&mut self, addr: u16) -> u8 {
+        self.sync_for_cpu_access(addr, false);
+        let value = self.mem.cpu_read(addr);
+        self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
+        value
+    }
+
+    fn cpu_read_at(&mut self, addr: u16, cpu_cycle_offset: u8) -> u8 {
+        self.cpu_bus_cycle_offset = cpu_cycle_offset;
+        self.cpu_read(addr)
+    }
+
     pub fn execute_instruction(&mut self) -> u8 {
         self.log_init();
+        self.begin_cpu_instruction_timing();
 
         self.cpu.last_instruction = self.cpu.pc;
-        let opcode = self.mem.cpu_read(self.cpu.pc as _);
+        let opcode = self.cpu_read_at(self.cpu.pc as _, 0);
         let size: u16 = self.lookup.size(opcode);
 
         match opcode {
@@ -318,7 +368,8 @@ impl Emulator {
             | opcodes::AND_ZP
             | opcodes::AND_ZPX => {
                 let addr = self.addr(opcode);
-                self.cpu.and(self.mem.cpu_read(addr));
+                let value = self.cpu_read(addr);
+                self.cpu.and(value);
             }
 
             opcodes::ADC_ABS
@@ -347,11 +398,12 @@ impl Emulator {
                 // Test BITs
                 let addr = self.addr(opcode);
                 self.log_push(addr);
-                self.cpu.bit(self.mem.cpu_read(addr));
+                let value = self.cpu_read(addr);
+                self.cpu.bit(value);
             }
 
             opcodes::BPL => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on PLus)
                 if !self.cpu.negative_flag() {
@@ -359,7 +411,7 @@ impl Emulator {
                 }
             }
             opcodes::BMI => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on MInus
                 if self.cpu.negative_flag() {
@@ -367,7 +419,7 @@ impl Emulator {
                 }
             }
             opcodes::BVC => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on oVerflow Clear
                 if !self.cpu.overflow_flag() {
@@ -375,7 +427,7 @@ impl Emulator {
                 }
             }
             opcodes::BVS => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on oVerflow Set
                 if self.cpu.overflow_flag() {
@@ -383,7 +435,7 @@ impl Emulator {
                 }
             }
             opcodes::BCC => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on Carry Clear
                 if !self.cpu.carry_flag() {
@@ -391,7 +443,7 @@ impl Emulator {
                 }
             }
             opcodes::BCS => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on Carry Set
                 if self.cpu.carry_flag() {
@@ -399,7 +451,7 @@ impl Emulator {
                 }
             }
             opcodes::BEQ => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on EQual
                 if self.cpu.zero_flag() {
@@ -407,7 +459,7 @@ impl Emulator {
                 }
             }
             opcodes::BNE => {
-                let operand: i8 = self.mem.cpu_read(self.cpu.pc + 1) as i8;
+                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
                 self.log_push((operand as u16) & 0xff);
                 // Branch on Not Equal
                 if !self.cpu.zero_flag() {
@@ -431,7 +483,7 @@ impl Emulator {
                 6	FFFE	??	;low byte of target address
                 7	FFFF	??	;high byte of target address
                 */
-                let addr: u16 = self.mem.get_16b_addr(memory::BRK_TARGET_ADDR);
+                let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
 
                 // BRK without a target gets ignored
                 if addr > 0 {
@@ -472,19 +524,21 @@ impl Emulator {
             | opcodes::CMP_ZPX => {
                 let addr = self.addr(opcode);
                 self.log_push(addr);
-                let value = self.mem.cpu_read(addr);
+                let value = self.cpu_read(addr);
                 self.log_push(value as u16);
                 self.cpu.compare(self.cpu.a, value);
             }
 
             opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {
                 let addr = self.addr(opcode);
-                self.cpu.compare(self.cpu.x, self.mem.cpu_read(addr));
+                let value = self.cpu_read(addr);
+                self.cpu.compare(self.cpu.x, value);
             }
 
             opcodes::CPY_ABS | opcodes::CPY_IMM | opcodes::CPY_ZP => {
                 let addr = self.addr(opcode);
-                self.cpu.compare(self.cpu.y, self.mem.cpu_read(addr));
+                let value = self.cpu_read(addr);
+                self.cpu.compare(self.cpu.y, value);
             }
 
             opcodes::DEC_ABS | opcodes::DEC_ABX | opcodes::DEC_ZP | opcodes::DEC_ZPX => {
@@ -532,7 +586,7 @@ impl Emulator {
 
             opcodes::JMP_ABS => {
                 // JuMP to address
-                let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                let addr: u16 = self.addr_absolute(self.cpu.pc);
                 self.log_push(addr);
                 self.cpu.pc = addr as _;
                 // Compensate for length addition
@@ -540,7 +594,7 @@ impl Emulator {
             }
             opcodes::JMP_IND => {
                 // JuMP to address stored in arg
-                let addr: u16 = self.mem.get_16b_addr(self.cpu.pc + 1);
+                let addr: u16 = self.get_16b_addr(self.cpu.pc + 1);
                 // AN INDIRECT JUMP MUST NEVER USE A
                 // VECTOR BEGINNING ON THE LAST BYTE
                 // OF A PAGE
@@ -553,8 +607,8 @@ impl Emulator {
                     addr + 1
                 };
 
-                let hb = self.mem.cpu_read(adjusted_addr);
-                let lb = self.mem.cpu_read(addr);
+                let hb = self.cpu_read(adjusted_addr);
+                let lb = self.cpu_read(addr);
 
                 self.log_push(addr);
 
@@ -568,7 +622,7 @@ impl Emulator {
             opcodes::JSR_ABS => {
                 // Jump to SubRoutine
                 self.push_pc_to_stack(2);
-                let addr: u16 = self.mem.addr_absolute(self.cpu.pc);
+                let addr: u16 = self.addr_absolute(self.cpu.pc);
                 self.log_push(addr);
                 self.cpu.pc = addr;
                 // Compensate for length addition
@@ -905,13 +959,13 @@ impl Emulator {
     fn adc(&mut self, addr: u16) {
         // Add Memory to Accumulator with Carry
         self.log_push(addr);
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         self.cpu.add_to_a_with_carry(operand);
     }
 
     fn asl(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.cpu_read(addr);
+        let value: u8 = self.cpu_read(addr);
         self.log_push(value as u16);
         let result: u8 = self.cpu.asl(value);
         self.log_push(result as u16);
@@ -932,6 +986,7 @@ impl Emulator {
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
+        self.sync_for_cpu_access(addr, true);
         // Debug: log all CPU writes to APU registers
         /*if addr >= 0x4000 && addr <= 0x4017 {
             println!("CPU write: ${:04X} = {:02X}", addr, value);
@@ -955,11 +1010,12 @@ impl Emulator {
             _ => {}
         }
         self.mem.cpu_write(addr, value);
+        self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
     }
 
     fn dec(&mut self, addr: u16) {
         // DECrement memory
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
         self.cpu_write(addr, value);
@@ -969,7 +1025,7 @@ impl Emulator {
     }
 
     fn dcp(&mut self, addr: u16) {
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
         self.cpu_write(addr, value);
@@ -982,14 +1038,14 @@ impl Emulator {
 
     fn eor(&mut self, addr: u16) {
         // bitwise Exclusive OR
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         self.cpu.eor(operand);
     }
 
     fn inc(&mut self, addr: u16) {
         // INCrement memory
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_add(1);
         self.cpu_write(addr, value);
@@ -999,7 +1055,7 @@ impl Emulator {
     }
 
     fn isb(&mut self, addr: u16) {
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
 
         let value: u8 = operand.wrapping_add(1);
@@ -1019,7 +1075,7 @@ impl Emulator {
     }
 
     fn lsr(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.cpu_read(addr);
+        let value: u8 = self.cpu_read(addr);
         self.log_push(value as u16);
         let result: u8 = self.cpu.lsr(value);
         self.log_push(result as u16);
@@ -1031,7 +1087,7 @@ impl Emulator {
     fn ora(&mut self, addr: u16) {
         // Bitwise OR with Accumulator
         self.log_push(addr);
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         self.cpu.ora(operand);
     }
@@ -1042,7 +1098,7 @@ impl Emulator {
     }
 
     fn rol(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.cpu_read(addr);
+        let value: u8 = self.cpu_read(addr);
         self.log_push(value as u16);
         let result: u8 = self.cpu.rol(value);
         self.log_push(result as u16);
@@ -1052,7 +1108,7 @@ impl Emulator {
     }
 
     fn ror(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.mem.cpu_read(addr);
+        let value: u8 = self.cpu_read(addr);
         self.log_push(value as u16);
         let result: u8 = self.cpu.ror(value);
         self.log_push(result as u16);
@@ -1073,7 +1129,7 @@ impl Emulator {
 
     fn sbc(&mut self, addr: u16) {
         self.log_push(addr);
-        let operand: u8 = self.mem.cpu_read(addr);
+        let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         self.cpu.sub_from_a_with_carry(operand);
     }
@@ -1092,70 +1148,122 @@ impl Emulator {
         let lb: u8 = ((self.cpu.pc.wrapping_add(offset)) & 0xff) as u8;
         let hb: u8 = ((self.cpu.pc.wrapping_add(offset)) >> 8) as u8;
 
-        self.mem.push_to_stack(self.cpu.sp, hb);
+        self.push_to_stack_addr(self.cpu.sp, hb);
         self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-        self.mem.push_to_stack(self.cpu.sp, lb);
+        self.push_to_stack_addr(self.cpu.sp, lb);
         self.cpu.sp = self.cpu.sp.wrapping_sub(1);
     }
 
     fn pull_from_stack(&mut self) -> u8 {
         self.cpu.sp = self.cpu.sp.wrapping_add(1);
-        self.mem.pull_from_stack(self.cpu.sp)
+        self.pull_from_stack_addr(self.cpu.sp)
     }
 
     fn push_to_stack(&mut self, value: u8) {
-        self.mem.push_to_stack(self.cpu.sp, value);
+        self.push_to_stack_addr(self.cpu.sp, value);
         self.cpu.sp = self.cpu.sp.wrapping_sub(1);
     }
 
     fn load(&mut self, addr: u16) -> u8 {
         self.log_push(addr);
-        let val: u8 = self.mem.cpu_read(addr);
+        let val: u8 = self.cpu_read(addr);
         self.log_push(val as u16);
         self.cpu.check_negative(val);
         self.cpu.check_zero(val);
         val
     }
 
+    fn get_16b_addr(&mut self, offset: u16) -> u16 {
+        memory::to_16b_addr(self.cpu_read(offset.wrapping_add(1)), self.cpu_read(offset))
+    }
+
+    fn addr_absolute(&mut self, pc: u16) -> u16 {
+        self.get_16b_addr(pc.wrapping_add(1))
+    }
+
+    fn addr_absolute_idx(&mut self, pc: u16, idx: u8) -> (u16, bool) {
+        let lb = self.cpu_read(pc.wrapping_add(1));
+        (
+            memory::to_16b_addr(self.cpu_read(pc.wrapping_add(2)), lb).wrapping_add(idx as u16),
+            (lb & 0xff) as u16 + idx as u16 > 0xff,
+        )
+    }
+
+    fn addr_idx_indirect(&mut self, pc: u16, idx: u8) -> u16 {
+        let value: u8 = self.cpu_read(pc + 1).wrapping_add(idx);
+        ((self.cpu_read(value.wrapping_add(1) as u16) as u16) << 8)
+            + self.cpu_read(value as u16) as u16
+    }
+
+    fn addr_indirect_idx(&mut self, pc: u16, idx: u8) -> (u16, bool) {
+        let base = self.cpu_read(pc + 1);
+
+        let lb = self.cpu_read(base as _);
+        let lbidx = lb.wrapping_add(idx);
+        let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
+        let hb = self
+            .cpu_read((base as u8).wrapping_add(1) as _)
+            .wrapping_add(carry);
+
+        (memory::to_16b_addr(hb, lbidx) as _, carry != 0)
+    }
+
+    fn addr_zeropage(&mut self, pc: u16) -> u16 {
+        self.cpu_read(pc + 1) as _
+    }
+
+    fn addr_zeropage_idx(&mut self, pc: u16, idx: u8) -> u16 {
+        self.cpu_read(pc + 1).wrapping_add(idx) as u16
+    }
+
+    fn stack_addr(&self, sp: u8) -> u16 {
+        memory::STACK_BASE_OFFSET + (u16::from(sp) & 0xff)
+    }
+
+    fn push_to_stack_addr(&mut self, sp: u8, value: u8) {
+        self.cpu_write(self.stack_addr(sp), value);
+    }
+
+    fn pull_from_stack_addr(&mut self, sp: u8) -> u8 {
+        self.cpu_read(self.stack_addr(sp))
+    }
+
     fn addr(&mut self, opcode: u8) -> u16 {
         match self.lookup.mode(opcode) {
-            opcodes::ADDR_MODE_ABS => self.mem.addr_absolute(self.cpu.pc),
+            opcodes::ADDR_MODE_ABS => self.addr_absolute(self.cpu.pc),
             opcodes::ADDR_MODE_ABX => {
-                let (addr, page_boundary_penalty) =
-                    self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                let (addr, page_boundary_penalty) = self.addr_absolute_idx(self.cpu.pc, self.cpu.x);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
             }
             opcodes::ADDR_MODE_ABY => {
-                let (addr, page_boundary_penalty) =
-                    self.mem.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                let (addr, page_boundary_penalty) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
             }
             opcodes::ADDR_MODE_IMM => self.cpu.pc + 1,
-            opcodes::ADDR_MODE_INX => self.mem.addr_idx_indirect(self.cpu.pc, self.cpu.x),
+            opcodes::ADDR_MODE_INX => self.addr_idx_indirect(self.cpu.pc, self.cpu.x),
             opcodes::ADDR_MODE_INY => {
-                let (addr, page_boundary_penalty) =
-                    self.mem.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                let (addr, page_boundary_penalty) = self.addr_indirect_idx(self.cpu.pc, self.cpu.y);
                 if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
                     self.cpu.cycle += 1;
                 }
                 addr
             }
             opcodes::ADDR_MODE_NA => 0,
-            opcodes::ADDR_MODE_ZP => self.mem.addr_zeropage(self.cpu.pc),
-            opcodes::ADDR_MODE_ZPX => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
-            opcodes::ADDR_MODE_ZPY => self.mem.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
+            opcodes::ADDR_MODE_ZP => self.addr_zeropage(self.cpu.pc),
+            opcodes::ADDR_MODE_ZPX => self.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
+            opcodes::ADDR_MODE_ZPY => self.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
             _ => panic!("Addressing mode not found for opcode {:x}", opcode),
         }
     }
 
     pub fn trigger_nmi(&mut self) {
-        let addr: u16 = self.mem.get_16b_addr(memory::NMI_TARGET_ADDR);
+        let addr: u16 = self.get_16b_addr(memory::NMI_TARGET_ADDR);
         //println!("Triggering NMI to {:X}", addr);
         self.push_pc_to_stack(0);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
@@ -1169,7 +1277,7 @@ impl Emulator {
     }
 
     pub fn trigger_irq(&mut self) {
-        let addr: u16 = self.mem.get_16b_addr(memory::BRK_TARGET_ADDR);
+        let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
         self.push_pc_to_stack(0);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
@@ -1262,6 +1370,53 @@ mod emu_tests {
         assert_eq!(0x34, emu.addr(opcodes::ADC_ZP));
 
         assert_eq!(0x35, emu.addr(opcodes::ADC_ZPX));
+    }
+
+    #[test]
+    fn test_master_clock_advances_3x_cpu() {
+        let mut emu: Emulator = Emulator::_new();
+        emu.cpu.cycle = 1;
+
+        emu.cycle();
+
+        assert_eq!(emu.cycles, 1);
+        assert_eq!(emu.master_clock, 3);
+        assert_eq!(emu.ppu.borrow().last_synced_dot, 3);
+    }
+
+    #[test]
+    fn test_register_read_triggers_catch_up() {
+        let mut emu: Emulator = Emulator::_new();
+        emu.begin_cpu_instruction_timing();
+
+        emu.cpu_read_at(ppu::STATUS_REG_ADDR, 2);
+
+        assert_eq!(emu.ppu.borrow().last_synced_dot, 6);
+    }
+
+    #[test]
+    fn test_register_write_uses_bus_cycle_timestamp() {
+        let mut emu: Emulator = Emulator::_new();
+        emu.begin_cpu_instruction_timing();
+        emu.cpu_bus_cycle_offset = 3;
+
+        emu.cpu_write(ppu::SCROLL_ADDR, 0x24);
+
+        assert_eq!(emu.ppu.borrow().last_synced_dot, 9);
+    }
+
+    #[test]
+    fn test_cpu_access_offsets_match_instruction_timing() {
+        let mut emu: Emulator = Emulator::_new();
+        let start = memory::CODE_START_ADDR;
+        emu.mem.cpu_write(start, opcodes::LDA_ABS);
+        emu.mem.cpu_write(start + 1, ppu::STATUS_REG_ADDR as u8);
+        emu.mem
+            .cpu_write(start + 2, (ppu::STATUS_REG_ADDR >> 8) as u8);
+
+        emu.execute_instruction();
+
+        assert_eq!(emu.ppu.borrow().last_synced_dot, 9);
     }
 
     #[test]

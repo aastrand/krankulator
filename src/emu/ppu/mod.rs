@@ -1,3 +1,4 @@
+use super::gfx::{buf::Buffer, palette};
 use super::memory;
 
 /*
@@ -21,6 +22,8 @@ pub const CTRL_NMI_ENABLE: u8 = 0b1000_0000;
 
 pub const MASK_BACKGROUND_ENABLE: u8 = 0b0000_1000;
 pub const MASK_SPRITES_ENABLE: u8 = 0b0001_0000;
+pub const MASK_BACKGROUND_LEFT_ENABLE: u8 = 0b0000_0010;
+pub const MASK_SPRITES_LEFT_ENABLE: u8 = 0b0000_0100;
 #[allow(dead_code)]
 pub const MASK_RENDERING_ENABLE: u8 = 0b0001_1000;
 
@@ -38,6 +41,8 @@ pub const DATA_ADDR: u16 = 0x2007;
 pub const OAM_DMA: u16 = 0x4014;
 
 pub const OAM_DATA_SIZE: usize = 256;
+pub const SCREEN_WIDTH: usize = 256;
+pub const SCREEN_HEIGHT: usize = 240;
 
 pub const PRE_RENDER_SCANLINE: u16 = 261;
 pub const VBLANK_SCANLINE: u16 = 241;
@@ -45,6 +50,12 @@ pub const CYCLES_PER_SCANLINE: u16 = 340;
 pub const NUM_SCANLINES: u16 = PRE_RENDER_SCANLINE + 1;
 
 pub const UNIVERSAL_BG_COLOR_ADDR: usize = 0x3F00;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StepResult {
+    pub fire_vblank_nmi: bool,
+    pub ppu_cycle_260_scanline: Option<u16>,
+}
 
 /*
         RAM Memory Map
@@ -114,6 +125,11 @@ pub struct PPU {
     pub cycle: u16,
     pub scanline: u16,
     pub frames: u64,
+    pub last_synced_dot: u64,
+    scanline_buf: [(u8, u8, u8); SCREEN_WIDTH],
+    scanline_pixels_written: usize,
+    render_line_v: u16,
+    next_render_line_v: u16,
 }
 
 impl PPU {
@@ -145,6 +161,11 @@ impl PPU {
             cycle: 0,
             scanline: 0,
             frames: 0,
+            last_synced_dot: 0,
+            scanline_buf: [(0, 0, 0); SCREEN_WIDTH],
+            scanline_pixels_written: 0,
+            render_line_v: 0,
+            next_render_line_v: 0,
         }
     }
 
@@ -286,6 +307,8 @@ impl PPU {
                     // Second write (low byte)
                     self.t = (self.t & 0xFF00) | (value as u16);
                     self.v = self.t;
+                    self.render_line_v = self.v;
+                    self.next_render_line_v = self.v;
                 }
 
                 self.w = !self.w;
@@ -346,120 +369,367 @@ impl PPU {
         self.t
     }
 
-    pub fn cycle(&mut self) -> bool {
+    #[allow(dead_code)]
+    pub fn step_dot(&mut self) -> StepResult {
+        self.step_dot_inner(None)
+    }
+
+    pub fn step_dot_with_rendering(
+        &mut self,
+        mem: &dyn memory::MemoryMapper,
+        framebuffer: &mut Buffer,
+    ) -> StepResult {
+        self.step_dot_inner(Some((mem, framebuffer)))
+    }
+
+    fn step_dot_inner(
+        &mut self,
+        mut render_ctx: Option<(&dyn memory::MemoryMapper, &mut Buffer)>,
+    ) -> StepResult {
         // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
         // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
         // on the pre-render scanline to (0,0) on the first visible scanline and doing the last cycle of the last dummy nametable fetch there instead;
-        let mut num_cycles = 3;
         if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
             && self.frames % 2 == 1
             && self.scanline == PRE_RENDER_SCANLINE
-            && self.cycle > 336
+            && self.cycle == CYCLES_PER_SCANLINE - 1
         {
-            num_cycles = 4;
+            self.cycle = 0;
+            self.scanline = 0;
+            self.frames += 1;
+            self.last_synced_dot = self.last_synced_dot.wrapping_add(1);
+            return StepResult::default();
         }
 
-        self.cycle = self.cycle.wrapping_add(num_cycles);
+        self.cycle = self.cycle.wrapping_add(1);
         if self.cycle > CYCLES_PER_SCANLINE {
-            let hit_pixel_0 = self.sprite_zero_hit(self.cycle);
-            if hit_pixel_0 {
-                self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
-            }
-
-            self.cycle = self.cycle % (CYCLES_PER_SCANLINE + 1);
+            self.cycle = 0;
             self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
             if self.scanline == 0 {
                 self.frames += 1;
-
-                // At the start of each frame, copy t to v (scroll reset)
-                if self.mask_background_enabled() || self.mask_sprites_enabled() {
-                    self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
-                }
             }
-
-            if self.scanline == VBLANK_SCANLINE {
-                self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
-                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
-            }
-
-            // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
-            if (self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE)
-                && self.cycle > 256
-            {
-                self.oam_addr = 0;
-            }
-
-            // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line.  Used for raster timing.
-            let vblank = self.scanline == VBLANK_SCANLINE && self.vblank_nmi_is_enabled();
-            if self.scanline == PRE_RENDER_SCANLINE {
-                self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
-                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
-            }
-
-            // Handle scroll register updates during rendering
-            if self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE {
-                if self.mask_background_enabled() || self.mask_sprites_enabled() {
-                    // Copy horizontal scroll from t to v at cycle 257
-                    if self.cycle == 257 {
-                        self.v = (self.v & 0x7BE0) | (self.t & 0x041F);
-                    }
-
-                    // During dots 280-304 of the pre-render scanline, copy vertical bits from t to v
-                    if self.scanline == PRE_RENDER_SCANLINE
-                        && self.cycle >= 280
-                        && self.cycle <= 304
-                    {
-                        self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
-                    }
-
-                    // Increment Y scroll at the end of each scanline
-                    if self.cycle == 256 {
-                        // Increment coarse Y
-                        if (self.v & 0x7000) == 0x7000 {
-                            // Fine Y overflow, increment coarse Y
-                            self.v &= 0x8FFF; // Clear fine Y
-                            let coarse_y = (self.v & 0x3E0) >> 5;
-                            if coarse_y == 29 {
-                                // Coarse Y overflow, switch nametable
-                                self.v &= 0x7BFF; // Clear coarse Y
-                                self.v ^= 0x0800; // Toggle nametable Y bit
-                            } else {
-                                self.v += 0x20; // Increment coarse Y
-                            }
-                        } else {
-                            // Increment fine Y
-                            self.v += 0x1000;
-                        }
-                    }
-
-                    // Increment horizontal scroll every 8 dots across the scanline
-                    // This happens at dots 328, 336, 8, 16, 24... 240, 248, 256
-                    if self.cycle >= 328
-                        || (self.cycle >= 8 && self.cycle <= 256 && self.cycle % 8 == 0)
-                    {
-                        // Increment coarse X
-                        if (self.v & 0x1F) == 0x1F {
-                            // Coarse X overflow, switch nametable
-                            self.v &= 0x7FE0; // Clear coarse X
-                            self.v ^= 0x0400; // Toggle nametable X bit
-                        } else {
-                            self.v += 1; // Increment coarse X
-                        }
-                    }
-                }
-            }
-
-            return vblank;
         }
 
-        return false;
+        self.last_synced_dot = self.last_synced_dot.wrapping_add(1);
+
+        let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
+        let rendering_scanline =
+            self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE;
+
+        let mut result = StepResult::default();
+
+        if self.scanline < SCREEN_HEIGHT as u16 && self.cycle >= 1 && self.cycle <= 256 {
+            if self.cycle == 1 {
+                self.scanline_pixels_written = 0;
+                self.render_line_v = self.next_render_line_v;
+            }
+
+            if let Some((mem, framebuffer)) = render_ctx.as_mut() {
+                let x = (self.cycle - 1) as usize;
+                self.scanline_buf[x] = self.background_pixel(*mem);
+                self.scanline_pixels_written += 1;
+
+                if self.cycle == 256 {
+                    self.copy_scanline_to_framebuffer(*framebuffer);
+                }
+            }
+        }
+
+        let sprite_zero_hit = if let Some((mem, _)) = render_ctx.as_ref() {
+            self.sprite_zero_hit_with_rendering(*mem, self.cycle)
+        } else {
+            self.sprite_zero_hit(self.cycle)
+        };
+        if sprite_zero_hit {
+            self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
+        }
+
+        if self.scanline == VBLANK_SCANLINE && self.cycle == 1 {
+            self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
+            self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            result.fire_vblank_nmi = self.vblank_nmi_is_enabled();
+        }
+
+        // OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
+        if rendering_scanline && rendering_enabled && self.cycle >= 257 && self.cycle <= 320 {
+            self.oam_addr = 0;
+        }
+
+        // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line. Used for raster timing.
+        if self.scanline == PRE_RENDER_SCANLINE && self.cycle == 1 {
+            self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
+            self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+        }
+
+        // Handle scroll register updates during rendering
+        if rendering_scanline && rendering_enabled {
+            // Increment horizontal scroll every 8 dots across the scanline.
+            // This happens at dots 328, 336, 8, 16, 24... 240, 248, 256.
+            if self.cycle >= 328 || (self.cycle >= 8 && self.cycle <= 256 && self.cycle % 8 == 0) {
+                self.inc_coarse_x();
+            }
+
+            // Increment Y scroll at dot 256.
+            if self.cycle == 256 {
+                self.inc_y();
+            }
+
+            // Copy horizontal scroll from t to v at dot 257.
+            if self.cycle == 257 {
+                self.copy_horizontal_scroll();
+                self.next_render_line_v = self.v;
+            }
+
+            // During dots 280-304 of the pre-render scanline, copy vertical bits from t to v.
+            if self.scanline == PRE_RENDER_SCANLINE && self.cycle >= 280 && self.cycle <= 304 {
+                self.copy_vertical_scroll();
+                self.next_render_line_v = self.v;
+            }
+        }
+
+        if rendering_scanline && self.cycle == 260 {
+            result.ppu_cycle_260_scanline = Some(self.scanline);
+        }
+
+        result
     }
 
-    pub fn sprite_zero_hit(&self, num_cycles: u16) -> bool {
-        //self.cycle > 0 && self.cycle < (1 + num_cycles)
-        let y = self.oam_ram[0] as usize;
-        let x = self.oam_ram[3] as usize;
-        (y == self.scanline as usize) && x <= num_cycles as usize && self.mask_sprites_enabled()
+    fn copy_scanline_to_framebuffer(&self, framebuffer: &mut Buffer) {
+        let y = self.scanline as usize;
+        if y >= SCREEN_HEIGHT {
+            return;
+        }
+
+        for (x, color) in self.scanline_buf.iter().enumerate() {
+            framebuffer.set_pixel(x, y, *color);
+        }
+    }
+
+    fn background_pixel(&self, mem: &dyn memory::MemoryMapper) -> (u8, u8, u8) {
+        let backdrop = self.backdrop_color(mem);
+        if !self.mask_background_enabled() {
+            return backdrop;
+        }
+
+        let pixel = self.background_pixel_value(mem, self.cycle);
+
+        if pixel == 0 {
+            return backdrop;
+        }
+
+        let bg_v = self.background_v_for_dot(self.cycle);
+        let attr_addr = 0x23C0 | (bg_v & 0x0C00) | ((bg_v >> 4) & 0x38) | ((bg_v >> 2) & 0x07);
+        let attr = mem.ppu_read(attr_addr);
+        let coarse_x = (bg_v & 0x001F) as u8;
+        let coarse_y = ((bg_v >> 5) & 0x001F) as u8;
+        let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
+        let palette_id = (attr >> shift) & 0x03;
+        let palette_addr =
+            UNIVERSAL_BG_COLOR_ADDR as u16 + u16::from(palette_id) * 4 + u16::from(pixel);
+        let color_idx = mem.ppu_read(palette_addr) as usize % palette::PALETTE_SIZE;
+        palette::PALETTE[color_idx]
+    }
+
+    fn background_pixel_value(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
+        if dot == 0 || dot > SCREEN_WIDTH as u16 {
+            return 0;
+        }
+
+        let bg_v = self.background_v_for_dot(dot);
+        let fine_x = self.background_fine_x_for_dot(dot);
+        let fine_y = ((bg_v >> 12) & 0x07) as u16;
+        let tile_id = mem.ppu_read(0x2000 | (bg_v & 0x0FFF)) as u16;
+        let pattern_addr = self.ctrl_background_pattern_addr() + tile_id * 16 + fine_y;
+        let low = mem.ppu_read(pattern_addr);
+        let high = mem.ppu_read(pattern_addr + 8);
+        let bit = 7 - fine_x;
+        ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1)
+    }
+
+    fn background_v_for_dot(&self, dot: u16) -> u16 {
+        let pixel_offset = u16::from(self.x) + dot - 1;
+        Self::coarse_x_offset(self.render_line_v, (pixel_offset / 8) as i16)
+    }
+
+    fn background_fine_x_for_dot(&self, dot: u16) -> u8 {
+        let pixel_offset = u16::from(self.x) + dot - 1;
+        (pixel_offset & 0x07) as u8
+    }
+
+    fn coarse_x_offset(mut v: u16, offset: i16) -> u16 {
+        if offset > 0 {
+            for _ in 0..offset {
+                v = Self::coarse_x_incremented(v);
+            }
+        } else {
+            for _ in 0..offset.abs() {
+                v = Self::coarse_x_decremented(v);
+            }
+        }
+        v
+    }
+
+    fn coarse_x_incremented(mut v: u16) -> u16 {
+        if (v & 0x001F) == 0x001F {
+            v &= 0x7FE0;
+            v ^= 0x0400;
+        } else {
+            v += 1;
+        }
+        v
+    }
+
+    fn coarse_x_decremented(mut v: u16) -> u16 {
+        if (v & 0x001F) == 0 {
+            v = (v & 0x7FE0) | 0x001F;
+            v ^= 0x0400;
+        } else {
+            v -= 1;
+        }
+        v
+    }
+
+    fn backdrop_color(&self, mem: &dyn memory::MemoryMapper) -> (u8, u8, u8) {
+        let color_idx =
+            mem.ppu_read(UNIVERSAL_BG_COLOR_ADDR as u16) as usize % palette::PALETTE_SIZE;
+        palette::PALETTE[color_idx]
+    }
+
+    #[allow(dead_code)]
+    pub fn catch_up_to<F>(&mut self, target_dot: u64, mut on_step: F) -> bool
+    where
+        F: FnMut(StepResult),
+    {
+        let mut fire_vblank_nmi = false;
+        while self.last_synced_dot < target_dot {
+            let result = self.step_dot();
+            fire_vblank_nmi |= result.fire_vblank_nmi;
+            on_step(result);
+        }
+        fire_vblank_nmi
+    }
+
+    #[allow(dead_code)]
+    pub fn cycle(&mut self) -> bool {
+        let mut fire_vblank_nmi = false;
+        for _ in 0..3 {
+            fire_vblank_nmi |= self.step_dot().fire_vblank_nmi;
+        }
+        fire_vblank_nmi
+    }
+
+    fn inc_coarse_x(&mut self) {
+        if (self.v & 0x1F) == 0x1F {
+            // Coarse X overflow, switch nametable
+            self.v &= 0x7FE0;
+            self.v ^= 0x0400;
+        } else {
+            self.v += 1;
+        }
+    }
+
+    fn inc_y(&mut self) {
+        if (self.v & 0x7000) == 0x7000 {
+            // Fine Y overflow, increment coarse Y
+            self.v &= 0x8FFF;
+            let coarse_y = (self.v & 0x03E0) >> 5;
+            if coarse_y == 29 {
+                // Coarse Y overflow, switch nametable
+                self.v &= 0x7C1F;
+                self.v ^= 0x0800;
+            } else if coarse_y == 31 {
+                self.v &= 0x7C1F;
+            } else {
+                self.v += 0x20;
+            }
+        } else {
+            self.v += 0x1000;
+        }
+    }
+
+    fn copy_horizontal_scroll(&mut self) {
+        self.v = (self.v & 0x7BE0) | (self.t & 0x041F);
+    }
+
+    fn copy_vertical_scroll(&mut self) {
+        self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
+    }
+
+    pub fn sprite_zero_hit(&self, dot: u16) -> bool {
+        if !self.mask_background_enabled()
+            || !self.mask_sprites_enabled()
+            || self.scanline >= SCREEN_HEIGHT as u16
+        {
+            return false;
+        }
+
+        let sprite_top = u16::from(self.oam_ram[0]).wrapping_add(1);
+        let sprite_height = u16::from(self.ctrl_sprite_size());
+        let sprite_x = u16::from(self.oam_ram[3]);
+
+        self.scanline >= sprite_top
+            && self.scanline < sprite_top.wrapping_add(sprite_height)
+            && sprite_x < 255
+            && dot >= sprite_x.wrapping_add(1)
+    }
+
+    fn sprite_zero_hit_with_rendering(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> bool {
+        if !self.sprite_zero_hit(dot) || dot == 0 || dot > SCREEN_WIDTH as u16 {
+            return false;
+        }
+
+        let screen_x = dot - 1;
+        if screen_x == 255 {
+            return false;
+        }
+        if screen_x < 8
+            && ((self.ppu_mask & MASK_BACKGROUND_LEFT_ENABLE) == 0
+                || (self.ppu_mask & MASK_SPRITES_LEFT_ENABLE) == 0)
+        {
+            return false;
+        }
+
+        self.background_pixel_value(mem, dot) != 0
+            && self.sprite_zero_pixel_value(mem, screen_x) != 0
+    }
+
+    fn sprite_zero_pixel_value(&self, mem: &dyn memory::MemoryMapper, screen_x: u16) -> u8 {
+        let sprite_x = u16::from(self.oam_ram[3]);
+        if screen_x < sprite_x || screen_x >= sprite_x.wrapping_add(8) {
+            return 0;
+        }
+
+        let sprite_top = u16::from(self.oam_ram[0]).wrapping_add(1);
+        let sprite_height = u16::from(self.ctrl_sprite_size());
+        if self.scanline < sprite_top || self.scanline >= sprite_top.wrapping_add(sprite_height) {
+            return 0;
+        }
+
+        let attributes = self.oam_ram[2];
+        let mut sprite_row = self.scanline - sprite_top;
+        if attributes & 0x80 != 0 {
+            sprite_row = sprite_height - 1 - sprite_row;
+        }
+
+        let mut sprite_col = screen_x - sprite_x;
+        if attributes & 0x40 != 0 {
+            sprite_col = 7 - sprite_col;
+        }
+
+        let tile_id = u16::from(self.oam_ram[1]);
+        let pattern_addr = if sprite_height == 16 {
+            let pattern_table = if tile_id & 0x01 == 1 { 0x1000 } else { 0x0000 };
+            let tile_base = tile_id & 0xFE;
+            let tile_offset = if sprite_row >= 8 { 1 } else { 0 };
+            pattern_table + (tile_base + tile_offset) * 16 + (sprite_row % 8)
+        } else {
+            self.ctrl_sprite_pattern_table_addr() + tile_id * 16 + sprite_row
+        };
+
+        let low = mem.ppu_read(pattern_addr);
+        let high = mem.ppu_read(pattern_addr + 8);
+        let bit = 7 - sprite_col;
+        ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1)
     }
 
     pub fn vblank_nmi_is_enabled(&self) -> bool {
@@ -511,35 +781,12 @@ impl PPU {
     pub fn mask_sprites_enabled(&self) -> bool {
         self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE
     }
-
-    // New methods to access scroll information for rendering
-    // Based on NES documentation: t register contains the address of the top-left onscreen tile
-    pub fn get_scroll_x(&self) -> u8 {
-        // Extract coarse X scroll from internal t register
-        // t register bits 0-4 contain coarse X (tile X coordinate)
-        ((self.t & 0x1F) << 3) as u8
-    }
-
-    pub fn get_scroll_y(&self) -> u8 {
-        // Extract coarse Y scroll from internal t register
-        // t register bits 5-9 contain coarse Y (tile Y coordinate)
-        ((self.t & 0x3E0) >> 2) as u8
-    }
-
-    pub fn get_fine_x(&self) -> u8 {
-        self.x
-    }
-
-    pub fn get_fine_y(&self) -> u8 {
-        // Extract fine Y scroll from internal t register
-        // t register bits 12-14 contain fine Y
-        ((self.t & 0x7000) >> 12) as u8
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emu::memory::MemoryMapper;
 
     #[test]
     fn test_write_ppu_addr() {
@@ -670,5 +917,178 @@ mod tests {
         assert_eq!(ppu.vblank_nmi_is_enabled(), false);
         ppu.ppu_ctrl |= STATUS_VERTICAL_BLANK_BIT;
         assert_eq!(ppu.vblank_nmi_is_enabled(), true);
+    }
+
+    #[test]
+    fn test_catch_up_idempotent() {
+        let mut ppu = PPU::new();
+
+        let fired_nmi = ppu.catch_up_to(0, |_| {});
+
+        assert_eq!(fired_nmi, false);
+        assert_eq!(ppu.last_synced_dot, 0);
+        assert_eq!(ppu.scanline, 0);
+        assert_eq!(ppu.cycle, 0);
+    }
+
+    #[test]
+    fn test_catch_up_advances_ppu_state() {
+        let mut ppu = PPU::new();
+
+        let fired_nmi = ppu.catch_up_to(341, |_| {});
+
+        assert_eq!(fired_nmi, false);
+        assert_eq!(ppu.last_synced_dot, 341);
+        assert_eq!(ppu.scanline, 1);
+        assert_eq!(ppu.cycle, 0);
+    }
+
+    #[test]
+    fn test_step_dot_reports_cycle_260() {
+        let mut ppu = PPU::new();
+        let mut cycle_260_scanline = None;
+
+        ppu.catch_up_to(260, |step| {
+            if let Some(scanline) = step.ppu_cycle_260_scanline {
+                cycle_260_scanline = Some(scanline);
+            }
+        });
+
+        assert_eq!(cycle_260_scanline, Some(0));
+    }
+
+    #[test]
+    fn test_scanline_produces_256_pixels() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 1);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+        }
+
+        assert_eq!(ppu.scanline_pixels_written, 256);
+        assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[1]);
+        assert_eq!(framebuffer.get_pixel(255, 0), palette::PALETTE[1]);
+    }
+
+    #[test]
+    fn test_bg_disabled_outputs_backdrop() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 2);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+        }
+
+        for x in 0..SCREEN_WIDTH {
+            assert_eq!(framebuffer.get_pixel(x, 0), palette::PALETTE[2]);
+        }
+    }
+
+    #[test]
+    fn test_prefetch_v_does_not_shift_visible_pixels() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        ppu.v = 2; // hardware v may be ahead for prefetch
+        ppu.next_render_line_v = 0;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x2002, 2);
+        mem.ppu_write(0x0010, 0x80); // tile 1, row 0, leftmost pixel = color 1
+        mem.ppu_write(0x0020, 0x00); // tile 2 would render backdrop if used
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+        }
+        assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_scanline_advances_across_tiles() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x2001, 2);
+        mem.ppu_write(0x0010, 0x80); // tile 1 only lights x=0
+        mem.ppu_write(0x0020, 0x40); // tile 2 only lights x=9
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+        }
+
+        assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[3]);
+        assert_eq!(framebuffer.get_pixel(8, 0), palette::PALETTE[0]);
+        assert_eq!(framebuffer.get_pixel(9, 0), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_sprite_zero_hit_uses_visible_sprite_y() {
+        let mut ppu = PPU::new();
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_SPRITES_ENABLE;
+        ppu.oam_ram[0] = 20;
+        ppu.oam_ram[3] = 10;
+
+        ppu.scanline = 20;
+        assert_eq!(ppu.sprite_zero_hit(11), false);
+
+        ppu.scanline = 21;
+        assert_eq!(ppu.sprite_zero_hit(10), false);
+        assert_eq!(ppu.sprite_zero_hit(11), true);
+    }
+
+    #[test]
+    fn test_sprite_zero_hit_requires_bg_and_sprites() {
+        let mut ppu = PPU::new();
+        ppu.oam_ram[0] = 20;
+        ppu.oam_ram[3] = 10;
+        ppu.scanline = 21;
+
+        ppu.ppu_mask = MASK_SPRITES_ENABLE;
+        assert_eq!(ppu.sprite_zero_hit(11), false);
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        assert_eq!(ppu.sprite_zero_hit(11), false);
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_SPRITES_ENABLE;
+        assert_eq!(ppu.sprite_zero_hit(11), true);
+    }
+
+    #[test]
+    fn test_sprite_zero_hit_requires_opaque_sprite_and_background_pixels() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_SPRITES_ENABLE;
+        ppu.oam_ram[0] = 20;
+        ppu.oam_ram[1] = 2;
+        ppu.oam_ram[3] = 10;
+        ppu.render_line_v = 0;
+
+        mem.ppu_write(0x2001, 1);
+        mem.ppu_write(0x0010, 0x20); // BG tile 1, row 0, x=10 is opaque.
+        mem.ppu_write(0x0020, 0x00); // Sprite tile 2, row 0 is transparent.
+        mem.ppu_write(0x0021, 0x80); // Sprite tile 2, row 1, x=10 is opaque.
+
+        ppu.scanline = 21;
+        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), false);
+
+        ppu.scanline = 22;
+        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), true);
+
+        mem.ppu_write(0x0010, 0x00);
+        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), false);
     }
 }

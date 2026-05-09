@@ -5,10 +5,12 @@ use super::memory;
 use super::ppu;
 use buf::Buffer;
 
+#[cfg(test)]
 fn tile_to_attribute_byte(x: u8, y: u8) -> u8 {
     ((y / 4) * 8) + (x / 4)
 }
 
+#[cfg(test)]
 fn tile_to_attribute_pos(x: u8, y: u8, attribute_byte: u8) -> u8 {
     let x = x % 4;
     let y = y % 4;
@@ -30,6 +32,7 @@ fn tile_to_attribute_pos(x: u8, y: u8, attribute_byte: u8) -> u8 {
     }
 }
 
+#[cfg(test)]
 fn get_nametable_base_addr(nametable_id: u8) -> u16 {
     match nametable_id {
         0 => 0x2000,
@@ -40,138 +43,12 @@ fn get_nametable_base_addr(nametable_id: u8) -> u16 {
     }
 }
 
+#[cfg(test)]
 fn get_attribute_table_addr(nametable_base: u16) -> u16 {
     nametable_base + 0x3C0
 }
 
-fn render_tile(
-    mem: &dyn memory::MemoryMapper,
-    buf: &mut Buffer,
-    tile_x: usize,
-    tile_y: usize,
-    nametable_addr: u16,
-    pattern_table_base: u16,
-    screen_x_offset: isize,
-    screen_y_offset: isize,
-) {
-    // Get pattern table index for this tile
-    let tile_addr = nametable_addr + (tile_y * 0x20) as u16 + tile_x as u16;
-    let pattern_table_index = mem.ppu_read(tile_addr) as u16;
-    let pattern_table_addr = (pattern_table_index * 16) + pattern_table_base;
-
-    // Get attribute table address for this nametable
-    let attribute_table_addr = get_attribute_table_addr(nametable_addr);
-    let attribute_table_offset = tile_to_attribute_byte(tile_x as u8, tile_y as u8) as u16;
-    let attribute_byte = mem.ppu_read(attribute_table_addr + attribute_table_offset);
-    let palette = tile_to_attribute_pos(tile_x as u8, tile_y as u8, attribute_byte);
-
-    // Render the 8x8 tile
-    for y in 0..8u16 {
-        let lb = mem.ppu_read(pattern_table_addr + y);
-        let hb = mem.ppu_read(pattern_table_addr + y + 8);
-
-        for x in 0..8usize {
-            // Fix bit extraction - use consistent bit order
-            let bit_pos = 7 - x; // MSB is leftmost pixel
-            let mask = 1 << bit_pos;
-            let left = (lb & mask) >> bit_pos;
-            let right = ((hb & mask) >> bit_pos) << 1;
-            let pixel_value = (left | right) as usize;
-
-            // Skip transparent pixels (color 0)
-            if pixel_value == 0 {
-                continue;
-            }
-
-            let color = palette::PALETTE[mem.ppu_read(
-                (ppu::UNIVERSAL_BG_COLOR_ADDR + ((palette as usize) * 4) + pixel_value) as u16,
-            ) as usize
-                % palette::PALETTE_SIZE];
-
-            // Calculate screen coordinates - screen_x_offset and screen_y_offset already account for scroll
-            let pixel_x = screen_x_offset + x as isize;
-            let pixel_y = screen_y_offset + y as isize;
-
-            // Check bounds
-            if pixel_x >= 0 && pixel_x < 256 && pixel_y >= 0 && pixel_y < 240 {
-                buf.set_pixel(pixel_x as usize, pixel_y as usize, color);
-            }
-        }
-    }
-}
-
-fn render_background(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
-    let ppu = mem.ppu();
-    let ppu_ref = ppu.borrow();
-
-    let pattern_table_base = ppu_ref.ctrl_background_pattern_addr();
-
-    // Get scroll values from PPU internal registers
-    // These represent the tile coordinates of the top-left visible tile
-    let scroll_x = ppu_ref.get_scroll_x() as i32;
-    let scroll_y = ppu_ref.get_scroll_y() as i32;
-    let fine_x = ppu_ref.get_fine_x() as i32;
-    let fine_y = ppu_ref.get_fine_y() as i32;
-
-    // Get the current nametable from PPUCTRL
-    let base_nametable = ppu_ref.ppu_ctrl & 0x03;
-
-    drop(ppu_ref); // Release the borrow
-
-    // The scroll values represent tile coordinates, not pixel offsets
-    // We need to render tiles starting from the scrolled position
-    let start_tile_x = scroll_x / 8;
-    let start_tile_y = scroll_y / 8;
-    let pixel_offset_x = scroll_x % 8;
-    let pixel_offset_y = scroll_y % 8;
-
-    // We need to draw 34x31 tiles to cover the screen plus scrolling
-    for screen_tile_y in 0..31 {
-        for screen_tile_x in 0..34 {
-            // Calculate the tile coordinates in the scrolled world
-            // These represent which tiles from the nametable we need to render
-            let world_tile_x = start_tile_x + screen_tile_x;
-            let world_tile_y = start_tile_y + screen_tile_y;
-
-            // Determine which nametable to use based on mirroring
-            // NES has 4 nametables but only 2 are physically present, mirrored
-            let nt_x = if world_tile_x >= 32 { 1 } else { 0 };
-            let nt_y = if world_tile_y >= 30 { 1 } else { 0 };
-
-            // Calculate nametable ID - use the base nametable and add offsets
-            let nametable_id = (base_nametable + nt_x + (nt_y * 2)) % 4;
-
-            // Calculate tile position within the selected nametable
-            let tile_x = ((world_tile_x % 32) + 32) % 32;
-            let tile_y = ((world_tile_y % 30) + 30) % 30;
-
-            let nametable_addr = get_nametable_base_addr(nametable_id as u8);
-
-            // Calculate screen position
-            // Each tile is 8x8 pixels, and we need to account for scroll offsets
-            let screen_x = (screen_tile_x * 8) as i32 - pixel_offset_x - fine_x;
-            let screen_y = (screen_tile_y * 8) as i32 - pixel_offset_y - fine_y;
-
-            // Ensure we only render tiles that are at least partially visible
-            if screen_x < -8 || screen_x >= 264 || screen_y < -8 || screen_y >= 248 {
-                continue;
-            }
-
-            render_tile(
-                mem,
-                buf,
-                tile_x as usize,
-                tile_y as usize,
-                nametable_addr,
-                pattern_table_base,
-                screen_x as isize,
-                screen_y as isize,
-            );
-        }
-    }
-}
-
-fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
+pub fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
     let r = mem.ppu();
     let ppu = r.borrow();
 
@@ -274,24 +151,6 @@ fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
                 }
             }
         }
-    }
-}
-
-pub fn render(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
-    // Get the universal background color from PPU memory
-    let background_color_index =
-        mem.ppu_read(ppu::UNIVERSAL_BG_COLOR_ADDR as u16) as usize % palette::PALETTE_SIZE;
-    let background_color = palette::PALETTE[background_color_index];
-
-    // Clear the buffer with the background color
-    buf.clear(background_color);
-
-    if mem.ppu().borrow().mask_background_enabled() {
-        render_background(mem, buf);
-    }
-
-    if mem.ppu().borrow().mask_sprites_enabled() {
-        render_sprites(mem, buf);
     }
 }
 
