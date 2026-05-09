@@ -57,6 +57,13 @@ pub struct StepResult {
     pub ppu_cycle_260_scanline: Option<u16>,
 }
 
+#[derive(Clone, Copy)]
+struct SpritePixel {
+    value: u8,
+    palette_id: u8,
+    behind_background: bool,
+}
+
 /*
         RAM Memory Map
       +---------+-------+----------------+
@@ -130,6 +137,14 @@ pub struct PPU {
     scanline_pixels_written: usize,
     render_line_v: u16,
     next_render_line_v: u16,
+    bg_pattern_shift_low: u16,
+    bg_pattern_shift_high: u16,
+    bg_attr_shift_low: u16,
+    bg_attr_shift_high: u16,
+    bg_next_tile_id: u8,
+    bg_next_attr: u8,
+    bg_next_pattern_low: u8,
+    bg_next_pattern_high: u8,
 }
 
 impl PPU {
@@ -166,6 +181,14 @@ impl PPU {
             scanline_pixels_written: 0,
             render_line_v: 0,
             next_render_line_v: 0,
+            bg_pattern_shift_low: 0,
+            bg_pattern_shift_high: 0,
+            bg_attr_shift_low: 0,
+            bg_attr_shift_high: 0,
+            bg_next_tile_id: 0,
+            bg_next_attr: 0,
+            bg_next_pattern_low: 0,
+            bg_next_pattern_high: 0,
         }
     }
 
@@ -307,8 +330,7 @@ impl PPU {
                     // Second write (low byte)
                     self.t = (self.t & 0xFF00) | (value as u16);
                     self.v = self.t;
-                    self.render_line_v = self.v;
-                    self.next_render_line_v = self.v;
+                    self.sync_render_origin_after_v_write();
                 }
 
                 self.w = !self.w;
@@ -376,7 +398,7 @@ impl PPU {
 
     pub fn step_dot_with_rendering(
         &mut self,
-        mem: &dyn memory::MemoryMapper,
+        mem: &mut dyn memory::MemoryMapper,
         framebuffer: &mut Buffer,
     ) -> StepResult {
         self.step_dot_inner(Some((mem, framebuffer)))
@@ -384,7 +406,7 @@ impl PPU {
 
     fn step_dot_inner(
         &mut self,
-        mut render_ctx: Option<(&dyn memory::MemoryMapper, &mut Buffer)>,
+        mut render_ctx: Option<(&mut dyn memory::MemoryMapper, &mut Buffer)>,
     ) -> StepResult {
         // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
         // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
@@ -426,7 +448,7 @@ impl PPU {
 
             if let Some((mem, framebuffer)) = render_ctx.as_mut() {
                 let x = (self.cycle - 1) as usize;
-                self.scanline_buf[x] = self.background_pixel(*mem);
+                self.scanline_buf[x] = self.render_pixel(&**mem);
                 self.scanline_pixels_written += 1;
 
                 if self.cycle == 256 {
@@ -436,12 +458,18 @@ impl PPU {
         }
 
         let sprite_zero_hit = if let Some((mem, _)) = render_ctx.as_ref() {
-            self.sprite_zero_hit_with_rendering(*mem, self.cycle)
+            self.sprite_zero_hit_with_rendering(&**mem, self.cycle)
         } else {
             self.sprite_zero_hit(self.cycle)
         };
         if sprite_zero_hit {
             self.ppu_status |= STATUS_SPRITE_ZERO_HIT;
+        }
+
+        if rendering_scanline && rendering_enabled {
+            if let Some((mem, _)) = render_ctx.as_mut() {
+                self.render_fetch_step(*mem);
+            }
         }
 
         if self.scanline == VBLANK_SCANLINE && self.cycle == 1 {
@@ -459,13 +487,16 @@ impl PPU {
         if self.scanline == PRE_RENDER_SCANLINE && self.cycle == 1 {
             self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            self.clear_background_shift_registers();
         }
 
         // Handle scroll register updates during rendering
         if rendering_scanline && rendering_enabled {
             // Increment horizontal scroll every 8 dots across the scanline.
             // This happens at dots 328, 336, 8, 16, 24... 240, 248, 256.
-            if self.cycle >= 328 || (self.cycle >= 8 && self.cycle <= 256 && self.cycle % 8 == 0) {
+            if matches!(self.cycle, 328 | 336)
+                || (self.cycle >= 8 && self.cycle <= 256 && self.cycle % 8 == 0)
+            {
                 self.inc_coarse_x();
             }
 
@@ -505,32 +536,124 @@ impl PPU {
         }
     }
 
-    fn background_pixel(&self, mem: &dyn memory::MemoryMapper) -> (u8, u8, u8) {
+    fn render_pixel(&self, mem: &dyn memory::MemoryMapper) -> (u8, u8, u8) {
         let backdrop = self.backdrop_color(mem);
-        if !self.mask_background_enabled() {
-            return backdrop;
+        let (bg_pixel, bg_palette_id) = self.visible_background_pixel(mem, self.cycle);
+        let bg_color = if bg_pixel == 0 {
+            backdrop
+        } else {
+            self.background_palette_color(mem, bg_pixel, bg_palette_id)
+        };
+
+        let screen_x = self.cycle - 1;
+        if let Some(sprite) = self.sprite_pixel(mem, screen_x) {
+            if bg_pixel == 0 || !sprite.behind_background {
+                return self.sprite_palette_color(mem, sprite);
+            }
         }
 
-        let pixel = self.background_pixel_value(mem, self.cycle);
+        bg_color
+    }
 
-        if pixel == 0 {
-            return backdrop;
+    fn visible_background_pixel(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> (u8, u8) {
+        let screen_x = dot.saturating_sub(1);
+        if !self.mask_background_enabled()
+            || (screen_x < 8 && (self.ppu_mask & MASK_BACKGROUND_LEFT_ENABLE) == 0)
+        {
+            return (0, 0);
         }
 
-        let bg_v = self.background_v_for_dot(self.cycle);
-        let attr_addr = 0x23C0 | (bg_v & 0x0C00) | ((bg_v >> 4) & 0x38) | ((bg_v >> 2) & 0x07);
-        let attr = mem.ppu_read(attr_addr);
-        let coarse_x = (bg_v & 0x001F) as u8;
-        let coarse_y = ((bg_v >> 5) & 0x001F) as u8;
-        let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
-        let palette_id = (attr >> shift) & 0x03;
+        (
+            self.direct_background_pixel_value(mem, dot),
+            self.direct_background_palette_id(mem, dot),
+        )
+    }
+
+    fn background_palette_color(
+        &self,
+        mem: &dyn memory::MemoryMapper,
+        pixel: u8,
+        palette_id: u8,
+    ) -> (u8, u8, u8) {
         let palette_addr =
             UNIVERSAL_BG_COLOR_ADDR as u16 + u16::from(palette_id) * 4 + u16::from(pixel);
         let color_idx = mem.ppu_read(palette_addr) as usize % palette::PALETTE_SIZE;
         palette::PALETTE[color_idx]
     }
 
-    fn background_pixel_value(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
+    fn sprite_palette_color(
+        &self,
+        mem: &dyn memory::MemoryMapper,
+        sprite: SpritePixel,
+    ) -> (u8, u8, u8) {
+        let palette_addr = UNIVERSAL_BG_COLOR_ADDR as u16
+            + 0x10
+            + u16::from(sprite.palette_id) * 4
+            + u16::from(sprite.value);
+        let color_idx = mem.ppu_read(palette_addr) as usize % palette::PALETTE_SIZE;
+        palette::PALETTE[color_idx]
+    }
+
+    fn sprite_pixel(&self, mem: &dyn memory::MemoryMapper, screen_x: u16) -> Option<SpritePixel> {
+        if !self.mask_sprites_enabled()
+            || (screen_x < 8 && (self.ppu_mask & MASK_SPRITES_LEFT_ENABLE) == 0)
+        {
+            return None;
+        }
+
+        let sprite_height = u16::from(self.ctrl_sprite_size());
+        let mut sprites_on_scanline = 0;
+
+        for sprite_idx in 0..64 {
+            let oam_base = sprite_idx * 4;
+            let sprite_top = u16::from(self.oam_ram[oam_base]).wrapping_add(1);
+            if self.scanline < sprite_top || self.scanline >= sprite_top.wrapping_add(sprite_height)
+            {
+                continue;
+            }
+
+            if sprites_on_scanline == 8 {
+                break;
+            }
+            sprites_on_scanline += 1;
+
+            let sprite_x = u16::from(self.oam_ram[oam_base + 3]);
+            if screen_x < sprite_x || screen_x >= sprite_x.wrapping_add(8) {
+                continue;
+            }
+
+            let attributes = self.oam_ram[oam_base + 2];
+            let mut sprite_row = self.scanline - sprite_top;
+            if attributes & 0x80 != 0 {
+                sprite_row = sprite_height - 1 - sprite_row;
+            }
+
+            let mut sprite_col = screen_x - sprite_x;
+            if attributes & 0x40 != 0 {
+                sprite_col = 7 - sprite_col;
+            }
+
+            let tile_id = u16::from(self.oam_ram[oam_base + 1]);
+            let pattern_addr = self.sprite_pattern_addr_for(tile_id, sprite_row, sprite_height);
+            let low = mem.ppu_read(pattern_addr);
+            let high = mem.ppu_read(pattern_addr + 8);
+            let bit = 7 - sprite_col;
+            let value = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+            if value == 0 {
+                continue;
+            }
+
+            return Some(SpritePixel {
+                value,
+                palette_id: attributes & 0x03,
+                behind_background: attributes & 0x20 != 0,
+            });
+        }
+
+        None
+    }
+
+    fn direct_background_pixel_value(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
         if dot == 0 || dot > SCREEN_WIDTH as u16 {
             return 0;
         }
@@ -546,6 +669,50 @@ impl PPU {
         ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1)
     }
 
+    fn direct_background_palette_id(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
+        let bg_v = self.background_v_for_dot(dot);
+        let attr_addr = 0x23C0 | (bg_v & 0x0C00) | ((bg_v >> 4) & 0x38) | ((bg_v >> 2) & 0x07);
+        let attr = mem.ppu_read(attr_addr);
+        let coarse_x = (bg_v & 0x001F) as u8;
+        let coarse_y = ((bg_v >> 5) & 0x001F) as u8;
+        let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
+        (attr >> shift) & 0x03
+    }
+
+    #[cfg(test)]
+    fn background_shift_pixel_value(&self) -> u8 {
+        let bit_mux = 0x8000 >> self.x;
+        let low = if self.bg_pattern_shift_low & bit_mux != 0 {
+            1
+        } else {
+            0
+        };
+        let high = if self.bg_pattern_shift_high & bit_mux != 0 {
+            1
+        } else {
+            0
+        };
+
+        low | (high << 1)
+    }
+
+    #[cfg(test)]
+    fn background_shift_palette_id(&self) -> u8 {
+        let bit_mux = 0x8000 >> self.x;
+        let low = if self.bg_attr_shift_low & bit_mux != 0 {
+            1
+        } else {
+            0
+        };
+        let high = if self.bg_attr_shift_high & bit_mux != 0 {
+            1
+        } else {
+            0
+        };
+
+        low | (high << 1)
+    }
+
     fn background_v_for_dot(&self, dot: u16) -> u16 {
         let pixel_offset = u16::from(self.x) + dot - 1;
         Self::coarse_x_offset(self.render_line_v, (pixel_offset / 8) as i16)
@@ -554,6 +721,172 @@ impl PPU {
     fn background_fine_x_for_dot(&self, dot: u16) -> u8 {
         let pixel_offset = u16::from(self.x) + dot - 1;
         (pixel_offset & 0x07) as u8
+    }
+
+    fn sync_render_origin_after_v_write(&mut self) {
+        self.render_line_v = if self.scanline < SCREEN_HEIGHT as u16 && self.cycle < 256 {
+            self.render_origin_for_dot(self.v, self.cycle + 1)
+        } else {
+            self.v
+        };
+        self.next_render_line_v = self.v;
+    }
+
+    fn render_origin_for_dot(&self, v: u16, dot: u16) -> u16 {
+        let pixel_offset = u16::from(self.x) + dot - 1;
+        Self::coarse_x_offset(v, -((pixel_offset / 8) as i16))
+    }
+
+    fn render_fetch_step(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        if self.background_dummy_fetch_cycle() {
+            self.fetch_background_nametable_byte(mem);
+        } else if self.background_fetch_cycle() {
+            self.background_fetch_step(mem);
+        } else if self.sprite_fetch_cycle() {
+            self.sprite_fetch_step(mem);
+        }
+    }
+
+    fn background_fetch_step(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        match (self.cycle - 1) % 8 {
+            0 => self.fetch_background_nametable_byte(mem),
+            2 => self.fetch_background_attribute_byte(mem),
+            4 => self.fetch_background_pattern_low(mem),
+            6 => self.fetch_background_pattern_high(mem),
+            7 => {
+                self.shift_background_registers();
+                self.load_background_shift_registers();
+                return;
+            }
+            _ => {}
+        }
+
+        self.shift_background_registers();
+    }
+
+    fn background_fetch_cycle(&self) -> bool {
+        matches!(self.cycle, 1..=256 | 321..=336)
+    }
+
+    fn background_dummy_fetch_cycle(&self) -> bool {
+        matches!(self.cycle, 337 | 339)
+    }
+
+    fn sprite_fetch_cycle(&self) -> bool {
+        (257..=320).contains(&self.cycle)
+    }
+
+    fn ppu_fetch(&mut self, mem: &mut dyn memory::MemoryMapper, addr: u16) -> u8 {
+        mem.ppu_fetch(addr, self.last_synced_dot)
+    }
+
+    fn fetch_background_nametable_byte(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        let addr = 0x2000 | (self.v & 0x0FFF);
+        self.bg_next_tile_id = self.ppu_fetch(mem, addr);
+    }
+
+    fn fetch_background_attribute_byte(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        let addr = 0x23C0 | (self.v & 0x0C00) | ((self.v >> 4) & 0x38) | ((self.v >> 2) & 0x07);
+        let attr = self.ppu_fetch(mem, addr);
+        let coarse_x = (self.v & 0x001F) as u8;
+        let coarse_y = ((self.v >> 5) & 0x001F) as u8;
+        let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
+        self.bg_next_attr = (attr >> shift) & 0x03;
+    }
+
+    fn fetch_background_pattern_low(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        let addr = self.background_pattern_fetch_addr();
+        self.bg_next_pattern_low = self.ppu_fetch(mem, addr);
+    }
+
+    fn fetch_background_pattern_high(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        let addr = self.background_pattern_fetch_addr() + 8;
+        self.bg_next_pattern_high = self.ppu_fetch(mem, addr);
+    }
+
+    fn sprite_fetch_step(&mut self, mem: &mut dyn memory::MemoryMapper) {
+        match (self.cycle - 1) % 8 {
+            0 | 2 => {
+                self.ppu_fetch(mem, 0x2000);
+            }
+            4 => {
+                let addr = self.sprite_pattern_fetch_addr();
+                self.ppu_fetch(mem, addr);
+            }
+            6 => {
+                let addr = self.sprite_pattern_fetch_addr() + 8;
+                self.ppu_fetch(mem, addr);
+            }
+            _ => {}
+        }
+    }
+
+    fn sprite_pattern_fetch_addr(&self) -> u16 {
+        let sprite_idx = ((self.cycle - 257) / 8).min(7) as usize;
+        let oam_base = sprite_idx * 4;
+        let tile_id = u16::from(self.oam_ram[oam_base + 1]);
+        let sprite_top = u16::from(self.oam_ram[oam_base]).wrapping_add(1);
+        let mut row = self.scanline.saturating_sub(sprite_top);
+        let sprite_height = u16::from(self.ctrl_sprite_size());
+        if row >= sprite_height {
+            row = 0;
+        }
+
+        if self.oam_ram[oam_base + 2] & 0x80 != 0 {
+            row = sprite_height - 1 - row;
+        }
+
+        self.sprite_pattern_addr_for(tile_id, row, sprite_height)
+    }
+
+    fn sprite_pattern_addr_for(&self, tile_id: u16, row: u16, sprite_height: u16) -> u16 {
+        if sprite_height == 16 {
+            let pattern_table = if tile_id & 0x01 == 1 { 0x1000 } else { 0x0000 };
+            let tile_base = tile_id & 0xFE;
+            let tile_offset = if row >= 8 { 1 } else { 0 };
+            pattern_table + (tile_base + tile_offset) * 16 + (row % 8)
+        } else {
+            self.ctrl_sprite_pattern_table_addr() + tile_id * 16 + row
+        }
+    }
+
+    fn background_pattern_fetch_addr(&self) -> u16 {
+        let fine_y = (self.v >> 12) & 0x07;
+        self.ctrl_background_pattern_addr() + u16::from(self.bg_next_tile_id) * 16 + fine_y
+    }
+
+    fn load_background_shift_registers(&mut self) {
+        self.bg_pattern_shift_low =
+            (self.bg_pattern_shift_low & 0xFF00) | u16::from(self.bg_next_pattern_low);
+        self.bg_pattern_shift_high =
+            (self.bg_pattern_shift_high & 0xFF00) | u16::from(self.bg_next_pattern_high);
+
+        let attr_low: u16 = if self.bg_next_attr & 0x01 != 0 {
+            0xFF
+        } else {
+            0x00
+        };
+        let attr_high: u16 = if self.bg_next_attr & 0x02 != 0 {
+            0xFF
+        } else {
+            0x00
+        };
+        self.bg_attr_shift_low = (self.bg_attr_shift_low & 0xFF00) | attr_low;
+        self.bg_attr_shift_high = (self.bg_attr_shift_high & 0xFF00) | attr_high;
+    }
+
+    fn shift_background_registers(&mut self) {
+        self.bg_pattern_shift_low <<= 1;
+        self.bg_pattern_shift_high <<= 1;
+        self.bg_attr_shift_low <<= 1;
+        self.bg_attr_shift_high <<= 1;
+    }
+
+    fn clear_background_shift_registers(&mut self) {
+        self.bg_pattern_shift_low = 0;
+        self.bg_pattern_shift_high = 0;
+        self.bg_attr_shift_low = 0;
+        self.bg_attr_shift_high = 0;
     }
 
     fn coarse_x_offset(mut v: u16, offset: i16) -> u16 {
@@ -689,7 +1022,7 @@ impl PPU {
             return false;
         }
 
-        self.background_pixel_value(mem, dot) != 0
+        self.direct_background_pixel_value(mem, dot) != 0
             && self.sprite_zero_pixel_value(mem, screen_x) != 0
     }
 
@@ -717,15 +1050,7 @@ impl PPU {
         }
 
         let tile_id = u16::from(self.oam_ram[1]);
-        let pattern_addr = if sprite_height == 16 {
-            let pattern_table = if tile_id & 0x01 == 1 { 0x1000 } else { 0x0000 };
-            let tile_base = tile_id & 0xFE;
-            let tile_offset = if sprite_row >= 8 { 1 } else { 0 };
-            pattern_table + (tile_base + tile_offset) * 16 + (sprite_row % 8)
-        } else {
-            self.ctrl_sprite_pattern_table_addr() + tile_id * 16 + sprite_row
-        };
-
+        let pattern_addr = self.sprite_pattern_addr_for(tile_id, sprite_row, sprite_height);
         let low = mem.ppu_read(pattern_addr);
         let high = mem.ppu_read(pattern_addr + 8);
         let bit = 7 - sprite_col;
@@ -741,6 +1066,7 @@ impl PPU {
         (self.get_status_reg() & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
     }
 
+    #[allow(dead_code)]
     pub fn read_oam(&self, offset: usize) -> u8 {
         unsafe { *self.oam_ram_ptr.offset(offset as _) }
     }
@@ -787,6 +1113,20 @@ impl PPU {
 mod tests {
     use super::*;
     use crate::emu::memory::MemoryMapper;
+
+    fn prime_visible_scanline(ppu: &mut PPU, mem: &mut dyn memory::MemoryMapper) {
+        ppu.scanline = PRE_RENDER_SCANLINE;
+        ppu.cycle = 320;
+        ppu.v = ppu.next_render_line_v;
+        let mut framebuffer = Buffer::new();
+
+        for _ in 0..21 {
+            ppu.step_dot_with_rendering(mem, &mut framebuffer);
+        }
+
+        assert_eq!(ppu.scanline, 0);
+        assert_eq!(ppu.cycle, 0);
+    }
 
     #[test]
     fn test_write_ppu_addr() {
@@ -965,7 +1305,7 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 1);
 
         for _ in 0..256 {
-            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 
         assert_eq!(ppu.scanline_pixels_written, 256);
@@ -981,7 +1321,7 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 2);
 
         for _ in 0..256 {
-            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 
         for x in 0..SCREEN_WIDTH {
@@ -990,13 +1330,79 @@ mod tests {
     }
 
     #[test]
-    fn test_prefetch_v_does_not_shift_visible_pixels() {
+    fn test_bg_left_mask_outputs_backdrop_for_first_8_pixels() {
         let mut ppu = PPU::new();
         let mut mem = memory::IdentityMapper::new(0x4000);
         let mut framebuffer = Buffer::new();
 
         ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
-        ppu.v = 2; // hardware v may be ahead for prefetch
+        ppu.next_render_line_v = 0;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x2001, 1);
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+        prime_visible_scanline(&mut ppu, &mut mem);
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[0]);
+        assert_eq!(framebuffer.get_pixel(8, 0), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_sprite_left_mask_outputs_backdrop_for_first_8_pixels() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.scanline = 1;
+        ppu.ppu_mask = MASK_SPRITES_ENABLE;
+        ppu.oam_ram[0] = 0;
+        ppu.oam_ram[1] = 1;
+        ppu.oam_ram[3] = 0;
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 0x11, 3);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(framebuffer.get_pixel(0, 1), palette::PALETTE[0]);
+    }
+
+    #[test]
+    fn test_sprite_rendering_uses_dot_renderer() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.scanline = 1;
+        ppu.ppu_mask = MASK_SPRITES_ENABLE | MASK_SPRITES_LEFT_ENABLE;
+        ppu.oam_ram[0] = 0;
+        ppu.oam_ram[1] = 1;
+        ppu.oam_ram[3] = 0;
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 0x11, 3);
+
+        for _ in 0..256 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(framebuffer.get_pixel(0, 1), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_prefetch_v_does_not_shift_visible_pixels() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
         ppu.next_render_line_v = 0;
         mem.ppu_write(0x2000, 1);
         mem.ppu_write(0x2002, 2);
@@ -1005,8 +1411,9 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
 
+        prime_visible_scanline(&mut ppu, &mut mem);
         for _ in 0..256 {
-            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
         assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[3]);
     }
@@ -1017,7 +1424,8 @@ mod tests {
         let mut mem = memory::IdentityMapper::new(0x4000);
         let mut framebuffer = Buffer::new();
 
-        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+        ppu.next_render_line_v = 0;
         mem.ppu_write(0x2000, 1);
         mem.ppu_write(0x2001, 2);
         mem.ppu_write(0x0010, 0x80); // tile 1 only lights x=0
@@ -1025,13 +1433,221 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
 
+        prime_visible_scanline(&mut ppu, &mut mem);
         for _ in 0..256 {
-            ppu.step_dot_with_rendering(&mem, &mut framebuffer);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 
         assert_eq!(framebuffer.get_pixel(0, 0), palette::PALETTE[3]);
         assert_eq!(framebuffer.get_pixel(8, 0), palette::PALETTE[0]);
         assert_eq!(framebuffer.get_pixel(9, 0), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_mid_scanline_ppuaddr_write_anchors_next_pixel() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+        let mut cpu_ram = [0u8; 2 * 1024];
+        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+        ppu.next_render_line_v = 0;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x2001, 1);
+        mem.ppu_write(0x2002, 2);
+        mem.ppu_write(0x0010, 0x00); // tile 1 is transparent.
+        mem.ppu_write(0x0020, 0x80); // tile 2 lights its leftmost pixel.
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+        for _ in 0..8 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x02, cpu_ram_ptr);
+
+        for _ in 0..248 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(framebuffer.get_pixel(8, 0), palette::PALETTE[3]);
+    }
+
+    #[test]
+    fn test_shift_register_loads_at_tile_boundary() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x23C0, 0b0000_0011);
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(0x0018, 0x40);
+
+        for _ in 0..8 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(ppu.bg_next_tile_id, 1);
+        assert_eq!(ppu.bg_next_attr, 3);
+        assert_eq!(ppu.bg_pattern_shift_low & 0x00FF, 0x80);
+        assert_eq!(ppu.bg_pattern_shift_high & 0x00FF, 0x40);
+        assert_eq!(ppu.bg_attr_shift_low & 0x00FF, 0xFF);
+        assert_eq!(ppu.bg_attr_shift_high & 0x00FF, 0xFF);
+    }
+
+    #[test]
+    fn test_tile_fetch_sequence() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x23C0, 0b0000_0010);
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(0x0018, 0x40);
+
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        assert_eq!(ppu.bg_next_tile_id, 1);
+
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        assert_eq!(ppu.bg_next_attr, 2);
+
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        assert_eq!(ppu.bg_next_pattern_low, 0x80);
+
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        assert_eq!(ppu.bg_next_pattern_high, 0x40);
+    }
+
+    #[test]
+    fn test_prefetch_dots_321_336_seed_visible_shifters() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+        ppu.next_render_line_v = 0;
+        mem.ppu_write(0x2000, 1);
+        mem.ppu_write(0x2001, 2);
+        mem.ppu_write(0x0010, 0x80);
+        mem.ppu_write(0x0020, 0x40);
+
+        prime_visible_scanline(&mut ppu, &mut mem);
+
+        assert_eq!(ppu.bg_pattern_shift_low, 0x8040);
+    }
+
+    fn seed_background_comparison_pattern(mem: &mut dyn memory::MemoryMapper) {
+        for tile in 0..32u16 {
+            mem.ppu_write(0x2000 + tile, (tile + 1) as u8);
+            mem.ppu_write(0x23C0 + (tile / 4), (tile % 4) as u8 * 0x55);
+
+            let pattern_base = (tile + 1) * 16;
+            for row in 0..8u16 {
+                let rotate = ((tile + row) % 8) as u32;
+                mem.ppu_write(pattern_base + row, 0b1001_0110u8.rotate_left(rotate));
+                mem.ppu_write(pattern_base + row + 8, 0b0110_1001u8.rotate_right(rotate));
+            }
+        }
+    }
+
+    fn assert_shifter_matches_direct_background(
+        ppu: &PPU,
+        mem: &dyn memory::MemoryMapper,
+        dot: u16,
+    ) {
+        let direct_pixel = ppu.direct_background_pixel_value(mem, dot);
+        let shifter_pixel = ppu.background_shift_pixel_value();
+        assert_eq!(
+            shifter_pixel, direct_pixel,
+            "pixel mismatch at scanline {}, dot {}; v={:04X}, render_line_v={:04X}, low={:04X}, high={:04X}, attr_low={:04X}, attr_high={:04X}",
+            ppu.scanline,
+            dot,
+            ppu.v,
+            ppu.render_line_v,
+            ppu.bg_pattern_shift_low,
+            ppu.bg_pattern_shift_high,
+            ppu.bg_attr_shift_low,
+            ppu.bg_attr_shift_high
+        );
+
+        if direct_pixel != 0 {
+            let direct_palette = ppu.direct_background_palette_id(mem, dot);
+            let shifter_palette = ppu.background_shift_palette_id();
+            assert_eq!(
+                shifter_palette, direct_palette,
+                "palette mismatch at scanline {}, dot {}",
+                ppu.scanline, dot
+            );
+        }
+    }
+
+    #[test]
+    fn test_shifter_matches_direct_background_after_prefetch() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+        ppu.next_render_line_v = 0;
+        seed_background_comparison_pattern(&mut mem);
+        prime_visible_scanline(&mut ppu, &mut mem);
+        ppu.render_line_v = ppu.next_render_line_v;
+
+        for dot in 1..=256 {
+            assert_shifter_matches_direct_background(&ppu, &mem, dot);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+    }
+
+    #[test]
+    fn test_shifter_matches_direct_background_after_cold_start_scanline() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+        seed_background_comparison_pattern(&mut mem);
+
+        for _ in 0..341 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+        ppu.render_line_v = ppu.next_render_line_v;
+
+        for dot in 1..=256 {
+            assert_shifter_matches_direct_background(&ppu, &mem, dot);
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+    }
+
+    #[test]
+    fn test_fine_x_selects_shift_register_pixel() {
+        let mut ppu = PPU::new();
+        ppu.bg_pattern_shift_low = 0b1010_0000_0000_0000;
+        ppu.bg_pattern_shift_high = 0b0110_0000_0000_0000;
+        ppu.bg_attr_shift_low = 0b1100_0000_0000_0000;
+        ppu.bg_attr_shift_high = 0b0101_0000_0000_0000;
+
+        let expected_pixels = [1, 2, 3, 0];
+        let expected_palettes = [1, 3, 0, 2];
+        for fine_x in 0..4 {
+            ppu.x = fine_x;
+            assert_eq!(
+                ppu.background_shift_pixel_value(),
+                expected_pixels[fine_x as usize]
+            );
+            assert_eq!(
+                ppu.background_shift_palette_id(),
+                expected_palettes[fine_x as usize]
+            );
+        }
     }
 
     #[test]

@@ -202,16 +202,13 @@ impl Emulator {
                 }
             }
 
-            let opcode = self.execute_instruction();
-            self.log_instruction(opcode, self.cpu.last_instruction);
+            if !self.service_pending_irq() {
+                let opcode = self.execute_instruction();
+                self.log_instruction(opcode, self.cpu.last_instruction);
 
-            // --- MMC3 IRQ support ---
-            if self.mem.poll_irq() {
-                self.trigger_irq();
-            }
-
-            if self.nmi_triggered_countdown > 0 {
-                self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
+                if self.nmi_triggered_countdown > 0 {
+                    self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
+                }
             }
         }
 
@@ -234,9 +231,6 @@ impl Emulator {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
 
-            if self.ppu.borrow().mask_sprites_enabled() {
-                gfx::render_sprites(&mut *self.mem, &mut self.buf);
-            }
             self.iohandler.render(&self.buf);
             thread::sleep(FRAME_BUDGET.saturating_sub(self.last_rendered.elapsed()));
             self.last_rendered = Instant::now();
@@ -313,7 +307,7 @@ impl Emulator {
             let mut ppu = self.ppu.borrow_mut();
             let mut fire_vblank_nmi = false;
             while ppu.last_synced_dot < target_dot {
-                let step = ppu.step_dot_with_rendering(&*self.mem, &mut self.buf);
+                let step = ppu.step_dot_with_rendering(&mut *self.mem, &mut self.buf);
                 fire_vblank_nmi |= step.fire_vblank_nmi;
                 if let Some(scanline) = step.ppu_cycle_260_scanline {
                     cycle_260_scanlines.push(scanline);
@@ -336,6 +330,19 @@ impl Emulator {
                 self.nmi_triggered_countdown = 0;
             }
         }
+    }
+
+    fn service_pending_irq(&mut self) -> bool {
+        if self.cpu.interrupt_flag() {
+            return false;
+        }
+
+        if self.mem.poll_irq() {
+            self.trigger_irq();
+            return true;
+        }
+
+        false
     }
 
     fn cpu_read(&mut self, addr: u16) -> u8 {

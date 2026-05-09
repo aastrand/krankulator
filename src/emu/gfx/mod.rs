@@ -48,6 +48,7 @@ fn get_attribute_table_addr(nametable_base: u16) -> u16 {
     nametable_base + 0x3C0
 }
 
+#[allow(dead_code)]
 pub fn render_sprites(mem: &dyn memory::MemoryMapper, buf: &mut Buffer) {
     let r = mem.ppu();
     let ppu = r.borrow();

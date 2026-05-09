@@ -74,7 +74,8 @@ impl ApplicationHandler for InitHandler {
             .with_inner_size(LogicalSize::new(window_width, window_height));
         let window = event_loop.create_window(attrs).unwrap();
         let window: &'static Window = Box::leak(Box::new(window));
-        let surface_texture = SurfaceTexture::new(self.width, self.height, window);
+        let size = window.inner_size();
+        let surface_texture = SurfaceTexture::new(size.width, size.height, window);
         let pixels = Pixels::new(self.width, self.height, surface_texture).unwrap();
         self.window = Some(window);
         self.pixels = Some(pixels);

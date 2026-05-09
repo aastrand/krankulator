@@ -265,33 +265,52 @@ until Phase 3.
 
 **Goal**: Replace the direct tile lookup with the hardware-accurate fetch/shift pipeline.
 
+**Status**: Checkpoint (half-finished). In tree: shift-register state, 4-step fetch
+cadence (NT → AT → PT low → PT high), tile-boundary loads, prefetch and dummy fetches,
+and **unit-test QA** comparing shifter output against the Phase 2 direct background
+lookup (so the pipeline is exercised and locked without risking the live framebuffer
+path yet). Live visible background pixels still use the **direct lookup** path because
+enabling shifter-composited pixels regressed several titles; toggling back is a Phase 3
+follow-up once the discrepancy between the two paths is understood.
+
+**Known follow-ups (deferred)**:
+- MMC3 games (e.g. SMB3, Mega Man 3, Kirby, Battletoads) still show wrong scrolling /
+  garbling relative to SMB1-level mappers. Further mapper IRQ / A12 work kept colliding
+  with incomplete Phase 4 sprite fetch timing; **accept as broken for now** and revisit
+  after sprite evaluation and fetches are cycle-accurate.
+- Prefetch coarse-X increment bug fixed: advance coarse X only at dots **328** and
+  **336** during prefetch, not on every dot from 328–340.
+
 1. Add shift register fields to PPU (listed above)
 2. Implement the 4-step fetch cycle (NT → AT → PT low → PT high) every 8 dots
 3. Load fetched data into shift registers at tile boundaries
-4. Output pixels by selecting bits from shift registers using fine X
+4. Output pixels by selecting bits from shift registers using fine X *(live path: still
+   direct lookup; shifter output validated in tests)*
 5. Implement pre-fetch (dots 321-336) and dummy fetches (337-340)
-6. Drive mapper A12/IRQ observation from actual PPU pattern-table fetches, replacing the
-   temporary `ppu_cycle_260()` approximation for mappers that need fetch-edge timing
+6. Drive mapper A12/IRQ observation from actual PPU pattern-table fetches *(MMC3: IRQ
+   clocking edge-based from `ppu_fetch`; behavior still not game-good — see deferrals)*
 7. Verify: fine-X scrolling should be pixel-perfect; no visual regression on games
-   that worked before
+   that worked before *(gate not fully met for MMC3-class titles yet)*
 
 **Tests**:
 - `test_shift_register_loads_at_tile_boundary` — after 8 dots, new tile data is loaded
   into the upper bits of the shift registers
-- `test_fine_x_selects_correct_pixel` — with fine X = 0..7, the correct bit is selected
-  from the shift register
+- `test_fine_x_selects_shift_register_pixel` — with fine X = 0..7, the correct bit is
+  selected from the shift register
 - `test_tile_fetch_sequence` — verify the 4 memory accesses happen at dots N+0, N+2,
   N+4, N+6 within each 8-dot window
-- `test_prefetch_dots_321_336` — first two tiles of next scanline are fetched during
-  dots 321-336
-- `test_mmc3_a12_edges_from_fetches` — MMC3 scanline IRQs are clocked by real PPU A12
-  rising edges from background/sprite pattern fetches
+- `test_prefetch_dots_321_336_seed_visible_shifters` — first two tiles of next scanline
+  are fetched during dots 321-336
+- Shifter-vs-direct background consistency tests under `cfg(test)` *(e.g.
+  `assert_shifter_matches_direct_background` and related cases)*
+- `test_mmc3_a12_edges_from_filtered_ppu_fetches` / related MMC3 unit coverage — mapper
+  tests pass; visual MMC3 smoke still failing (see deferrals)
 
-**Old code removed**:
-- Direct tile lookup logic from phase 2's interim implementation (replaced by shift
-  register output)
-- Temporary `ppu_cycle_260()` scanline approximation for mappers migrated to fetch-edge
-  A12 tracking
+**Not removed yet (Phase 3 completion)**:
+- Direct tile lookup for **live** background pixels (remains until shifter path matches
+  hardware under full-game smoke)
+- Any `ppu_cycle_260()` hook on the mapper trait may remain for compatibility; MMC3 IRQ
+  **clocking** in this tree is driven from pattern fetches, not the empty scanline stub
 
 ### Phase 4: Sprite evaluation and rendering in PPU
 
