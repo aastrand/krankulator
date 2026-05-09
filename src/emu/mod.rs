@@ -18,8 +18,7 @@ use std::time::{Duration, Instant};
 
 use self::audio::{AudioBackend, AudioOutput, SilentAudioOutput};
 
-pub const _NS_PER_CYCLE: std::time::Duration = std::time::Duration::from_nanos(559);
-pub const FRAME_BUDGET_MS: Duration = Duration::from_millis(1000 / 60);
+const FRAME_BUDGET: Duration = Duration::from_micros(16_667);
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -246,7 +245,7 @@ impl Emulator {
 
             gfx::render(&mut *self.mem, &mut self.buf);
             self.iohandler.render(&self.buf);
-            thread::sleep(FRAME_BUDGET_MS.saturating_sub(self.last_rendered.elapsed()));
+            thread::sleep(FRAME_BUDGET.saturating_sub(self.last_rendered.elapsed()));
             self.last_rendered = Instant::now();
         }
         if self.cycles % 16666 == 0 {
