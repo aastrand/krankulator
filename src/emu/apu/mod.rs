@@ -2,7 +2,7 @@ pub mod channels;
 pub mod frame_counter;
 
 pub const SAMPLE_RATE: u32 = 44100;
-pub const CYCLES_PER_SAMPLE: u32 = 1789773 / SAMPLE_RATE; // NES CPU clock / sample rate
+pub const CYCLES_PER_SAMPLE: f64 = 1_789_773.0 / SAMPLE_RATE as f64;
 
 use crate::emu::apu::frame_counter::FrameStep;
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
@@ -19,7 +19,7 @@ pub struct APU {
     // Audio output
     sample_buffer: Vec<f32>,
     sample_index: usize,
-    cycles_since_sample: u32,
+    cycles_since_sample: f64,
 
     // Status
     status: u8,
@@ -38,9 +38,9 @@ impl APU {
             dmc: DmcChannel::new(),
             frame_counter: FrameCounter::new(),
 
-            sample_buffer: vec![0.0; 4096], // Buffer for audio samples
+            sample_buffer: vec![0.0; 4096],
             sample_index: 0,
-            cycles_since_sample: 0,
+            cycles_since_sample: 0.0,
 
             status: 0,
             enabled_channels: 0,
@@ -58,7 +58,7 @@ impl APU {
         self.dmc.hard_reset();
         self.frame_counter = FrameCounter::new();
         self.sample_index = 0;
-        self.cycles_since_sample = 0;
+        self.cycles_since_sample = 0.0;
         self.status = 0;
         self.enabled_channels = 0;
         self.mute_mask = 0;
@@ -381,10 +381,9 @@ impl APU {
         self.noise.cycle();
         self.dmc.cycle(memory);
 
-        // Generate audio samples
-        self.cycles_since_sample += 1;
+        self.cycles_since_sample += 1.0;
         if self.cycles_since_sample >= CYCLES_PER_SAMPLE {
-            self.cycles_since_sample = 0;
+            self.cycles_since_sample -= CYCLES_PER_SAMPLE;
             self.generate_sample();
         }
     }
@@ -430,16 +429,14 @@ impl APU {
     }
 
     fn mix_channels(&self, pulse1: f32, pulse2: f32, triangle: f32, noise: f32, dmc: f32) -> f32 {
-        // NES audio mixing algorithm
-        // Based on Blargg's NES APU reference implementation
-
-        let pulse_out = (pulse1 + pulse2) * 0.00752;
-        let tnd_out = triangle * 0.00851 + noise * 0.00494 + dmc * 0.00335;
-
-        let mixed = pulse_out + tnd_out;
-
-        // Clamp to [-1.0, 1.0]
-        mixed.max(-1.0).min(1.0)
+        // NES hardware coefficients scaled by each channel's raw DAC range.
+        // Pulse/Noise: 0.0–1.0 (raw 0–15, divided by 15) → scale = coeff * 15
+        // Triangle: -1.0–1.0 (raw 0–15, centered) → scale = coeff * 7.5
+        // DMC: -1.0–1.0 (raw 0–127, centered) → scale = coeff * 64
+        let pulse_out = (pulse1 + pulse2) * (0.00752 * 15.0);
+        let tnd_out =
+            triangle * (0.00851 * 7.5) + noise * (0.00494 * 15.0) + dmc * (0.00335 * 64.0);
+        ((pulse_out + tnd_out) * 1.5).clamp(-1.0, 1.0)
     }
 
     pub fn get_audio_samples(&mut self) -> &[f32] {
@@ -493,7 +490,7 @@ mod tests {
         assert_eq!(apu.status, 0);
         assert_eq!(apu.enabled_channels, 0);
         assert_eq!(apu.sample_index, 0);
-        assert_eq!(apu.cycles_since_sample, 0);
+        assert_eq!(apu.cycles_since_sample, 0.0);
         assert_eq!(apu.sample_buffer.len(), 4096);
     }
 
@@ -676,7 +673,7 @@ mod tests {
         }
 
         // Should have advanced cycles_since_sample
-        assert!(apu.cycles_since_sample > 0);
+        assert!(apu.cycles_since_sample > 0.0);
     }
 
     #[test]
@@ -736,12 +733,10 @@ mod tests {
         apu.write(0x4002, 0x10); // Timer low
         apu.write(0x4003, 0x00); // Timer high
 
-        // Cycle enough to generate a sample
-        for _ in 0..CYCLES_PER_SAMPLE {
+        for _ in 0..CYCLES_PER_SAMPLE as u32 + 1 {
             apu.cycle(&mut DummyMemory);
         }
 
-        // Should have generated a sample
         assert_eq!(apu.sample_index, 1);
     }
 
@@ -749,8 +744,7 @@ mod tests {
     fn test_apu_get_audio_samples() {
         let mut apu = APU::new();
 
-        // Generate some samples
-        for _ in 0..CYCLES_PER_SAMPLE * 5 {
+        for _ in 0..(CYCLES_PER_SAMPLE * 5.0) as u32 {
             apu.cycle(&mut DummyMemory);
         }
 
@@ -778,9 +772,8 @@ mod tests {
         // Test sample rate
         assert_eq!(SAMPLE_RATE, 44100);
 
-        // Test cycles per sample calculation
-        assert_eq!(CYCLES_PER_SAMPLE, 1789773 / SAMPLE_RATE);
-        assert!(CYCLES_PER_SAMPLE > 0);
+        assert!(CYCLES_PER_SAMPLE > 40.0);
+        assert!(CYCLES_PER_SAMPLE < 41.0);
     }
 
     #[test]
