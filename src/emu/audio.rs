@@ -1,13 +1,16 @@
+use ringbuf::{
+    traits::{Consumer, Producer, Split},
+    HeapCons, HeapProd, HeapRb,
+};
 use rodio::{OutputStream, Sink, Source};
-use std::sync::{Arc, Mutex};
 
 pub trait AudioBackend {
-    fn push_samples(&self, samples: &[f32]);
-    fn clear(&self);
+    fn push_samples(&mut self, samples: &[f32]);
+    fn clear(&mut self);
 }
 
 pub struct AudioOutput {
-    pub buffer: Arc<Mutex<Vec<f32>>>,
+    producer: HeapProd<f32>,
     _stream: OutputStream,
     #[allow(dead_code)]
     sink: Sink,
@@ -15,20 +18,18 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     pub fn new(sample_rate: u32) -> Self {
+        let rb = HeapRb::<f32>::new(8192);
+        let (producer, consumer) = rb.split();
+
         let (stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let buffer_clone = buffer.clone();
 
-        // Custom source that pulls from the buffer
-        let source = AudioBufferSource::new(buffer_clone, sample_rate);
-        // Up volume
-        sink.set_volume(10.0);
+        let source = AudioBufferSource::new(consumer, sample_rate);
         sink.append(source);
         sink.play();
 
         Self {
-            buffer,
+            producer,
             _stream: stream,
             sink,
         }
@@ -36,14 +37,12 @@ impl AudioOutput {
 }
 
 impl AudioBackend for AudioOutput {
-    fn push_samples(&self, samples: &[f32]) {
-        let mut buf = self.buffer.lock().unwrap();
-        buf.extend_from_slice(samples);
+    fn push_samples(&mut self, samples: &[f32]) {
+        self.producer.push_slice(samples);
     }
 
-    fn clear(&self) {
-        let mut buf = self.buffer.lock().unwrap();
-        buf.clear();
+    fn clear(&mut self) {
+        // Consumer drains residual samples naturally (~186ms worst case).
     }
 }
 
@@ -56,24 +55,19 @@ impl SilentAudioOutput {
 }
 
 impl AudioBackend for SilentAudioOutput {
-    fn push_samples(&self, _samples: &[f32]) {
-        // Do nothing
-    }
-
-    fn clear(&self) {
-        // Do nothing
-    }
+    fn push_samples(&mut self, _samples: &[f32]) {}
+    fn clear(&mut self) {}
 }
 
 struct AudioBufferSource {
-    buffer: Arc<Mutex<Vec<f32>>>,
+    consumer: HeapCons<f32>,
     sample_rate: u32,
 }
 
 impl AudioBufferSource {
-    fn new(buffer: Arc<Mutex<Vec<f32>>>, sample_rate: u32) -> Self {
+    fn new(consumer: HeapCons<f32>, sample_rate: u32) -> Self {
         Self {
-            buffer,
+            consumer,
             sample_rate,
         }
     }
@@ -82,13 +76,7 @@ impl AudioBufferSource {
 impl Iterator for AudioBufferSource {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buf = self.buffer.lock().unwrap();
-        if !buf.is_empty() {
-            Some(buf.remove(0))
-        } else {
-            // Output silence if buffer is empty
-            Some(0.0)
-        }
+        Some(self.consumer.try_pop().unwrap_or(0.0))
     }
 }
 
