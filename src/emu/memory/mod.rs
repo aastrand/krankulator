@@ -1,10 +1,5 @@
 pub mod mapper;
-use super::apu;
 use super::io::controller;
-use super::ppu;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 #[allow(dead_code)] // only used in tests
@@ -28,6 +23,9 @@ pub fn addr_to_page(addr: u16) -> u16 {
 pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
+
+    /// Base pointer to CPU RAM at $0000 (at least 2 KiB mirrored to $0800–$1FFF). Used for OAM DMA.
+    fn cpu_ram_ptr(&mut self) -> *mut u8;
     fn ppu_read(&self, addr: u16) -> u8;
     fn ppu_fetch(&mut self, addr: u16, _dot: u64) -> u8 {
         self.ppu_a12_transition(addr);
@@ -38,10 +36,19 @@ pub trait MemoryMapper {
     fn ppu_write(&mut self, addr: u16, value: u8);
 
     fn code_start(&mut self) -> u16;
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>>;
-    fn apu(&self) -> Rc<RefCell<apu::APU>>;
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
     fn poll_irq(&mut self) -> bool;
+
+    /// When false, CPU accesses to `$2000-$2007` are not mapped to PPU registers (flat RAM for test ROMs).
+    fn cpu_maps_ppu_registers(&self) -> bool {
+        true
+    }
+
+    /// When true, CPU reads/writes in `$2000-$3FFF` are handled by the PPU register mirror (NES behavior).
+    /// `IdentityMapper` returns false so test harnesses can use that range as ordinary RAM.
+    fn cpu_maps_ppu_register_mirrors(&self) -> bool {
+        true
+    }
 
     // Called on PPU cycle 260 of visible and pre-render scanlines for MMC3 IRQ counter
     fn ppu_cycle_260(&mut self, _scanline: u16) {
@@ -133,10 +140,20 @@ pub struct IdentityMapper {
     vram_ptr: *mut u8,
     code_start: u16,
     controllers: [controller::Controller; 2],
+    cpu_maps_ppu_registers: bool,
 }
 
 impl IdentityMapper {
     pub fn new(code_start: u16) -> IdentityMapper {
+        IdentityMapper::new_inner(code_start, true)
+    }
+
+    /// 64K CPU address space is plain RAM — no `$2000-$2007` PPU register decode (e.g. Klaus functional test .bin).
+    pub fn new_flat_cpu_bus(code_start: u16) -> IdentityMapper {
+        IdentityMapper::new_inner(code_start, false)
+    }
+
+    fn new_inner(code_start: u16, cpu_maps_ppu_registers: bool) -> IdentityMapper {
         let mut ram = Box::new([0; MAX_RAM_SIZE]);
         let ram_ptr = ram.as_mut_ptr();
 
@@ -149,6 +166,7 @@ impl IdentityMapper {
             vram_ptr: vram_ptr,
             code_start: code_start,
             controllers: [controller::Controller::new(), controller::Controller::new()],
+            cpu_maps_ppu_registers,
         }
     }
 }
@@ -162,6 +180,10 @@ impl MemoryMapper for IdentityMapper {
     #[inline]
     fn cpu_write(&mut self, addr: u16, value: u8) {
         unsafe { *self.ram_ptr.offset(addr as _) = value }
+    }
+
+    fn cpu_ram_ptr(&mut self) -> *mut u8 {
+        self.ram_ptr
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
@@ -180,20 +202,20 @@ impl MemoryMapper for IdentityMapper {
         self.code_start
     }
 
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::new(RefCell::new(ppu::PPU::new()))
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::new(RefCell::new(apu::APU::new()))
-    }
-
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
         &mut self.controllers
     }
 
     fn poll_irq(&mut self) -> bool {
         false
+    }
+
+    fn cpu_maps_ppu_register_mirrors(&self) -> bool {
+        false
+    }
+
+    fn cpu_maps_ppu_registers(&self) -> bool {
+        self.cpu_maps_ppu_registers
     }
 }
 

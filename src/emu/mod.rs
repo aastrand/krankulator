@@ -10,9 +10,7 @@ pub mod ppu;
 use cpu::opcodes;
 
 extern crate shrust;
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,8 +29,8 @@ pub struct Emulator {
     pub cpu: cpu::Cpu,
     lookup: Box<opcodes::Lookup>,
     pub mem: Box<dyn memory::MemoryMapper>,
-    pub ppu: Rc<RefCell<ppu::PPU>>,
-    pub apu: Rc<RefCell<apu::APU>>,
+    pub ppu: ppu::PPU,
+    pub apu: apu::APU,
     buf: Box<gfx::buf::Buffer>,
 
     iohandler: Box<dyn io::IOHandler>,
@@ -91,17 +89,14 @@ impl Emulator {
         let mut cpu = cpu::Cpu::new();
         cpu.pc = mapper.code_start();
 
-        let ppu = mapper.ppu();
-        let apu = mapper.apu();
-
         let buf = gfx::buf::Buffer::new();
 
         Emulator {
             cpu: cpu,
             lookup: lookup,
             mem: mapper,
-            ppu: ppu,
-            apu: apu,
+            ppu: ppu::PPU::new(),
+            apu: apu::APU::new(),
             buf: Box::new(buf),
             iohandler: iohandler,
             stepping: false,
@@ -154,7 +149,7 @@ impl Emulator {
         self.cpu.sp = self.cpu.sp.wrapping_sub(3);
         self.cpu.pc = addr;
         // Also reset the APU and clear any pending audio to avoid residual noise
-        self.apu.borrow_mut().reset();
+        self.apu.reset();
         self.audio.clear();
     }
 
@@ -217,15 +212,11 @@ impl Emulator {
         self.master_clock = target_dot;
 
         // Cycle the APU
-        self.apu.borrow_mut().cycle(&mut *self.mem);
-
-        // After cycling APU, push samples to audio backend
-        let mut apu_borrow = self.apu.borrow_mut();
-        let samples = apu_borrow.get_audio_samples();
+        self.apu.cycle(&mut *self.mem);
+        let samples = self.apu.get_audio_samples();
         if !samples.is_empty() {
             self.audio.push_samples(samples);
         }
-        drop(apu_borrow);
 
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
@@ -236,7 +227,7 @@ impl Emulator {
             self.last_rendered = Instant::now();
         }
         if self.cycles % 16666 == 0 {
-            if self.iohandler.poll(&mut *self.mem, &mut self.cpu) {
+            if self.iohandler.poll(&mut *self.mem, &mut self.apu, &mut self.cpu) {
                 state = CycleState::Exiting
             }
         }
@@ -265,8 +256,8 @@ impl Emulator {
     #[cfg(debug_assertions)]
     pub fn log_instruction(&mut self, opcode: u8, pc: u16) {
         if self.should_log {
-            let scanline = self.ppu.borrow_mut().scanline;
-            let cycle = self.ppu.borrow_mut().cycle;
+            let scanline = self.ppu.scanline;
+            let cycle = self.ppu.cycle;
             let log_line: String = self.logformatter.log(self.logformatter.log_str(
                 self.mem.raw_opcode(pc as _),
                 self.lookup.name(opcode),
@@ -297,17 +288,34 @@ impl Emulator {
         self.instruction_start_dot + u64::from(self.cpu_bus_cycle_offset) * 3
     }
 
-    fn cpu_access_needs_ppu_sync(addr: u16, is_write: bool) -> bool {
-        (0x2000..=0x3fff).contains(&addr) || addr == ppu::OAM_DMA || (is_write && addr >= 0x4020)
+    /// CPU address decoded as a PPU register access, if this mapper exposes the NES PPU register bus.
+    fn ppu_reg_cpu_addr(&self, addr: u16) -> Option<u16> {
+        if !self.mem.cpu_maps_ppu_registers() {
+            return None;
+        }
+        if (0x2000..=0x2007).contains(&addr) {
+            Some(addr)
+        } else if (0x2008..=0x3FFF).contains(&addr) && self.mem.cpu_maps_ppu_register_mirrors() {
+            Some(0x2000 + (addr % 8))
+        } else {
+            None
+        }
+    }
+
+    fn cpu_access_needs_ppu_sync(&self, addr: u16, is_write: bool) -> bool {
+        self.ppu_reg_cpu_addr(addr).is_some()
+            || addr == ppu::OAM_DMA
+            || (is_write && addr >= 0x4020)
     }
 
     fn sync_ppu_to_dot(&mut self, target_dot: u64) -> bool {
         let mut cycle_260_scanlines = Vec::new();
         let fire_vblank_nmi = {
-            let mut ppu = self.ppu.borrow_mut();
             let mut fire_vblank_nmi = false;
-            while ppu.last_synced_dot < target_dot {
-                let step = ppu.step_dot_with_rendering(&mut *self.mem, &mut self.buf);
+            while self.ppu.last_synced_dot < target_dot {
+                let step = self
+                    .ppu
+                    .step_dot_with_rendering(&mut *self.mem, &mut self.buf);
                 fire_vblank_nmi |= step.fire_vblank_nmi;
                 if let Some(scanline) = step.ppu_cycle_260_scanline {
                     cycle_260_scanlines.push(scanline);
@@ -324,7 +332,7 @@ impl Emulator {
     }
 
     fn sync_for_cpu_access(&mut self, addr: u16, is_write: bool) {
-        if Self::cpu_access_needs_ppu_sync(addr, is_write) {
+        if self.cpu_access_needs_ppu_sync(addr, is_write) {
             let target_dot = self.cpu_bus_access_dot();
             if self.sync_ppu_to_dot(target_dot) && self.should_trigger_nmi {
                 self.nmi_triggered_countdown = 0;
@@ -347,7 +355,25 @@ impl Emulator {
 
     fn cpu_read(&mut self, addr: u16) -> u8 {
         self.sync_for_cpu_access(addr, false);
-        let value = self.mem.cpu_read(addr);
+        let ppu_reg = self.ppu_reg_cpu_addr(addr);
+        let value = if let Some(reg) = ppu_reg {
+            let v = self.ppu.read(reg, &*self.mem);
+            if reg == ppu::DATA_ADDR {
+                let a = self.ppu.get_current_vram_addr();
+                self.mem.ppu_a12_transition(a);
+            }
+            v
+        } else if addr == ppu::OAM_DMA {
+            self.ppu.read(addr, &*self.mem)
+        } else if addr == 0x4015 {
+            self.apu.read(addr)
+        } else if addr == 0x4016 {
+            self.mem.controllers()[0].poll()
+        } else if addr == 0x4017 {
+            self.mem.controllers()[1].poll()
+        } else {
+            self.mem.cpu_read(addr)
+        };
         self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
         value
     }
@@ -994,29 +1020,37 @@ impl Emulator {
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
         self.sync_for_cpu_access(addr, true);
-        // Debug: log all CPU writes to APU registers
-        /*if addr >= 0x4000 && addr <= 0x4017 {
-            println!("CPU write: ${:04X} = {:02X}", addr, value);
-        }*/
 
-        match addr {
-            0x2000 => {
-                // If the PPU is currently in vertical blank, and the PPUSTATUS ($2002) vblank flag is still set (1),
-                // changing the NMI flag in bit 7 of $2000 from 0 to 1 will immediately generate an NMI.
-                let mut ppu = self.ppu.borrow_mut();
+        let ppu_reg = self.ppu_reg_cpu_addr(addr);
+
+        if let Some(reg) = ppu_reg {
+            if reg == ppu::CTRL_REG_ADDR {
                 if (value & ppu::STATUS_VERTICAL_BLANK_BIT) == ppu::STATUS_VERTICAL_BLANK_BIT
-                    && !ppu.vblank_nmi_is_enabled()
-                    && ppu.is_in_vblank()
+                    && !self.ppu.vblank_nmi_is_enabled()
+                    && self.ppu.is_in_vblank()
                 {
                     self.nmi_triggered_countdown = 2;
                 }
             }
-            0x4017 => {
-                // TODO
+            if let Some((waddr, wval)) = self.ppu.write(reg, value, self.mem.cpu_ram_ptr()) {
+                self.mem.ppu_write(waddr, wval);
             }
-            _ => {}
+            if reg == ppu::ADDR_ADDR || reg == ppu::DATA_ADDR {
+                let ppu_addr = if reg == ppu::ADDR_ADDR {
+                    self.ppu.get_temp_vram_addr()
+                } else {
+                    self.ppu.get_current_vram_addr()
+                };
+                self.mem.ppu_a12_transition(ppu_addr);
+            }
+        } else if addr == ppu::OAM_DMA {
+            self.ppu
+                .write(ppu::OAM_DMA, value, self.mem.cpu_ram_ptr());
+        } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
+            self.apu.write(addr, value);
+        } else {
+            self.mem.cpu_write(addr, value);
         }
-        self.mem.cpu_write(addr, value);
         self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
     }
 
@@ -1295,13 +1329,11 @@ impl Emulator {
 
     #[allow(dead_code)]
     pub fn get_audio_output(&mut self) -> Vec<f32> {
-        let mut apu_borrow = self.apu.borrow_mut();
-        apu_borrow.get_audio_samples().to_vec()
+        self.apu.get_audio_samples().to_vec()
     }
 
     pub fn log_str(&mut self) -> String {
         let opcode: u8 = self.mem.cpu_read(self.cpu.pc);
-        let ppu = self.ppu.borrow_mut();
         self.logformatter.log_str(
             self.mem.raw_opcode(self.cpu.pc),
             self.lookup.name(opcode),
@@ -1310,8 +1342,8 @@ impl Emulator {
             self.cpu.register_str(),
             self.cycles,
             self.cpu.status_str(),
-            ppu.scanline,
-            ppu.cycle,
+            self.ppu.scanline,
+            self.ppu.cycle,
             &vec![],
         )
     }
@@ -1342,7 +1374,7 @@ impl Emulator {
             self.instructions,
             self.cycles,
             (self.cycles as f64 / elapsed_secs) / 1_000_000.0,
-            self.ppu.borrow().frames as f64 / elapsed_secs
+            self.ppu.frames as f64 / elapsed_secs
         ));
     }
 }
@@ -1388,7 +1420,7 @@ mod emu_tests {
 
         assert_eq!(emu.cycles, 1);
         assert_eq!(emu.master_clock, 3);
-        assert_eq!(emu.ppu.borrow().last_synced_dot, 3);
+        assert_eq!(emu.ppu.last_synced_dot, 3);
     }
 
     #[test]
@@ -1398,7 +1430,7 @@ mod emu_tests {
 
         emu.cpu_read_at(ppu::STATUS_REG_ADDR, 2);
 
-        assert_eq!(emu.ppu.borrow().last_synced_dot, 6);
+        assert_eq!(emu.ppu.last_synced_dot, 6);
     }
 
     #[test]
@@ -1409,7 +1441,7 @@ mod emu_tests {
 
         emu.cpu_write(ppu::SCROLL_ADDR, 0x24);
 
-        assert_eq!(emu.ppu.borrow().last_synced_dot, 9);
+        assert_eq!(emu.ppu.last_synced_dot, 9);
     }
 
     #[test]
@@ -1423,7 +1455,7 @@ mod emu_tests {
 
         emu.execute_instruction();
 
-        assert_eq!(emu.ppu.borrow().last_synced_dot, 9);
+        assert_eq!(emu.ppu.last_synced_dot, 9);
     }
 
     #[test]
@@ -2061,12 +2093,13 @@ mod emu_tests {
         let start: u16 = memory::CODE_START_ADDR;
         emu.mem.cpu_write(start, opcodes::JMP_IND);
         emu.mem.cpu_write(start + 1, 0xff);
-        emu.mem.cpu_write(start + 2, 0x30);
-        emu.mem.cpu_write(0x3000, 0x47);
-        emu.mem.cpu_write(0x30ff, 0x12);
+        // 6502 JMP indirect: at page offset $FF, the high byte is read from $xx00, not $xx+100.
+        emu.mem.cpu_write(start + 2, 0x10);
+        emu.mem.cpu_write(0x10ff, 0x12);
+        emu.mem.cpu_write(0x1000, 0x47);
 
-        // should not be used
-        emu.mem.cpu_write(0x3100, 0x11);
+        // should not be used (would be the hi byte if the CPU did not wrap within the page)
+        emu.mem.cpu_write(0x1100, 0x11);
 
         emu.run();
 

@@ -265,6 +265,14 @@ until Phase 3.
 
 **Goal**: Replace the direct tile lookup with the hardware-accurate fetch/shift pipeline.
 
+**Status** (2026): Fetch path (NT→AT→PT, prefetch, dummy fetches) and **`ppu_fetch` / MMC3 A12** run from the shift pipeline. **Live framebuffer background** still uses **`render_line_v` + direct nametable/pattern read** per pixel so mid-scanline `$2006` splits stay aligned with tests and common raster tricks; shifter output is validated in unit tests (`assert_shifter_matches_direct`, etc.). Compositing purely from shift registers would need full parity with **fine-X mux + tile-merge** on partial reload (see Phase 5 refinements).
+
+**Remaining**
+- Optional: drive visible pixels from shifters after a Visual2C02-accurate mid-line reload model.
+- MMC3 title behaviour: re-smoke after Phase 4 sprite path (ongoing).
+
+**(Prior checkpoint text below retained for history.)**
+
 **Status**: Checkpoint (half-finished). In tree: shift-register state, 4-step fetch
 cadence (NT → AT → PT low → PT high), tile-boundary loads, prefetch and dummy fetches,
 and **unit-test QA** comparing shifter output against the Phase 2 direct background
@@ -316,6 +324,15 @@ follow-up once the discrepancy between the two paths is understood.
 
 **Goal**: Cycle-accurate sprite handling, proper sprite 0 hit, and correct priority.
 
+**Status** (2026): Secondary OAM, evaluation dots **65–191** (every 2 cycles), sprite fetches from **secondary** on dots **257–320**, per-line **`sprite_line`** compositing, pixel-level **sprite 0 hit** when `sprite_zero_on_current_line`, **`STATUS_SPRITE_OVERFLOW`** on ninth in-range sprite. **`gfx::render_sprites`** removed.
+
+**Not done yet**
+- Hardware **sprite overflow diagonal / false-positive** behaviour
+- Formal **sprite shift-register** model (functionally equivalent latched patterns + X)
+- Extra plan tests (priority, flip, 8×16, overflow quirk) — add as needed
+
+**Original task checklist** (partially out of date):
+
 1. Add secondary OAM and sprite shift register fields to PPU
 2. Implement sprite evaluation on dots 65-256 (scan OAM, fill secondary OAM)
 3. Implement sprite tile fetches on dots 257-320
@@ -362,12 +379,15 @@ follow-up once the discrepancy between the two paths is understood.
 
 **Goal**: Handle hardware quirks that affect specific games.
 
-1. VBlank race condition: reading $2002 at the exact dot VBlank is set suppresses NMI
-2. OAMDATA glitch: writes during rendering increment OAMADDR incorrectly
-3. PPU open bus behavior for register reads
-4. Odd frame cycle skip (already partially implemented)
-5. Confirm MMC3 A12 tracking in 8x16 sprite mode, now that fetch-edge tracking exists
-6. PPU warm-up: first 29658 CPU cycles after reset, PPU ignores writes to some registers
+**Done in tree**
+- **OAMDATA glitch** during rendering (visible + pre-render when either BG or sprites enabled): no OAM write; `OAMADDR` advances coarse (+4 / high 6 bits).
+- **VBlank / NMI**: reading `$2002` on **scanline 241, dot 0** sets a latch that **suppresses** the NMI edge when vblank is latched at dot 1 (simplified; open-bus and exact 1-cycle edges not modeled).
+
+**Still open (numbered items from original plan)**
+1. PPU open bus behavior for register reads
+2. Odd frame cycle skip (already partially implemented)
+3. Confirm MMC3 A12 tracking in 8x16 sprite mode, now that fetch-edge tracking exists
+4. PPU warm-up: first 29658 CPU cycles after reset, PPU ignores writes to some registers
 
 **Tests**:
 - `test_vblank_race_read_suppresses_nmi` — read $2002 on exact VBlank dot, verify NMI

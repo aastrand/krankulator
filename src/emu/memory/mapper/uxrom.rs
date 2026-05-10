@@ -1,9 +1,6 @@
 use super::super::*;
 use super::*;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 /*
 UxROM (Mapper 2)
 
@@ -30,9 +27,6 @@ const BANK_FIXED_ADDR: usize = 0xC000;
 
 pub struct UxROMMapper {
     _flags: u8,
-
-    ppu: Rc<RefCell<ppu::PPU>>,
-    apu: Rc<RefCell<apu::APU>>,
 
     _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
@@ -87,9 +81,6 @@ impl UxROMMapper {
         UxROMMapper {
             _flags: flags,
 
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            apu: Rc::new(RefCell::new(apu::APU::new())),
-
             _addr_space: mem,
             addr_space_ptr,
 
@@ -127,25 +118,7 @@ impl UxROMMapper {
 impl MemoryMapper for UxROMMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         let addr = mirror_addr(addr);
-        let page = addr_to_page(addr);
-
-        match page {
-            0x20 => {
-                if addr >= 0x2000 && addr < 0x2008 {
-                    self.ppu.borrow_mut().read(addr, self as _)
-                } else {
-                    unsafe { *self.addr_space_ptr.offset(addr as _) }
-                }
-            }
-            0x40 => match addr {
-                0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-                0x4015 => self.apu.borrow_mut().read(addr),
-                0x4016 => self.controllers[0].poll(),
-                0x4017 => self.controllers[1].poll(),
-                _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
-            },
-            _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
-        }
+        unsafe { *self.addr_space_ptr.offset(addr as isize) }
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
@@ -153,25 +126,7 @@ impl MemoryMapper for UxROMMapper {
         let page = addr_to_page(addr);
 
         match page {
-            0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as _) = value },
-            0x20 => {
-                let should_write = self
-                    .ppu
-                    .borrow_mut()
-                    .write(addr, value, self.addr_space_ptr);
-                if let Some((addr, value)) = should_write {
-                    self.ppu_write(addr, value);
-                }
-            }
-            0x40 => {
-                if addr == 0x4014 {
-                    self.ppu
-                        .borrow_mut()
-                        .write(addr, value, self.addr_space_ptr);
-                } else if addr >= 0x4000 && addr <= 0x4017 {
-                    self.apu.borrow_mut().write(addr, value);
-                }
-            }
+            0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
             // Bank switching register at $8000-$FFFF
             0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
                 // Use bits 3-0 for bank selection (supports up to 16 banks)
@@ -180,6 +135,10 @@ impl MemoryMapper for UxROMMapper {
             }
             _ => { /* Ignore writes to unmapped areas */ }
         }
+    }
+
+    fn cpu_ram_ptr(&mut self) -> *mut u8 {
+        self.addr_space_ptr
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
@@ -246,14 +205,6 @@ impl MemoryMapper for UxROMMapper {
     fn code_start(&mut self) -> u16 {
         ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
-    }
-
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::clone(&self.ppu)
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {

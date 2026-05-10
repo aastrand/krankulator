@@ -1,20 +1,11 @@
-use super::super::super::apu;
 use super::super::super::io;
-use super::super::ppu;
 use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
 use crate::emu::memory::MemoryMapper;
-#[allow(unused_imports)]
-use crate::util::get_status_str;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
 pub struct MMC3Mapper {
-    ppu: Rc<RefCell<ppu::PPU>>,
-    apu: Rc<RefCell<apu::APU>>,
     controllers: [io::controller::Controller; 2],
 
     prg_rom: Vec<[u8; PRG_BANK_SIZE]>,
@@ -86,8 +77,6 @@ impl MMC3Mapper {
         };
         // Creating new MMC3Mapper instance
         MMC3Mapper {
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            apu: Rc::new(RefCell::new(apu::APU::new())),
             controllers: [
                 io::controller::Controller::new(),
                 io::controller::Controller::new(),
@@ -298,24 +287,6 @@ impl MemoryMapper for MMC3Mapper {
                 let ram_addr = addr & 0x07FF;
                 unsafe { *self.cpu_ram.as_ptr().offset(ram_addr as isize) }
             }
-            0x2000..=0x2007 => {
-                let result = self.ppu.borrow_mut().read(addr, self as _);
-
-                // Check for A12 transitions when PPUDATA is read
-                if addr == 0x2007 {
-                    let ppu_addr = {
-                        let ppu = self.ppu.borrow();
-                        ppu.get_current_vram_addr()
-                    };
-                    self.ppu_a12_transition(ppu_addr);
-                }
-
-                result
-            }
-            0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().read(addr),
-            0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-            0x4016 => self.controllers[0].poll(),
-            0x4017 => self.controllers[1].poll(),
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xFFFF => {
                 if let Some(bank) = self.map_prg(addr) {
@@ -337,49 +308,6 @@ impl MemoryMapper for MMC3Mapper {
                 let ram_addr = addr & 0x07FF;
                 unsafe {
                     *self.cpu_ram.as_mut_ptr().offset(ram_addr as isize) = value;
-                }
-            }
-            0x2000..=0x2007 => {
-                let should_write =
-                    self.ppu
-                        .borrow_mut()
-                        .write(addr, value, self.cpu_ram.as_mut_ptr());
-                if let Some((addr, value)) = should_write {
-                    self.ppu_write(addr, value);
-                }
-
-                // Check for A12 transitions when PPUADDR is written or PPUDATA is accessed
-                if addr == 0x2006 || addr == 0x2007 {
-                    // For PPUADDR, we need to check A12 transitions on each write
-                    // The internal PPU address register 't' changes on each PPUADDR write
-                    let ppu_addr = if addr == 0x2006 {
-                        // For PPUADDR, use the temporary address register that gets updated immediately
-                        let ppu = self.ppu.borrow();
-                        ppu.get_temp_vram_addr()
-                    } else {
-                        // For PPUDATA, use the current VRAM address
-                        let ppu = self.ppu.borrow();
-                        ppu.get_current_vram_addr()
-                    };
-                    self.ppu_a12_transition(ppu_addr);
-                }
-            }
-            0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().write(addr, value),
-            0x4014 => {
-                // OAM DMA - read 256 bytes from CPU memory through mapper
-                let page = (value as u16) << 8;
-                let mut oam_data = [0u8; 256];
-
-                // First, read all data through mapper
-                for i in 0..256 {
-                    oam_data[i] = self.cpu_read(page + i as u16);
-                }
-
-                // Then write to PPU OAM
-                let mut ppu = self.ppu.borrow_mut();
-                ppu.write(0x2003, 0, std::ptr::null_mut()); // Set OAMADDR to 0
-                for i in 0..256 {
-                    ppu.write(0x2004, oam_data[i], std::ptr::null_mut()); // Write to OAMDATA
                 }
             }
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = value,
@@ -436,10 +364,12 @@ impl MemoryMapper for MMC3Mapper {
                     self.irq_enable = true;
                 }
             }
-            0x4016 => {}
-            0x4017 => {}
             _ => {}
         }
+    }
+
+    fn cpu_ram_ptr(&mut self) -> *mut u8 {
+        self.cpu_ram.as_mut_ptr()
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
@@ -531,14 +461,6 @@ impl MemoryMapper for MMC3Mapper {
         let start_addr = ((hi as u16) << 8) | (lo as u16);
 
         start_addr
-    }
-
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::clone(&self.ppu)
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [io::controller::Controller; 2] {

@@ -1,9 +1,6 @@
 use super::super::*;
 use super::*;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 /*
 All Banks are fixed,
 
@@ -21,9 +18,6 @@ const BANK_TWO_ADDR: usize = 0xC000;
 
 pub struct NROMMapper {
     _flags: u8,
-
-    ppu: Rc<RefCell<ppu::PPU>>,
-    apu: Rc<RefCell<apu::APU>>,
 
     _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
@@ -76,9 +70,6 @@ impl NROMMapper {
         NROMMapper {
             _flags: flags,
 
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            apu: Rc::new(RefCell::new(apu::APU::new())),
-
             _addr_space: mem,
             addr_space_ptr: addr_space_ptr,
 
@@ -99,25 +90,7 @@ impl NROMMapper {
 impl MemoryMapper for NROMMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         let addr = mirror_addr(addr);
-        let page = addr_to_page(addr);
-
-        match page {
-            0x20 => {
-                if addr >= 0x2000 && addr < 0x2008 {
-                    self.ppu.borrow_mut().read(addr, self as _)
-                } else {
-                    unsafe { *self.addr_space_ptr.offset(addr as _) }
-                }
-            }
-            0x40 => match addr {
-                0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-                0x4015 => self.apu.borrow_mut().read(addr),
-                0x4016 => self.controllers[0].poll(),
-                0x4017 => self.controllers[1].poll(),
-                _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
-            },
-            _ => unsafe { *self.addr_space_ptr.offset(addr as _) },
-        }
+        unsafe { *self.addr_space_ptr.offset(addr as isize) }
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
@@ -126,28 +99,13 @@ impl MemoryMapper for NROMMapper {
 
         match page {
             // Note: 0x60 is for PRG ram
-            0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as _) = value },
-            0x20 => {
-                //println!("Write to PPU reg {:X}: {:X}", addr, value);
-                let should_write = self
-                    .ppu
-                    .borrow_mut()
-                    .write(addr, value, self.addr_space_ptr);
-                if let Some((addr, value)) = should_write {
-                    self.ppu_write(addr, value);
-                }
-            }
-            0x40 => {
-                if addr == 0x4014 {
-                    self.ppu
-                        .borrow_mut()
-                        .write(addr, value, self.addr_space_ptr);
-                } else if addr >= 0x4000 && addr <= 0x4017 {
-                    self.apu.borrow_mut().write(addr, value);
-                }
-            }
-            _ => { /*panic!("Write at addr {:X} not mapped", addr),*/ }
+            0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+            _ => {}
         }
+    }
+
+    fn cpu_ram_ptr(&mut self) -> *mut u8 {
+        self.addr_space_ptr
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
@@ -161,12 +119,12 @@ impl MemoryMapper for NROMMapper {
             return self.palette_ram[palette_addr];
         }
         match page {
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
+            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as isize) },
             0x20 => {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { *self.vrm_ptr.offset(addr as _) }
+                unsafe { *self.vrm_ptr.offset(addr as isize) }
             }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
+            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as isize) },
             _ => panic!("Addr {:X} not mapped for ppu_read!", addr),
         }
     }
@@ -181,13 +139,13 @@ impl MemoryMapper for NROMMapper {
         let mut addr = addr % MAX_VRAM_ADDR;
         let page = addr_to_page(addr);
         match page {
-            0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
+            0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as isize), dest, size) },
             0x20 => {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
+                unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as isize), dest, size) }
             }
             0x30 => unsafe {
-                std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as _), dest, size)
+                std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as isize), dest, size)
             },
 
             _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
@@ -208,9 +166,9 @@ impl MemoryMapper for NROMMapper {
         match page {
             0x20 => {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { *self.vrm_ptr.offset(addr as _) = value }
+                unsafe { *self.vrm_ptr.offset(addr as isize) = value }
             }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },
+            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as isize) = value },
 
             _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
         }
@@ -219,14 +177,6 @@ impl MemoryMapper for NROMMapper {
     fn code_start(&mut self) -> u16 {
         ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
-    }
-
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::clone(&self.ppu)
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {
@@ -256,15 +206,5 @@ mod tests {
         assert_eq!(mapper.cpu_read(0x973), 0x42);
         assert_eq!(mapper.cpu_read(0x1173), 0x42);
         assert_eq!(mapper.cpu_read(0x1973), 0x42);
-
-        mapper.cpu_write(0x2001, 0x11);
-        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x11);
-        mapper.cpu_write(0x2009, 0x42);
-        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x42);
-
-        // a write to $3451 is the same as a write to $2001.
-
-        mapper.cpu_write(0x3451, 0x32);
-        assert_eq!(mapper.ppu().borrow().ppu_mask, 0x32);
     }
 }
