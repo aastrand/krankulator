@@ -2,14 +2,32 @@
 
 ## Problem Statement
 
-Krankulator currently renders the entire frame once per VBlank. The PPU state machine
-(`ppu/mod.rs`) accurately tracks cycles, scanlines, and scroll register updates, but
-the actual pixel output is produced by `gfx::render()` — a separate function that reads
-scroll state once and composites the full 256x240 framebuffer at the end of the frame.
+**Historical:** Krankulator used to composite the full frame at VBlank via `gfx::render()`,
+so mid-scanline register effects did not appear until the next frame.
 
-This means mid-frame PPU register writes (scroll changes, palette swaps, bank switches)
-have no visual effect until the next frame. Games that rely on raster effects — split-screen
-scrolling, scanline-timed IRQs, sprite 0 hit polling for status bars — cannot render correctly.
+**Today:** Dot-stepped PPU output + CPU catch-up (see **Implementation status** below). The
+paragraphs that follow in this document are mostly the **original migration checklist**, kept
+for design context.
+
+## Implementation status (2026)
+
+| Phase | Status |
+|-------|--------|
+| **1** — Master clock, owned PPU/APU, bus timing, catch-up | **Done** |
+| **2** — Scanline buffer, background in PPU tick | **Done** |
+| **3** — BG fetch pipeline, shift registers, MMC3 A12 from `ppu_fetch` | **Done** (live BG from shifters; see caveat below) |
+| **4** — Sprite eval, fetches, compositing, sprite 0 hit, overflow quirk | **Done** (functional model; see caveat below) |
+| **5** — Open bus, warm-up, MMC3 edge cases, etc. | **Partial** (OAMDATA glitch, vblank/NMI suppression, PPUSTATUS clear semantics done) |
+
+**Phase 3 caveat:** Visible pixels normally use the background shift registers and fine-X mux.
+After a **second `$2006` write** mid-visible-line, `render_line_v` is realigned but the
+shifters still hold older tile data until the pipeline reloads; the core sets
+`bg_tile_lookup_direct_this_scanline` until dot 256 so output matches raster tests and common
+mid-line VRAM address tricks.
+
+**Phase 4 caveat:** Sprites use **latched pattern bytes** in `sprite_line` (equivalent output to
+shift-register units for 8-pixel-wide patterns). There is no separate per-sprite shift-register
+array. Optional follow-up: add targeted tests (priority, flip, 8×16, overflow false-positive ROMs).
 
 ## Current Architecture
 
@@ -17,52 +35,30 @@ scrolling, scanline-timed IRQs, sprite 0 hit polling for status bars — cannot 
 
 ```
 CPU executes instruction
-  → Emulator::cycle() calls PPU::cycle()
-    → PPU advances 3 dots per call (correct 3:1 ratio)
-    → PPU updates v/t/x/w registers at correct cycle points
-    → PPU checks sprite 0 hit (approximate: Y/X position only)
-    → PPU detects VBlank at scanline 241
-  → On VBlank NMI:
-    → gfx::render() reads current scroll state ONCE
-    → Renders all 32x30 background tiles to framebuffer
-    → Renders all 64 sprites on top
-    → Submits framebuffer to display
+  → master_clock += 3; APU steps
+  → On PPU register / mapper access: sync PPU to bus timestamp (catch-up loop of step_dot)
+  → PPU step_dot_with_rendering (visible lines):
+      dots 1–256: BG from shift registers + sprite_line mux → scanline_buf → gfx::Buffer
+      BG fetch pipeline + sprite eval (odd 65–255) + sprite fetches 257–320 + prefetch 321–336
+  → VBlank NMI; display via iohandler.render(&buf) — no gfx::render() frame composite
 ```
 
 ### Key files
 
 | File | Role |
 |------|------|
-| `ppu/mod.rs` | PPU state machine: registers, cycle counting, scroll updates |
-| `gfx/mod.rs` | Frame rendering: background tiles, sprites, composition |
-| `gfx/buf.rs` | 256x240 RGB framebuffer |
-| `gfx/palette.rs` | 64-entry NES color palette |
-| `mod.rs` | Main emulation loop, VBlank trigger, render dispatch |
-| `memory/mod.rs` | Memory mapper trait with `ppu_cycle_260()` hook |
+| `emu/mod.rs` | `master_clock`, catch-up, `cpu_read`/`cpu_write`, owned `ppu` + `apu` |
+| `emu/ppu/mod.rs` | Dot FSM, shift registers, sprites, `$2002` / OAM / scroll behavior |
+| `emu/gfx/buf.rs` | 256×240 RGB framebuffer; `set_pixel` / test-only `get_pixel` |
+| `emu/gfx/palette.rs` | NES palette |
+| `emu/memory/mod.rs` | `MemoryMapper`, `cpu_maps_ppu_registers`, `IdentityMapper::new_flat_cpu_bus` (.bin tests) |
+| `emu/memory/mapper/mmc3.rs` | IRQ from filtered A12 edges on `ppu_fetch` |
 
-### What works well (keep)
+### Still open (accuracy / polish)
 
-- PPU internal register model (v, t, x, w) is correct
-- Scroll increment rules are present, but the current bulk-advance path does not execute
-  every rule at its exact dot yet
-- 3:1 PPU-to-CPU clock ratio
-- Cycle/scanline/frame counters
-- `ppu_cycle_260()` mapper callback for MMC3-style IRQs
-- OAM DMA handling
-- Palette addressing and mirroring
-
-### What's broken or missing
-
-1. **No per-dot pixel output** — rendering is deferred to end-of-frame
-2. **No shift registers** — tile data isn't fetched/shifted per-dot
-3. **No secondary OAM** — sprite evaluation isn't cycle-timed
-4. **Sprite 0 hit is approximate** — checks Y/X position, not actual pixel overlap
-5. **No catch-up mechanism** — PPU register writes don't trigger rendering sync
-6. **VBlank race condition** — `vblank_bit_race_condition` field referenced but never defined (dead code)
-7. **OAMDATA glitch** — documented in comments but not implemented
-8. **Sprite overflow** — flag set but evaluation bug not emulated
-9. **Bulk PPU stepping hides dot timing bugs** — scroll updates such as coarse Y at dot
-   256 currently run from scanline-boundary logic instead of true per-dot execution
+- Phase 5 items: PPU open bus, full warm-up, MMC3 vs 8×16 smoke on real carts
+- MMC3-class games: IRQ + timing may still need game-driven verification
+- Optional: sprite pipeline tests and formal per-slot shift registers if desired
 
 ## Target Architecture
 
@@ -164,7 +160,10 @@ the separate PPUMASK left-column clipping bits for background and sprites.
 
 ### Phase 1: Master clock, bus timing, and ownership
 
-**Goal**: Establish the timing foundation and ownership model before changing rendering
+**Status — complete.** Includes `IdentityMapper::new_flat_cpu_bus` / `cpu_maps_ppu_registers` for
+binary CPU test ROMs (e.g. Klaus) where `$2000–$2007` must be RAM.
+
+**Goal** (historical): Establish the timing foundation and ownership model before changing rendering
 output.
 
 1. Add a `master_clock: u64` counter to the emulator (counts in PPU dots)
@@ -220,7 +219,10 @@ old approximation, but it is a required accuracy fix.
 
 ### Phase 2: Scanline buffer and background rendering in PPU
 
-**Goal**: Move background rendering from `gfx::render()` into the PPU tick, one scanline
+**Status — complete.** Background is drawn dot-by-dot into `scanline_buf` / framebuffer during
+`step_dot_with_rendering`; `gfx::render()` / `render_background` frame composite removed.
+
+**Goal** (historical): Move background rendering from `gfx::render()` into the PPU tick, one scanline
 at a time. This is the critical step that unlocks raster effects.
 
 1. Add a `scanline_buf: [u8; 256]` (or `[(u8,u8,u8); 256]`) to PPU for the current
@@ -234,17 +236,15 @@ at a time. This is the critical step that unlocks raster effects.
    - Write pixel to `scanline_buf[dot - 1]`
 4. At dot 256 (or end of visible dots), copy `scanline_buf` into the framebuffer
 5. Remove `gfx::render_background()` — background is now rendered inline
-6. Keep `gfx::render_sprites()` temporarily (render sprites on top at VBlank as before)
-7. Keep the current approximate sprite 0 hit check until Phase 4 replaces it with
-   pixel-level overlap; this preserves sprite-0-polling games as well as the current code
-   can during Phases 2-3
+6. ~~Keep `gfx::render_sprites()` temporarily~~ — superseded by Phase 4 in-PPU sprites
+7. ~~Approximate sprite 0 hit~~ — superseded by Phase 4 pixel overlap
 8. Verify: CPU-timed mid-frame scroll changes should now render correctly for the
    background layer
 
-This phase is still a transitional renderer. It samples nametable, attribute, pattern, and
-palette data at pixel-output time rather than the hardware fetch dots, so CHR banking,
-palette writes, and nametable changes during the same scanline can still be inaccurate
-until Phase 3.
+Phase 2 was **transitional** until Phase 3 wired fetches/shifters; the note below applied during
+that window only:
+
+_It sampled VRAM at pixel time rather than at fetch dots; Phase 3 fixed that for BG._
 
 **Tests**:
 - `test_scanline_produces_256_pixels` — a visible scanline fills the buffer
@@ -263,42 +263,23 @@ until Phase 3.
 
 ### Phase 3: Shift registers and proper tile fetch pipeline
 
-**Goal**: Replace the direct tile lookup with the hardware-accurate fetch/shift pipeline.
+**Status — complete** for the goals below. **Live** background pixels use **`background_shift_pixel_value` /
+`background_shift_palette_id`** with fine-X. **Exception:** after a second **`$2006`** write during a
+visible scanline (while BG/sprites enabled), **`bg_tile_lookup_direct_this_scanline`** selects the
+direct nametable/pattern path until dot 256 so VRAM-address splits align with hardware-ish behavior
+and unit tests. Mapper **MMC3** IRQ clocking uses **A12 edges** from **`ppu_fetch`** (filtered by dot).
 
-**Status** (2026): Fetch path (NT→AT→PT, prefetch, dummy fetches) and **`ppu_fetch` / MMC3 A12** run from the shift pipeline. **Live framebuffer background** still uses **`render_line_v` + direct nametable/pattern read** per pixel so mid-scanline `$2006` splits stay aligned with tests and common raster tricks; shifter output is validated in unit tests (`assert_shifter_matches_direct`, etc.). Compositing purely from shift registers would need full parity with **fine-X mux + tile-merge** on partial reload (see Phase 5 refinements).
-
-**Remaining**
-- Optional: drive visible pixels from shifters after a Visual2C02-accurate mid-line reload model.
-- MMC3 title behaviour: re-smoke after Phase 4 sprite path (ongoing).
-
-**(Prior checkpoint text below retained for history.)**
-
-**Status**: Checkpoint (half-finished). In tree: shift-register state, 4-step fetch
-cadence (NT → AT → PT low → PT high), tile-boundary loads, prefetch and dummy fetches,
-and **unit-test QA** comparing shifter output against the Phase 2 direct background
-lookup (so the pipeline is exercised and locked without risking the live framebuffer
-path yet). Live visible background pixels still use the **direct lookup** path because
-enabling shifter-composited pixels regressed several titles; toggling back is a Phase 3
-follow-up once the discrepancy between the two paths is understood.
-
-**Known follow-ups (deferred)**:
-- MMC3 games (e.g. SMB3, Mega Man 3, Kirby, Battletoads) still show wrong scrolling /
-  garbling relative to SMB1-level mappers. Further mapper IRQ / A12 work kept colliding
-  with incomplete Phase 4 sprite fetch timing; **accept as broken for now** and revisit
-  after sprite evaluation and fetches are cycle-accurate.
-- Prefetch coarse-X increment bug fixed: advance coarse X only at dots **328** and
-  **336** during prefetch, not on every dot from 328–340.
+**Goal** (historical): Replace ad hoc per-pixel VRAM reads with the fetch/shift pipeline.
 
 1. Add shift register fields to PPU (listed above)
 2. Implement the 4-step fetch cycle (NT → AT → PT low → PT high) every 8 dots
 3. Load fetched data into shift registers at tile boundaries
-4. Output pixels by selecting bits from shift registers using fine X *(live path: still
-   direct lookup; shifter output validated in tests)*
+4. Output pixels by selecting bits from shift registers using fine-X (plus `$2006` direct
+   fallback for the rest of the scanline when noted above)
 5. Implement pre-fetch (dots 321-336) and dummy fetches (337-340)
-6. Drive mapper A12/IRQ observation from actual PPU pattern-table fetches *(MMC3: IRQ
-   clocking edge-based from `ppu_fetch`; behavior still not game-good — see deferrals)*
+6. Drive mapper A12/IRQ observation from actual PPU pattern-table fetches (`ppu_fetch` on MMC3)
 7. Verify: fine-X scrolling should be pixel-perfect; no visual regression on games
-   that worked before *(gate not fully met for MMC3-class titles yet)*
+   that worked before *(MMC3-class titles may still need game-by-game smoke — Phase 5 / QA)*
 
 **Tests**:
 - `test_shift_register_loads_at_tile_boundary` — after 8 dots, new tile data is loaded
@@ -309,29 +290,23 @@ follow-up once the discrepancy between the two paths is understood.
   N+4, N+6 within each 8-dot window
 - `test_prefetch_dots_321_336_seed_visible_shifters` — first two tiles of next scanline
   are fetched during dots 321-336
-- Shifter-vs-direct background consistency tests under `cfg(test)` *(e.g.
-  `assert_shifter_matches_direct_background` and related cases)*
-- `test_mmc3_a12_edges_from_filtered_ppu_fetches` / related MMC3 unit coverage — mapper
-  tests pass; visual MMC3 smoke still failing (see deferrals)
-
-**Not removed yet (Phase 3 completion)**:
-- Direct tile lookup for **live** background pixels (remains until shifter path matches
-  hardware under full-game smoke)
-- Any `ppu_cycle_260()` hook on the mapper trait may remain for compatibility; MMC3 IRQ
-  **clocking** in this tree is driven from pattern fetches, not the empty scanline stub
+- Shifter-vs-direct consistency: `assert_shifter_matches_direct_background` and related cases
+- `test_mmc3_a12_edges_from_filtered_ppu_fetches` / related MMC3 unit coverage
 
 ### Phase 4: Sprite evaluation and rendering in PPU
 
-**Goal**: Cycle-accurate sprite handling, proper sprite 0 hit, and correct priority.
+**Status — functionally complete.** Secondary OAM; evaluation on **odd cycles 65–255**; after eight
+in-range sprites, **overflow detection** follows NESdev **step 3** (diagonal OAM / false positives).
+Sprite fetches **257–320**; **`sprite_line`** compositing (flip, priority); pixel-level **sprite 0 hit**
+using the same BG source as pixels. **`gfx::render_sprites`** / frame `gfx::render()` removed.
 
-**Status** (2026): Secondary OAM, evaluation dots **65–191** (every 2 cycles), sprite fetches from **secondary** on dots **257–320**, per-line **`sprite_line`** compositing, pixel-level **sprite 0 hit** when `sprite_zero_on_current_line`, **`STATUS_SPRITE_OVERFLOW`** on ninth in-range sprite. **`gfx::render_sprites`** removed.
+**Optional follow-ups**
+- Dedicated **per-sprite shift register** state (currently **latched pattern bytes + X** per slot, output-equivalent for 8-wide sprites).
+- Extra ROM/unit tests: priority, flip, 8×16, overflow edge cases from checklist below.
 
-**Not done yet**
-- Hardware **sprite overflow diagonal / false-positive** behaviour
-- Formal **sprite shift-register** model (functionally equivalent latched patterns + X)
-- Extra plan tests (priority, flip, 8×16, overflow quirk) — add as needed
+**Goal** (historical): Cycle-accurate sprite handling, proper sprite 0 hit, and correct priority.
 
-**Original task checklist** (partially out of date):
+**Original task checklist** (for reference):
 
 1. Add secondary OAM and sprite shift register fields to PPU
 2. Implement sprite evaluation on dots 65-256 (scan OAM, fill secondary OAM)
@@ -363,17 +338,9 @@ follow-up once the discrepancy between the two paths is understood.
 - `test_sprite_overflow_bug` — the diagonal-scan hardware bug produces the expected
   (incorrect) result
 
-**Old code removed**:
-- `gfx::render_sprites()` (gfx/mod.rs)
-- `gfx::render()` entirely — no longer called from emulation loop
-- `gfx::tile_to_attribute_byte()`, `gfx::tile_to_attribute_pos()`,
-  `gfx::get_nametable_base_addr()`, `gfx::get_attribute_table_addr()` — move to PPU
-  or delete if duplicated by shift register logic
-- Old `PPU::sprite_zero_hit()` approximate check (ppu/mod.rs)
-- Dead code: `vblank_bit_race_condition` references, commented-out OAMDATA glitch code
-- Old gfx tests that test removed helper functions (replace with new PPU tests)
-- `gfx/mod.rs` itself if only `buf.rs` and `palette.rs` remain (move those up or into
-  ppu/)
+**Old code removed** (historical): `gfx::render()`, `gfx::render_sprites()`, and frame-wide
+background helpers; composition lives in `PPU::step_dot_with_rendering`. Remaining `gfx/`
+is framebuffer + shared palette helpers.
 
 ### Phase 5: Edge cases and accuracy refinements
 
@@ -382,6 +349,7 @@ follow-up once the discrepancy between the two paths is understood.
 **Done in tree**
 - **OAMDATA glitch** during rendering (visible + pre-render when either BG or sprites enabled): no OAM write; `OAMADDR` advances coarse (+4 / high 6 bits).
 - **VBlank / NMI**: reading `$2002` on **scanline 241, dot 0** sets a latch that **suppresses** the NMI edge when vblank is latched at dot 1 (simplified; open-bus and exact 1-cycle edges not modeled).
+- **PPUSTATUS (`$2002`)**: read clears **vblank (bit 7)** only; **sprite 0 hit** and **sprite overflow** are **not** cleared on read — they clear at **pre-render dot 1** together with vblank if still set (NESdev).
 
 **Still open (numbered items from original plan)**
 1. PPU open bus behavior for register reads
@@ -410,14 +378,10 @@ Throughout all phases, the following must pass continuously:
 
 ## Risk Assessment
 
-- **Phase 1 is the highest-risk phase** because it changes the timing model, CPU-memory
-  interface, interrupt scheduling, and PPU ownership boundaries
-- **Phase 2 is the highest-value phase** because it is the first phase that can visibly
-  improve raster effects while leaving sprite rendering mostly unchanged
-- **Phases 3-4 are hardware-complex but architecturally incremental** once Phase 1 has
-  established dot stepping and direct PPU bus access
-- **Phase 5 is lower architectural risk** because it focuses on edge-case quirks after the
-  main timing pipeline exists
+- **Phases 1–4** are implemented; residual risk is **game-level verification** (especially MMC3
+  IRQ + raster splits) and **optional** model refinements (sprite shift registers, open bus).
+- **Phase 5** is lower architectural risk but still matters for failing test ROMs and edge-case
+  titles that depend on open bus, reset warm-up, or exact MMC3 + 8×16 behavior.
 
 ## Performance Considerations
 
@@ -432,8 +396,7 @@ Throughout all phases, the following must pass continuously:
   on the relevant scanline
 - **Bounds check elision**: structure array accesses so Rust can prove bounds at compile
   time, avoiding runtime checks in the hot loop
-- **Avoid `Rc<RefCell<>>` in the hot path**: Phase 1 should remove this from per-dot PPU
-  execution by passing direct mutable references or narrow bus adapters
+- **Avoid `Rc<RefCell<>>` in the hot path** — **done**; `Emulator` owns `PPU` / `APU`, mappers use `cpu_ram_ptr` for DMA.
 
 ## Reference Implementations to Study
 

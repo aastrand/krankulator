@@ -173,11 +173,12 @@ pub struct PPU {
     /// `true` after 8 in-range sprites were copied: remaining odd cycles run step 3 (diagonal scan).
     sprite_eval_overflow_phase: bool,
 
-    /// After a second `$2006` write during visible rendering, `render_line_v` is realigned but
-    /// background shift registers still hold older fetches until the pipeline reloads. Use direct
-    /// nametable/pattern lookup for compositing for the rest of this scanline (matches 2C02 bus
-    /// observable behavior in our staged renderer).
-    bg_tile_lookup_direct_this_scanline: bool,
+    /// Set after the second `$2006` write advances `v` mid-scanline; consumed on the next visible
+    /// dot to rebuild BG shift registers from `render_line_v` and VRAM.
+    bg_shifter_resync_pending: bool,
+
+    /// Last byte driven onto the CPU data bus by a PPU register read (open-bus model).
+    ppu_open_bus: u8,
 
     /// $2002 read on scanline 241 dot 0 suppresses the NMI for that vblank.
     nmi_suppress_next_vblank: bool,
@@ -238,7 +239,9 @@ impl PPU {
             sprite_eval_m: 0,
             sprite_eval_overflow_phase: false,
 
-            bg_tile_lookup_direct_this_scanline: false,
+            bg_shifter_resync_pending: false,
+
+            ppu_open_bus: 0,
 
             nmi_suppress_next_vblank: false,
         }
@@ -255,9 +258,10 @@ impl PPU {
     }
 
     pub fn read(&mut self, addr: u16, mem: &dyn memory::MemoryMapper) -> u8 {
-        match addr {
-            CTRL_REG_ADDR => self.ppu_ctrl,
-            MASK_REG_ADDR => self.ppu_mask,
+        let v = match addr {
+            // Write-only registers and mirrors: CPU reads see the last PPU bus value (simplified open bus).
+            CTRL_REG_ADDR | MASK_REG_ADDR | OAM_ADDR | SCROLL_ADDR | ADDR_ADDR => self.ppu_open_bus,
+
             STATUS_REG_ADDR => {
                 let status = self.get_status_reg();
 
@@ -272,18 +276,13 @@ impl PPU {
                 self.ppu_addr[1] = 0;
                 self.ppu_data_valid = false;
 
-                status
+                (status & 0xE0) | (self.ppu_open_bus & 0x1F)
             }
-            OAM_ADDR => self.oam_addr,
 
             OAM_DATA_ADDR => {
                 // reads during vertical or forced blanking return the value from OAM at that address but do not increment.
-                let value = self.oam_ram[self.oam_addr as usize];
-                //println!("Read {:X} from oam_ram[{:X}]", value, self.oam_addr);
-                value
+                self.oam_ram[self.oam_addr as usize]
             }
-            SCROLL_ADDR => 0,
-            ADDR_ADDR => 0, // TODO: decay
             DATA_ADDR => {
                 let read_addr = self.v;
                 let value = if read_addr >= 0x3f00 && read_addr <= 0x3fff {
@@ -301,11 +300,11 @@ impl PPU {
                 self.inc_vram_addr_v();
                 value
             }
-            _ => {
-                //println!("addr {:X} not mapped for read!", addr);
-                0
-            }
-        }
+            _ => self.ppu_open_bus,
+        };
+
+        self.ppu_open_bus = v;
+        v
     }
 
     fn inc_vram_addr_v(&mut self) {
@@ -418,6 +417,7 @@ impl PPU {
             _ => {} //println!("addr {:X} not mapped for write!", addr),
         }
 
+        self.ppu_open_bus = value;
         ret
     }
 
@@ -471,6 +471,19 @@ impl PPU {
         }
 
         self.last_synced_dot = self.last_synced_dot.wrapping_add(1);
+
+        if self.bg_shifter_resync_pending {
+            if let Some((mem, _)) = render_ctx.as_ref() {
+                if self.scanline < SCREEN_HEIGHT as u16
+                    && self.cycle >= 1
+                    && self.cycle <= 256
+                    && (self.ppu_mask & MASK_BACKGROUND_ENABLE) != 0
+                {
+                    self.resync_background_shifters_for_dot(&**mem, self.cycle);
+                }
+            }
+            self.bg_shifter_resync_pending = false;
+        }
 
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
         let rendering_scanline =
@@ -569,9 +582,6 @@ impl PPU {
             // Increment Y scroll at dot 256.
             if self.cycle == 256 {
                 self.inc_y();
-                if self.scanline < SCREEN_HEIGHT as u16 {
-                    self.bg_tile_lookup_direct_this_scanline = false;
-                }
             }
 
             // Copy horizontal scroll from t to v at dot 257.
@@ -624,19 +634,12 @@ impl PPU {
         bg_color
     }
 
-    fn visible_background_pixel(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> (u8, u8) {
+    fn visible_background_pixel(&self, _mem: &dyn memory::MemoryMapper, dot: u16) -> (u8, u8) {
         let screen_x = dot.saturating_sub(1);
         if !self.mask_background_enabled()
             || (screen_x < 8 && (self.ppu_mask & MASK_BACKGROUND_LEFT_ENABLE) == 0)
         {
             return (0, 0);
-        }
-
-        if self.bg_tile_lookup_direct_this_scanline {
-            return (
-                self.direct_background_pixel_value(mem, dot),
-                self.direct_background_palette_id(mem, dot),
-            );
         }
 
         (
@@ -706,30 +709,51 @@ impl PPU {
         None
     }
 
-    fn direct_background_pixel_value(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
-        if dot == 0 || dot > SCREEN_WIDTH as u16 {
-            return 0;
+    /// After `$2006` realigns `render_line_v`, rebuild BG shift registers so the next visible pixel
+    /// matches hardware for the current fine-X scroll and `draw_cycle` (1–256).
+    fn resync_background_shifters_for_dot(&mut self, mem: &dyn memory::MemoryMapper, draw_cycle: u16) {
+        if draw_cycle == 0 || draw_cycle > 256 {
+            return;
         }
+        let screen_col = draw_cycle - 1;
+        let pixel_offset = u16::from(self.x) + screen_col;
+        let tile_index = (pixel_offset / 8) as i16;
+        let fine_in_tile = (pixel_offset % 8) as u8;
 
-        let bg_v = self.background_v_for_dot(dot);
-        let fine_x = self.background_fine_x_for_dot(dot);
-        let fine_y = ((bg_v >> 12) & 0x07) as u16;
-        let tile_id = mem.ppu_read(0x2000 | (bg_v & 0x0FFF)) as u16;
-        let pattern_addr = self.ctrl_background_pattern_addr() + tile_id * 16 + fine_y;
-        let low = mem.ppu_read(pattern_addr);
-        let high = mem.ppu_read(pattern_addr + 8);
-        let bit = 7 - fine_x;
-        ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1)
+        let bg_v_curr = Self::coarse_x_offset(self.render_line_v, tile_index);
+        let tile_id_curr = mem.ppu_read(0x2000 | (bg_v_curr & 0x0FFF)) as u16;
+        let fine_y_curr = ((bg_v_curr >> 12) & 0x07) as u16;
+        let pat_base = self.ctrl_background_pattern_addr();
+        let pat_lo_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y_curr);
+        let pat_hi_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y_curr + 8);
+        let attr_curr = Self::palette_index_at_coarse_v(mem, bg_v_curr);
+        let (al_c, ah_c) = Self::expanded_attr_plane_bytes(attr_curr);
+
+        // Fine-X (self.x) samples bit 15,14,... of the 16-bit shifters. The current tile's bits must
+        // therefore occupy the upper byte; fine_in_tile is how many dots we are into that tile.
+        self.bg_pattern_shift_low = u16::from(pat_lo_curr) << 8;
+        self.bg_pattern_shift_high = u16::from(pat_hi_curr) << 8;
+        self.bg_attr_shift_low = al_c << 8;
+        self.bg_attr_shift_high = ah_c << 8;
+
+        for _ in 0..fine_in_tile {
+            self.shift_background_registers();
+        }
     }
 
-    fn direct_background_palette_id(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
-        let bg_v = self.background_v_for_dot(dot);
+    pub(crate) fn palette_index_at_coarse_v(mem: &dyn memory::MemoryMapper, bg_v: u16) -> u8 {
         let attr_addr = 0x23C0 | (bg_v & 0x0C00) | ((bg_v >> 4) & 0x38) | ((bg_v >> 2) & 0x07);
         let attr = mem.ppu_read(attr_addr);
         let coarse_x = (bg_v & 0x001F) as u8;
         let coarse_y = ((bg_v >> 5) & 0x001F) as u8;
         let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
         (attr >> shift) & 0x03
+    }
+
+    fn expanded_attr_plane_bytes(attr: u8) -> (u16, u16) {
+        let al = if attr & 0x01 != 0 { 0xFFu16 } else { 0 };
+        let ah = if attr & 0x02 != 0 { 0xFFu16 } else { 0 };
+        (al, ah)
     }
 
     fn background_shift_pixel_value(&self) -> u8 {
@@ -764,11 +788,13 @@ impl PPU {
         low | (high << 1)
     }
 
+    #[cfg(test)]
     fn background_v_for_dot(&self, dot: u16) -> u16 {
         let pixel_offset = u16::from(self.x) + dot - 1;
         Self::coarse_x_offset(self.render_line_v, (pixel_offset / 8) as i16)
     }
 
+    #[cfg(test)]
     fn background_fine_x_for_dot(&self, dot: u16) -> u8 {
         let pixel_offset = u16::from(self.x) + dot - 1;
         (pixel_offset & 0x07) as u8
@@ -786,7 +812,7 @@ impl PPU {
             || self.scanline == PRE_RENDER_SCANLINE;
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
         if rendering_scanline && rendering_enabled && self.scanline < SCREEN_HEIGHT as u16 && self.cycle < 256 {
-            self.bg_tile_lookup_direct_this_scanline = true;
+            self.bg_shifter_resync_pending = true;
         }
     }
 
@@ -1250,6 +1276,30 @@ impl PPU {
 
     pub fn mask_sprites_enabled(&self) -> bool {
         self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE
+    }
+}
+
+#[cfg(test)]
+impl PPU {
+    fn direct_background_pixel_value(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
+        if dot == 0 || dot > SCREEN_WIDTH as u16 {
+            return 0;
+        }
+
+        let bg_v = self.background_v_for_dot(dot);
+        let fine_x = self.background_fine_x_for_dot(dot);
+        let fine_y = ((bg_v >> 12) & 0x07) as u16;
+        let tile_id = mem.ppu_read(0x2000 | (bg_v & 0x0FFF)) as u16;
+        let pattern_addr = self.ctrl_background_pattern_addr() + tile_id * 16 + fine_y;
+        let low = mem.ppu_read(pattern_addr);
+        let high = mem.ppu_read(pattern_addr + 8);
+        let bit = 7 - fine_x;
+        ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1)
+    }
+
+    fn direct_background_palette_id(&self, mem: &dyn memory::MemoryMapper, dot: u16) -> u8 {
+        let bg_v = self.background_v_for_dot(dot);
+        PPU::palette_index_at_coarse_v(mem, bg_v)
     }
 }
 
@@ -1947,6 +1997,124 @@ mod tests {
         ppu.write(OAM_DATA_ADDR, 0xAB, cpu_ram_ptr);
         assert_eq!(ppu.oam_ram[8], 0xAB);
         assert_eq!(ppu.oam_addr, 0x09);
+    }
+
+    #[test]
+    fn test_ppu_open_bus_status_merges_low_bits() {
+        let mut ppu = PPU::new();
+        let mem = memory::IdentityMapper::new(0x4000);
+        ppu.ppu_open_bus = 0x1A;
+        ppu.ppu_status = STATUS_VERTICAL_BLANK_BIT | STATUS_SPRITE_ZERO_HIT;
+        let v = ppu.read(STATUS_REG_ADDR, &mem);
+        assert_eq!(v & 0xE0, (STATUS_VERTICAL_BLANK_BIT | STATUS_SPRITE_ZERO_HIT) & 0xE0);
+        assert_eq!(v & 0x1F, 0x1A);
+        assert_eq!(ppu.ppu_open_bus, v);
+    }
+
+    #[test]
+    fn test_sprite_priority_behind_background_keeps_bg_color() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE
+            | MASK_SPRITES_ENABLE
+            | MASK_BACKGROUND_LEFT_ENABLE
+            | MASK_SPRITES_LEFT_ENABLE;
+        ppu.x = 0;
+        ppu.bg_pattern_shift_low = 0x8000;
+        ppu.bg_pattern_shift_high = 0;
+        ppu.bg_attr_shift_low = 0;
+        ppu.bg_attr_shift_high = 0;
+        mem.ppu_write(0x3f00, 0x0F);
+        mem.ppu_write(0x3f01, 0x20);
+        mem.ppu_write(0x3f11, 0x10);
+
+        ppu.sprite_line_count = 1;
+        ppu.sprite_line[0] = SpriteLineEntry {
+            attr: 0x21, // palette 1 + behind background
+            x: 8,
+            pattern_lo: 0xFF,
+            pattern_hi: 0xFF,
+        };
+        ppu.cycle = 9;
+        let bg_only = ppu.render_pixel(&mem);
+
+        ppu.sprite_line[0].attr = 0x01; // in front
+        let sprite_over = ppu.render_pixel(&mem);
+        assert_ne!(bg_only, sprite_over);
+        assert_eq!(bg_only, palette::PALETTE[0x20 as usize % palette::PALETTE_SIZE]);
+    }
+
+    #[test]
+    fn test_sprite_horizontal_flip_samples_mirrored_column() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        ppu.ppu_mask = MASK_SPRITES_ENABLE | MASK_SPRITES_LEFT_ENABLE;
+        mem.ppu_write(0x3f00, 0x0E);
+        mem.ppu_write(0x3f01, 0x20);
+        mem.ppu_write(0x3f11, 0x10);
+
+        // 0x0F: opaque on the low bits (right side of unflipped tile); column 0 reads bit 7 = 0.
+        ppu.sprite_line_count = 1;
+        ppu.sprite_line[0] = SpriteLineEntry {
+            attr: 0,
+            x: 0,
+            pattern_lo: 0x0F,
+            pattern_hi: 0,
+        };
+        ppu.cycle = 1;
+        let no_flip = ppu.render_pixel(&mem);
+
+        ppu.sprite_line[0].attr = 0x40;
+        let flipped = ppu.render_pixel(&mem);
+        assert_eq!(no_flip, palette::PALETTE[0x0E as usize % palette::PALETTE_SIZE]);
+        assert_eq!(flipped, palette::PALETTE[0x10 as usize % palette::PALETTE_SIZE]);
+    }
+
+    #[test]
+    fn test_8x16_sprite_pattern_addr_selects_bank_by_tile_lsb() {
+        let mut ppu = PPU::new();
+        ppu.ppu_ctrl = CTRL_SPRITE_SIZE;
+        let tile_base: u16 = 0x2A;
+        let row_lo = 4u16;
+        let addr_top_half = ppu.sprite_pattern_addr_for(0x2B, row_lo, 16);
+        assert_eq!(addr_top_half, 0x1000 + tile_base * 16 + row_lo);
+        let row_hi = 11u16;
+        let addr_bottom_half = ppu.sprite_pattern_addr_for(0x2B, row_hi, 16);
+        assert_eq!(
+            addr_bottom_half,
+            0x1000 + (tile_base + 1) * 16 + (row_hi % 8)
+        );
+    }
+
+    #[test]
+    fn test_sprite_overflow_false_positive_off_scanline_y_diagonal_phase() {
+        // Nine entries at Y=19, but index 8 uses a bogus byte at +m so step-3 sees an in-range Y
+        // where a naïve model would not (hardware "diagonal" OAM walk).
+        let mut ppu = PPU::new();
+        ppu.ppu_mask = MASK_RENDERING_ENABLE;
+        ppu.scanline = 20;
+        ppu.ppu_status &= !STATUS_SPRITE_OVERFLOW;
+
+        for i in 0..8 {
+            let b = i * 4;
+            ppu.oam_ram[b] = 19;
+            ppu.oam_ram[b + 1] = i as u8;
+            ppu.oam_ram[b + 2] = 0;
+            ppu.oam_ram[b + 3] = (i * 8) as u8;
+        }
+        ppu.oam_ram[8 * 4] = 19;
+        ppu.oam_ram[8 * 4 + 1] = 9;
+        ppu.oam_ram[8 * 4 + 2] = 0;
+        ppu.oam_ram[8 * 4 + 3] = 64;
+        // Corrupt OAM byte that diagonal fetch reads as a Y coordinate for an earlysprite index.
+        ppu.oam_ram[9] = 19;
+
+        ppu.start_sprite_evaluation();
+        for _ in 0..128 {
+            ppu.sprite_evaluation_tick();
+        }
+        assert!(ppu.secondary_oam_count <= 8);
+        assert!(ppu.ppu_status & STATUS_SPRITE_OVERFLOW != 0);
     }
 
     #[test]

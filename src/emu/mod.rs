@@ -57,6 +57,8 @@ pub struct Emulator {
     nmi_triggered_countdown: i8,
     last_rendered: Instant,
     pub audio: Box<dyn AudioBackend>,
+    /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
+    ppu_register_warmup_until_cpu_cycle: u64,
 }
 
 impl Emulator {
@@ -117,6 +119,8 @@ impl Emulator {
             nmi_triggered_countdown: -1,
             last_rendered: Instant::now(),
             audio: audio,
+            // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
+            ppu_register_warmup_until_cpu_cycle: 29_658,
         }
     }
 
@@ -151,6 +155,12 @@ impl Emulator {
         // Also reset the APU and clear any pending audio to avoid residual noise
         self.apu.reset();
         self.audio.clear();
+        self.ppu_register_warmup_until_cpu_cycle = self.cpu.cycle.wrapping_add(29_658);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_cpu_write(&mut self, addr: u16, value: u8) {
+        self.cpu_write(addr, value);
     }
 
     pub fn run(&mut self) {
@@ -1024,6 +1034,10 @@ impl Emulator {
         let ppu_reg = self.ppu_reg_cpu_addr(addr);
 
         if let Some(reg) = ppu_reg {
+            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
+                self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
+                return;
+            }
             if reg == ppu::CTRL_REG_ADDR {
                 if (value & ppu::STATUS_VERTICAL_BLANK_BIT) == ppu::STATUS_VERTICAL_BLANK_BIT
                     && !self.ppu.vblank_nmi_is_enabled()
@@ -1044,6 +1058,10 @@ impl Emulator {
                 self.mem.ppu_a12_transition(ppu_addr);
             }
         } else if addr == ppu::OAM_DMA {
+            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
+                self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
+                return;
+            }
             self.ppu
                 .write(ppu::OAM_DMA, value, self.mem.cpu_ram_ptr());
         } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
@@ -2974,5 +2992,17 @@ mod emu_tests {
         assert_eq!(emu.cpu.sp, 0);
         assert_eq!(emu.cpu.negative_flag(), false);
         assert_eq!(emu.cpu.zero_flag(), false);
+    }
+
+    #[test]
+    fn test_ppu_warmup_blocks_cpu_writes_until_deadline() {
+        use crate::emu::ppu;
+        let mut emu = Emulator::_new();
+        assert_eq!(emu.ppu_register_warmup_until_cpu_cycle, 29_658);
+        emu.test_cpu_write(ppu::CTRL_REG_ADDR, 0xFF);
+        assert_eq!(emu.ppu.ppu_ctrl, 0);
+        emu.cpu.cycle = 29_658;
+        emu.test_cpu_write(ppu::CTRL_REG_ADDR, 0x80);
+        assert_eq!(emu.ppu.ppu_ctrl, 0x80);
     }
 }

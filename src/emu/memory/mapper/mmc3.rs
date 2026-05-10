@@ -583,6 +583,22 @@ mod tests {
     }
 
     #[test]
+    fn test_mmc3_a12_8x16_style_alternating_pattern_tables_clocks_irq() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 1;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        // 8×16 sprite fetches often alternate $0xxx / $1xxx tile bytes; same A12 edges as BG.
+        mapper.ppu_fetch(0x2000, 10);
+        mapper.ppu_fetch(0x1010, 18);
+        mapper.ppu_fetch(0x2000, 26);
+        mapper.ppu_fetch(0x1058, 34);
+
+        assert_eq!(mapper.poll_irq(), true);
+    }
+
+    #[test]
     fn test_cpu_a12_transition_does_not_corrupt_fetch_filter() {
         let mut mapper = test_mapper();
         mapper.irq_latch = 1;
