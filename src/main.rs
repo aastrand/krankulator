@@ -79,11 +79,6 @@ fn main() -> Result<(), String> {
                     emu.toggle_should_trigger_nmi(true);
                     emu.toggle_should_exit_on_infinite_loop(false);
 
-                    // Enable PPU rendering for graphical mode
-                    if !args.headless {
-                        emu.ppu.borrow_mut().ppu_mask = 0x18; // Enable background and sprites
-                    }
-
                     emu
                 }
                 Err(msg) => panic!("{}", msg),
@@ -312,7 +307,7 @@ mod tests {
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
         emu.cpu.cycle = 7;
-        emu.ppu.borrow_mut().cycle = 21;
+        emu.ppu.cycle = 21;
         emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
 
         emu.toggle_debug_on_infinite_loop(false);
@@ -340,16 +335,16 @@ mod tests {
                     let expected_cycles = &expected[90..];
 
                     let mut cycles: u64 = emu.cpu.cycle;
-                    let mut ppu_cycles: u16 = emu.ppu.borrow_mut().cycle;
-                    let mut ppu_scanline: u16 = emu.ppu.borrow_mut().scanline;
+                    let mut ppu_cycles: u16 = emu.ppu.cycle;
+                    let mut ppu_scanline: u16 = emu.ppu.scanline;
 
                     'next_instr: loop {
                         let state = emu.cycle();
                         match state {
                             emu::CycleState::CpuAhead => {
                                 cycles = emu.cpu.cycle;
-                                ppu_cycles = emu.ppu.borrow_mut().cycle;
-                                ppu_scanline = emu.ppu.borrow_mut().scanline;
+                                ppu_cycles = emu.ppu.cycle;
+                                ppu_scanline = emu.ppu.scanline;
                             }
                             _ => break 'next_instr,
                         }

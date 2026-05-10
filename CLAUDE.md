@@ -72,13 +72,16 @@ cargo clippy
 
 **PPU (src/emu/ppu/mod.rs)**
 - Picture Processing Unit for graphics rendering
-- Implements proper VRAM addressing, scrolling, and sprite rendering
+- Implements proper VRAM addressing with internal registers (v, t, x, w)
 - Handles NMI (Non-Maskable Interrupt) generation for VBlank
+- Currently renders the full frame once per VBlank via `gfx::render()` — being migrated
+  to cycle-accurate per-dot rendering
 
 **Memory System (src/emu/memory/)**
-- Memory mappers for different cartridge types (NROM, MMC1)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
+- Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3)
 
 **APU (src/emu/apu/)**
 - Audio Processing Unit with pulse, triangle, noise, and DMC channels
@@ -86,17 +89,20 @@ cargo clippy
 - Sound generation for authentic NES audio
 
 **Graphics (src/emu/gfx/)**
-- Frame buffer management and palette handling
-- Pixel-level graphics rendering
+- Frame buffer (`buf.rs`) and palette lookup table (`palette.rs`)
+- `mod.rs` contains the legacy full-frame renderer — will be removed as rendering moves
+  into the PPU
 
 **Audio (src/emu/audio.rs)**
 - Audio output handling using rodio crate
 
 ### Key Design Patterns
 
-**Cycle-Accurate Emulation**
+**CPU-PPU Synchronization**
 - The emulator runs in discrete cycles, with proper timing between CPU, PPU, and APU
 - PPU runs at 3x CPU speed (3 PPU cycles per CPU cycle)
+- Currently: interleaved per-cycle (CPU instruction, then 3 PPU dots, repeat)
+- Target: catch-up model where PPU syncs lazily on register access
 
 **Memory Mapping**
 - Uses trait objects for different mapper implementations
@@ -140,13 +146,14 @@ The project uses both unit tests and integration tests:
 
 **PPU Implementation**
 - Proper VRAM address handling with internal registers (v, t, x, w)
-- Accurate sprite zero hit detection
 - VBlank timing and NMI generation
-- Per-scanline scroll tracking for raster effects
+- Scroll register updates at correct cycle points during rendering
+- Current limitation: full-frame rendering at VBlank (no mid-frame raster effects)
+- Sprite 0 hit is approximate (position-based, not pixel-overlap)
+- Active migration to per-dot cycle-accurate rendering
 
 **Memory Mappers**
-- NROM (simplest mapper, no bank switching)
-- MMC1 (supports PRG and CHR bank switching)
+- NROM, MMC1, MMC3, UxROM, AxROM, CNROM
 - Proper mirroring for nametables and palettes
 
 **Audio System**
@@ -155,3 +162,11 @@ The project uses both unit tests and integration tests:
 - DMC channel with sample playback
 
 The emulator is designed to be highly accurate and passes most standard NES test ROMs, making it suitable for both educational purposes and actual game compatibility testing.
+
+## Active Work
+
+Migrating PPU from full-frame-at-VBlank rendering to per-dot, catch-up-synchronized
+pipeline. This will enable mid-frame raster effects (split-screen scrolling, scanline
+IRQ-driven effects, sprite 0 hit polling). The migration is incremental across 5 phases
+— each phase produces a working emulator. The old `gfx::render()` path will be removed
+once rendering is fully integrated into the PPU.

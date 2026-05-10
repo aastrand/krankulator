@@ -258,12 +258,6 @@ mod tests {
         fn code_start(&mut self) -> u16 {
             0
         }
-        fn ppu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::ppu::PPU>> {
-            panic!()
-        }
-        fn apu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::apu::APU>> {
-            panic!()
-        }
         fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
             panic!()
         }
@@ -584,12 +578,6 @@ mod tests {
             fn ppu_write(&mut self, _addr: u16, _value: u8) {}
             fn code_start(&mut self) -> u16 {
                 0
-            }
-            fn ppu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::ppu::PPU>> {
-                panic!()
-            }
-            fn apu(&self) -> std::rc::Rc<std::cell::RefCell<crate::emu::apu::APU>> {
-                panic!()
             }
             fn controllers(&mut self) -> &mut [crate::emu::io::controller::Controller; 2] {
                 panic!()

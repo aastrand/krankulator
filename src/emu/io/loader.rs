@@ -48,7 +48,7 @@ impl Loader for BinLoader {
         let bytes = util::read_bytes(path)?;
 
         let mut mapper: Box<dyn memory::MemoryMapper> =
-            Box::new(memory::IdentityMapper::new(0x400));
+            Box::new(memory::IdentityMapper::new_flat_cpu_bus(0x400));
         let mut i: u32 = 0;
         for b in bytes.iter() {
             mapper.cpu_write(i as u16, *b);

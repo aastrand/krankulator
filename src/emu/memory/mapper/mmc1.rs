@@ -1,11 +1,6 @@
-use super::super::super::apu;
 use super::super::super::io;
-use super::super::ppu;
 use super::super::*;
 use super::*;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 const BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: u16 = 4 * 1024;
@@ -20,9 +15,6 @@ const HIGH_BANK_ADDR: u16 = 0xc000;
 const SR_INITIAL_VALUE: u8 = 0b10000;
 
 pub struct MMC1Mapper {
-    ppu: Rc<RefCell<ppu::PPU>>,
-    apu: Rc<RefCell<apu::APU>>,
-
     _cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
     cpu_ram_ptr: *mut u8,
 
@@ -93,9 +85,6 @@ impl MMC1Mapper {
         }
 
         let mut mapper = MMC1Mapper {
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            apu: Rc::new(RefCell::new(apu::APU::new())),
-
             _cpu_ram: cpu_ram,
             cpu_ram_ptr: cpu_ram_ptr,
 
@@ -212,14 +201,8 @@ impl MMC1Mapper {
         let page = addr_to_page(addr);
         match page {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
-            0x20 => self.ppu.borrow_mut().read(addr, self as _),
-            0x40 => match addr {
-                0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-                0x4015 => self.apu.borrow_mut().read(addr),
-                0x4016 => self.controllers[0].poll(),
-                0x4017 => self.controllers[1].poll(),
-                _ => 0,
-            },
+            // $2000–$3FFF (mirrored) and I/O: handled by `Emulator` for accuracy.
+            0x20 | 0x40 => 0,
             0x60 | 0x70 => {
                 if self.mmc_ram_enabled {
                     unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) }
@@ -242,19 +225,7 @@ impl MMC1Mapper {
         let page = addr_to_page(addr);
         match page {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
-            0x20 => {
-                let should_write = self.ppu.borrow_mut().write(addr, value, self.cpu_ram_ptr);
-                if let Some((addr, value)) = should_write {
-                    self.ppu_write(addr, value);
-                }
-            }
-            0x40 => {
-                if addr == 0x4014 {
-                    self.ppu.borrow_mut().write(addr, value, self.cpu_ram_ptr);
-                } else if addr >= 0x4000 && addr <= 0x4017 {
-                    self.apu.borrow_mut().write(addr, value);
-                }
-            }
+            0x20 | 0x40 => {}
             0x50 => {}
             0x60 | 0x70 => {
                 if self.mmc_ram_enabled {
@@ -397,14 +368,6 @@ impl MemoryMapper for MMC1Mapper {
     fn code_start(&mut self) -> u16 {
         ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
-    }
-
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::clone(&self.ppu)
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::clone(&self.apu)
     }
 
     fn controllers(&mut self) -> &mut [controller::Controller; 2] {

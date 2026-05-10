@@ -15,6 +15,7 @@ use winit::{
     window::{Window, WindowAttributes},
 };
 
+use super::apu;
 use super::cpu;
 use super::gfx;
 use super::memory;
@@ -22,7 +23,12 @@ use super::memory;
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
-    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool;
+    fn poll(
+        &mut self,
+        mem: &mut dyn memory::MemoryMapper,
+        apu: &mut apu::APU,
+        cpu: &mut cpu::Cpu,
+    ) -> bool;
     fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
 }
@@ -39,7 +45,12 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool {
+    fn poll(
+        &mut self,
+        _mem: &mut dyn memory::MemoryMapper,
+        _apu: &mut apu::APU,
+        _cpu: &mut cpu::Cpu,
+    ) -> bool {
         false
     }
 
@@ -74,7 +85,8 @@ impl ApplicationHandler for InitHandler {
             .with_inner_size(LogicalSize::new(window_width, window_height));
         let window = event_loop.create_window(attrs).unwrap();
         let window: &'static Window = Box::leak(Box::new(window));
-        let surface_texture = SurfaceTexture::new(self.width, self.height, window);
+        let size = window.inner_size();
+        let surface_texture = SurfaceTexture::new(size.width, size.height, window);
         let pixels = Pixels::new(self.width, self.height, surface_texture).unwrap();
         self.window = Some(window);
         self.pixels = Some(pixels);
@@ -119,6 +131,7 @@ impl WinitPixelsIOHandler {
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
     mem: &'a mut dyn memory::MemoryMapper,
+    apu: &'a mut apu::APU,
     cpu: &'a mut cpu::Cpu,
     muted: &'a mut bool,
     exit: bool,
@@ -158,41 +171,39 @@ impl ApplicationHandler for PollHandler<'_> {
                         KeyCode::KeyR => {
                             if pressed {
                                 self.cpu.pc = self.mem.get_16b_addr(memory::RESET_TARGET_ADDR);
-                                self.mem.apu().borrow_mut().reset();
+                                self.apu.reset();
                             }
                         }
                         KeyCode::Digit1 => {
                             if pressed {
-                                self.mem.apu().borrow_mut().toggle_mute_bit(0x01, "Pulse1");
+                                self.apu.toggle_mute_bit(0x01, "Pulse1");
                             }
                         }
                         KeyCode::Digit2 => {
                             if pressed {
-                                self.mem.apu().borrow_mut().toggle_mute_bit(0x02, "Pulse2");
+                                self.apu.toggle_mute_bit(0x02, "Pulse2");
                             }
                         }
                         KeyCode::Digit3 => {
                             if pressed {
-                                self.mem
-                                    .apu()
-                                    .borrow_mut()
+                                self.apu
                                     .toggle_mute_bit(0x04, "Triangle");
                             }
                         }
                         KeyCode::Digit4 => {
                             if pressed {
-                                self.mem.apu().borrow_mut().toggle_mute_bit(0x08, "Noise");
+                                self.apu.toggle_mute_bit(0x08, "Noise");
                             }
                         }
                         KeyCode::Digit5 => {
                             if pressed {
-                                self.mem.apu().borrow_mut().toggle_mute_bit(0x10, "DMC");
+                                self.apu.toggle_mute_bit(0x10, "DMC");
                             }
                         }
                         KeyCode::Digit0 => {
                             if pressed {
-                                let on = !self.mem.apu().borrow().get_master_mute();
-                                self.mem.apu().borrow_mut().set_master_mute(on);
+                                let on = !self.apu.get_master_mute();
+                                self.apu.set_master_mute(on);
                             }
                         }
                         KeyCode::KeyZ => {
@@ -271,12 +282,18 @@ impl IOHandler for WinitPixelsIOHandler {
         }
     }
 
-    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, cpu: &mut cpu::Cpu) -> bool {
+    fn poll(
+        &mut self,
+        mem: &mut dyn memory::MemoryMapper,
+        apu: &mut apu::APU,
+        cpu: &mut cpu::Cpu,
+    ) -> bool {
         let mut event_loop = self.event_loop.take().unwrap();
 
         let mut handler = PollHandler {
             pixels: self.pixels.as_mut().unwrap(),
             mem,
+            apu,
             cpu,
             muted: &mut self.muted,
             exit: false,

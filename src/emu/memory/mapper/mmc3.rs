@@ -1,20 +1,11 @@
-use super::super::super::apu;
 use super::super::super::io;
-use super::super::ppu;
 use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
 use crate::emu::memory::MemoryMapper;
-#[allow(unused_imports)]
-use crate::util::get_status_str;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
 pub struct MMC3Mapper {
-    ppu: Rc<RefCell<ppu::PPU>>,
-    apu: Rc<RefCell<apu::APU>>,
     controllers: [io::controller::Controller; 2],
 
     prg_rom: Vec<[u8; PRG_BANK_SIZE]>,
@@ -36,6 +27,7 @@ pub struct MMC3Mapper {
 
     // A12 tracking for IRQ
     a12_state: bool,
+    last_a12_low_dot: u64,
 
     // Mirroring
     mirroring: NametableMirror,
@@ -85,8 +77,6 @@ impl MMC3Mapper {
         };
         // Creating new MMC3Mapper instance
         MMC3Mapper {
-            ppu: Rc::new(RefCell::new(ppu::PPU::new())),
-            apu: Rc::new(RefCell::new(apu::APU::new())),
             controllers: [
                 io::controller::Controller::new(),
                 io::controller::Controller::new(),
@@ -106,6 +96,7 @@ impl MMC3Mapper {
             irq_reload: false,
             irq_pending: false,
             a12_state: false,
+            last_a12_low_dot: 0,
             // Initialize mirroring from iNES header flags
             mirroring: if flags & 1 == 0 {
                 NametableMirror::Horizontal
@@ -254,43 +245,35 @@ impl MMC3Mapper {
         (bank_idx, offset)
     }
 
-    fn check_a12_transition(&mut self, addr: u16) {
+    fn check_a12_transition(&mut self, addr: u16, dot: u64) {
         // A12 is bit 12 of the PPU address (0x1000)
         let current_a12 = (addr & 0x1000) != 0;
 
-        // Clock IRQ counter on A12 rising edge (low to high transition)
-        if !self.a12_state && current_a12 {
-            //println!("A12 transition: 0->1 at addr {:04X}, clocking IRQ counter (was {})", addr, self.irq_counter);
+        if !current_a12 {
+            self.last_a12_low_dot = dot;
+            self.a12_state = false;
+            return;
+        }
+
+        // Clock IRQ counter on A12 rising edge after A12 has been low long enough.
+        // This filters the short low gaps between adjacent pattern fetches in a scanline.
+        if !self.a12_state && dot.saturating_sub(self.last_a12_low_dot) >= 8 {
             self.clock_irq_counter();
         }
 
-        self.a12_state = current_a12;
+        self.a12_state = true;
     }
 
     fn clock_irq_counter(&mut self) {
-        // MMC3 counter behavior:
-        // 1. If reload flag is set, reload counter and clear flag (no decrement)
-        // 2. Else if counter is 0, reload counter
-        // 3. Else decrement counter
-        // 4. If counter reaches 0 and IRQ enabled, trigger IRQ
-
-        //println!("Clock IRQ: reload={}, counter={}, latch={}", self.irq_reload, self.irq_counter, self.irq_latch);
-
-        if self.irq_reload {
+        if self.irq_reload || self.irq_counter == 0 {
             self.irq_counter = self.irq_latch;
-            self.irq_reload = false;
-            //println!("  -> Reloaded counter to {}", self.irq_counter);
-        } else if self.irq_counter == 0 {
-            self.irq_counter = self.irq_latch;
-            //println!("  -> Counter was 0, reloaded to {}", self.irq_counter);
         } else {
             self.irq_counter = self.irq_counter.wrapping_sub(1);
-            //println!("  -> Decremented counter to {}", self.irq_counter);
-            // Check for IRQ trigger AFTER decrementing
-            if self.irq_counter == 0 && self.irq_enable {
-                //println!("MMC3: IRQ triggered! counter=0, enabled=true");
-                self.irq_pending = true;
-            }
+        }
+
+        self.irq_reload = false;
+        if self.irq_counter == 0 && self.irq_enable {
+            self.irq_pending = true;
         }
     }
 }
@@ -304,24 +287,6 @@ impl MemoryMapper for MMC3Mapper {
                 let ram_addr = addr & 0x07FF;
                 unsafe { *self.cpu_ram.as_ptr().offset(ram_addr as isize) }
             }
-            0x2000..=0x2007 => {
-                let result = self.ppu.borrow_mut().read(addr, self as _);
-
-                // Check for A12 transitions when PPUDATA is read
-                if addr == 0x2007 {
-                    let ppu_addr = {
-                        let ppu = self.ppu.borrow();
-                        ppu.get_current_vram_addr()
-                    };
-                    self.ppu_a12_transition(ppu_addr);
-                }
-
-                result
-            }
-            0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().read(addr),
-            0x4014 => self.ppu.borrow_mut().read(addr, self as _),
-            0x4016 => self.controllers[0].poll(),
-            0x4017 => self.controllers[1].poll(),
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xFFFF => {
                 if let Some(bank) = self.map_prg(addr) {
@@ -343,49 +308,6 @@ impl MemoryMapper for MMC3Mapper {
                 let ram_addr = addr & 0x07FF;
                 unsafe {
                     *self.cpu_ram.as_mut_ptr().offset(ram_addr as isize) = value;
-                }
-            }
-            0x2000..=0x2007 => {
-                let should_write =
-                    self.ppu
-                        .borrow_mut()
-                        .write(addr, value, self.cpu_ram.as_mut_ptr());
-                if let Some((addr, value)) = should_write {
-                    self.ppu_write(addr, value);
-                }
-
-                // Check for A12 transitions when PPUADDR is written or PPUDATA is accessed
-                if addr == 0x2006 || addr == 0x2007 {
-                    // For PPUADDR, we need to check A12 transitions on each write
-                    // The internal PPU address register 't' changes on each PPUADDR write
-                    let ppu_addr = if addr == 0x2006 {
-                        // For PPUADDR, use the temporary address register that gets updated immediately
-                        let ppu = self.ppu.borrow();
-                        ppu.get_temp_vram_addr()
-                    } else {
-                        // For PPUDATA, use the current VRAM address
-                        let ppu = self.ppu.borrow();
-                        ppu.get_current_vram_addr()
-                    };
-                    self.ppu_a12_transition(ppu_addr);
-                }
-            }
-            0x4000..=0x4013 | 0x4015 => self.apu.borrow_mut().write(addr, value),
-            0x4014 => {
-                // OAM DMA - read 256 bytes from CPU memory through mapper
-                let page = (value as u16) << 8;
-                let mut oam_data = [0u8; 256];
-
-                // First, read all data through mapper
-                for i in 0..256 {
-                    oam_data[i] = self.cpu_read(page + i as u16);
-                }
-
-                // Then write to PPU OAM
-                let mut ppu = self.ppu.borrow_mut();
-                ppu.write(0x2003, 0, std::ptr::null_mut()); // Set OAMADDR to 0
-                for i in 0..256 {
-                    ppu.write(0x2004, oam_data[i], std::ptr::null_mut()); // Write to OAMDATA
                 }
             }
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = value,
@@ -442,8 +364,6 @@ impl MemoryMapper for MMC3Mapper {
                     self.irq_enable = true;
                 }
             }
-            0x4016 => {}
-            0x4017 => {}
             _ => {}
         }
     }
@@ -539,40 +459,28 @@ impl MemoryMapper for MMC3Mapper {
         start_addr
     }
 
-    fn ppu(&self) -> Rc<RefCell<ppu::PPU>> {
-        Rc::clone(&self.ppu)
-    }
-
-    fn apu(&self) -> Rc<RefCell<apu::APU>> {
-        Rc::clone(&self.apu)
-    }
-
     fn controllers(&mut self) -> &mut [io::controller::Controller; 2] {
         &mut self.controllers
     }
 
     fn poll_irq(&mut self) -> bool {
-        if self.irq_pending {
-            //println!("MMC3: IRQ polled - was pending, clearing");
-            self.irq_pending = false;
-            true
-        } else {
-            false
-        }
+        // Level-sensitive: stays asserted until $E000-$FFFE acknowledge; CPU I mask prevents re-entrancy.
+        self.irq_pending
     }
 
-    fn ppu_cycle_260(&mut self, scanline: u16) {
-        // MMC3 IRQ counter ticks on cycle 260 of visible and pre-render scanlines
-        if scanline < 240 || scanline == 261 {
-            self.clock_irq_counter();
-        }
+    fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
+        self.check_a12_transition(addr, dot);
+        self.ppu_read(addr)
     }
 
-    fn ppu_a12_transition(&mut self, addr: u16) {
-        // Check for A12 transitions on CHR memory access
-        if addr <= 0x1FFF {
-            self.check_a12_transition(addr);
-        }
+    fn ppu_cycle_260(&mut self, _scanline: u16) {
+        // Phase 3 drives MMC3 IRQ timing from observed PPU fetch A12 edges instead of
+        // the older one-clock-per-scanline approximation.
+    }
+
+    fn ppu_a12_transition(&mut self, _addr: u16) {
+        // Rendering drives MMC3 IRQ timing through ppu_fetch(), where A12 edges
+        // have real PPU dot timestamps for the low-pass filter.
     }
 }
 
@@ -584,6 +492,122 @@ mod tests {
     use crate::emu;
     #[allow(unused_imports)]
     use crate::emu::io::loader;
+
+    fn test_mapper() -> MMC3Mapper {
+        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1])
+    }
+
+    #[test]
+    fn test_cycle_260_does_not_clock_irq_counter() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 1;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        mapper.ppu_cycle_260(0);
+
+        assert_eq!(mapper.irq_counter, 0);
+        assert_eq!(mapper.irq_reload, true);
+        assert_eq!(mapper.poll_irq(), false);
+    }
+
+    #[test]
+    fn test_mmc3_a12_edges_from_filtered_ppu_fetches() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 1;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        mapper.ppu_fetch(0x0000, 10);
+        mapper.ppu_fetch(0x1000, 14);
+        assert_eq!(mapper.irq_reload, true);
+
+        mapper.ppu_fetch(0x0000, 20);
+        mapper.ppu_fetch(0x1000, 28);
+        assert_eq!(mapper.irq_counter, 1);
+        assert_eq!(mapper.irq_reload, false);
+        assert_eq!(mapper.poll_irq(), false);
+
+        mapper.ppu_fetch(0x0000, 40);
+        mapper.ppu_fetch(0x1000, 48);
+        assert_eq!(mapper.poll_irq(), true);
+    }
+
+    #[test]
+    fn test_irq_pending_stays_asserted_until_disabled() {
+        let mut mapper = test_mapper();
+        mapper.irq_pending = true;
+        mapper.irq_enable = true;
+
+        assert_eq!(mapper.poll_irq(), true);
+        assert_eq!(mapper.poll_irq(), true);
+
+        mapper.cpu_write(0xE000, 0);
+
+        assert_eq!(mapper.poll_irq(), false);
+        assert_eq!(mapper.irq_enable, false);
+    }
+
+    #[test]
+    fn test_reload_with_zero_latch_can_assert_irq() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 0;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        mapper.ppu_fetch(0x0000, 10);
+        mapper.ppu_fetch(0x1000, 18);
+
+        assert_eq!(mapper.irq_counter, 0);
+        assert_eq!(mapper.irq_reload, false);
+        assert_eq!(mapper.poll_irq(), true);
+    }
+
+    #[test]
+    fn test_reload_with_nonzero_latch_does_not_immediately_assert_irq() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 2;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        mapper.ppu_fetch(0x0000, 10);
+        mapper.ppu_fetch(0x1000, 18);
+
+        assert_eq!(mapper.irq_counter, 2);
+        assert_eq!(mapper.irq_reload, false);
+        assert_eq!(mapper.poll_irq(), false);
+    }
+
+    #[test]
+    fn test_mmc3_a12_8x16_style_alternating_pattern_tables_clocks_irq() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 1;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        // 8×16 sprite fetches often alternate $0xxx / $1xxx tile bytes; same A12 edges as BG.
+        mapper.ppu_fetch(0x2000, 10);
+        mapper.ppu_fetch(0x1010, 18);
+        mapper.ppu_fetch(0x2000, 26);
+        mapper.ppu_fetch(0x1058, 34);
+
+        assert_eq!(mapper.poll_irq(), true);
+    }
+
+    #[test]
+    fn test_cpu_a12_transition_does_not_corrupt_fetch_filter() {
+        let mut mapper = test_mapper();
+        mapper.irq_latch = 1;
+        mapper.irq_enable = true;
+        mapper.irq_reload = true;
+
+        mapper.ppu_fetch(0x0000, 10);
+        mapper.ppu_a12_transition(0x1000);
+        mapper.ppu_fetch(0x1000, 20);
+
+        assert_eq!(mapper.irq_counter, 1);
+        assert_eq!(mapper.irq_reload, false);
+    }
 
     /*#[test]
     fn test_mmc3_clocking() {
