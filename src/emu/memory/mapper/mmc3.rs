@@ -368,10 +368,6 @@ impl MemoryMapper for MMC3Mapper {
         }
     }
 
-    fn cpu_ram_ptr(&mut self) -> *mut u8 {
-        self.cpu_ram.as_mut_ptr()
-    }
-
     fn ppu_read(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => {

@@ -1048,7 +1048,7 @@ impl Emulator {
                     self.nmi_triggered_countdown = 2;
                 }
             }
-            if let Some((waddr, wval)) = self.ppu.write(reg, value, self.mem.cpu_ram_ptr()) {
+            if let Some((waddr, wval)) = self.ppu.write(reg, value) {
                 self.mem.ppu_write(waddr, wval);
             }
             if reg == ppu::ADDR_ADDR || reg == ppu::DATA_ADDR {
@@ -1064,8 +1064,11 @@ impl Emulator {
                 self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
                 return;
             }
-            self.ppu
-                .write(ppu::OAM_DMA, value, self.mem.cpu_ram_ptr());
+            let base: u16 = (value as u16) << 8;
+            for i in 0u16..256 {
+                let byte = self.mem.cpu_read(base.wrapping_add(i));
+                self.ppu.oam_dma_write(i as u8, byte);
+            }
         } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
             self.apu.write(addr, value);
         } else {

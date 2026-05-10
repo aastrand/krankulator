@@ -148,10 +148,6 @@ impl MemoryMapper for AxROMMapper {
         }
     }
 
-    fn cpu_ram_ptr(&mut self) -> *mut u8 {
-        self.addr_space_ptr
-    }
-
     fn ppu_read(&self, addr: u16) -> u8 {
         let mut addr = addr;
         let page = addr_to_page(addr);

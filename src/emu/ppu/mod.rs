@@ -125,7 +125,6 @@ pub struct PPU {
       Each entry has 4 bytes: the sprite Y coordinate, the sprite tile number, the sprite attribute, and the sprite X coordinate.
     */
     oam_ram: Box<[u8; OAM_DATA_SIZE]>,
-    oam_ram_ptr: *mut u8,
 
     pub ppu_ctrl: u8,
     pub ppu_mask: u8,
@@ -187,8 +186,7 @@ pub struct PPU {
 
 impl PPU {
     pub fn new() -> PPU {
-        let mut oam_ram = Box::new([0; OAM_DATA_SIZE]);
-        let oam_ram_ptr = oam_ram.as_mut_ptr();
+        let oam_ram = Box::new([0; OAM_DATA_SIZE]);
 
         PPU {
             // Initialize internal scroll registers
@@ -198,7 +196,6 @@ impl PPU {
             w: false,
 
             oam_ram: oam_ram,
-            oam_ram_ptr: oam_ram_ptr,
 
             ppu_ctrl: 0,
             ppu_mask: 0,
@@ -317,7 +314,7 @@ impl PPU {
         self.v &= 0x3FFF; // Keep within valid range
     }
 
-    pub fn write(&mut self, addr: u16, value: u8, cpu_ram: *mut u8) -> Option<(u16, u8)> {
+    pub fn write(&mut self, addr: u16, value: u8) -> Option<(u16, u8)> {
         let mut ret = None;
 
         match addr {
@@ -401,20 +398,7 @@ impl PPU {
                 }
                 self.inc_vram_addr_v();
             }
-            OAM_DMA => {
-                // Writing $XX will upload 256 bytes of data from CPU page $XX00-$XXFF to the internal PPU OAM.
-                // This page is typically located in internal RAM, commonly $0200-$02FF,
-                let page: u16 = (value as u16) << 8;
-                // TODO: move to mapper
-                if page < 0x2000 {
-                    unsafe {
-                        std::ptr::copy(cpu_ram.offset(page as _), self.oam_ram_ptr, 256);
-                    }
-                } else {
-                    panic!("Tried to OAM_DMA copy page {:X}", page);
-                }
-                //println!("OAM DMA copied page {:X}", page);
-            }
+            OAM_DMA => {}  // Handled by Emulator::cpu_write which has mapper access
             _ => {} //println!("addr {:X} not mapped for write!", addr),
         }
 
@@ -433,6 +417,10 @@ impl PPU {
     #[cfg(test)]
     pub fn step_dot(&mut self) -> StepResult {
         self.step_dot_inner(None)
+    }
+
+    pub fn oam_dma_write(&mut self, offset: u8, value: u8) {
+        self.oam_ram[offset as usize] = value;
     }
 
     pub fn step_dot_with_rendering(
@@ -1326,33 +1314,30 @@ mod tests {
     #[test]
     fn test_write_ppu_addr() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
-        ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x32);
         // v is not updated yet, only t is
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x11);
         assert_eq!(ppu.v, 0x3211);
-        ppu.write(ADDR_ADDR, 0x40, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x40);
         // v is not updated yet, only t is
-        ppu.write(ADDR_ADDR, 0x1, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x1);
         assert_eq!(ppu.v, 0x0001);
     }
 
     #[test]
     fn test_write_ppu_addr_reset() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         let mem = memory::IdentityMapper::new(0);
 
-        ppu.write(ADDR_ADDR, 0x82, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x82);
 
         ppu.read(STATUS_REG_ADDR, &mem);
         assert_eq!(ppu.v, 0);
-        ppu.write(ADDR_ADDR, 0x32, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x32);
         assert_eq!(ppu.v, 0);
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x11);
 
         assert_eq!(ppu.v, 0x3211);
     }
@@ -1360,16 +1345,15 @@ mod tests {
     #[test]
     fn test_write_ppu_data() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         let mem = memory::IdentityMapper::new(0);
 
         ppu.read(STATUS_REG_ADDR, &mem);
-        ppu.write(ADDR_ADDR, 0x37, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x11, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x37);
+        ppu.write(ADDR_ADDR, 0x11);
 
         for b in 0..10 {
-            let should_write = ppu.write(DATA_ADDR, b, cpu_ram_ptr);
+            let should_write = ppu.write(DATA_ADDR, b);
             assert_eq!(should_write.unwrap().0, (0x3711 + b as u16));
             assert_eq!(should_write.unwrap().1, b);
         }
@@ -1380,33 +1364,32 @@ mod tests {
     #[test]
     fn test_read_ppu_data() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         let mem: &mut dyn memory::MemoryMapper = &mut memory::IdentityMapper::new(0x4000);
 
         mem.ppu_write(0x3000, 0x47);
 
         // Set address using proper PPU interface
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x30);
+        ppu.write(ADDR_ADDR, 0x00);
 
         let first = ppu.read(DATA_ADDR, mem);
 
         // Reset address for second read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x30);
+        ppu.write(ADDR_ADDR, 0x00);
         let second = ppu.read(DATA_ADDR, mem);
 
         mem.ppu_write(0x3000, 0x14);
 
         // Reset address for third read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x30);
+        ppu.write(ADDR_ADDR, 0x00);
         let third = ppu.read(DATA_ADDR, mem);
 
         // Reset address for fourth read
-        ppu.write(ADDR_ADDR, 0x30, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x30);
+        ppu.write(ADDR_ADDR, 0x00);
         let fourth = ppu.read(DATA_ADDR, mem);
 
         assert_eq!(first, 0);
@@ -1648,8 +1631,6 @@ mod tests {
         let mut ppu = PPU::new();
         let mut mem = memory::IdentityMapper::new(0x4000);
         let mut framebuffer = Buffer::new();
-        let mut cpu_ram = [0u8; 2 * 1024];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
         ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
         ppu.next_render_line_v = 0;
@@ -1665,8 +1646,8 @@ mod tests {
             ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 
-        ppu.write(ADDR_ADDR, 0x00, cpu_ram_ptr);
-        ppu.write(ADDR_ADDR, 0x02, cpu_ram_ptr);
+        ppu.write(ADDR_ADDR, 0x00);
+        ppu.write(ADDR_ADDR, 0x02);
 
         for _ in 0..248 {
             ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
@@ -1974,14 +1955,13 @@ mod tests {
     #[test]
     fn test_oamdata_glitch_during_rendering_skips_write_and_increment_high_bits() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2048];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         ppu.scanline = 10;
         ppu.oam_addr = 0x08;
         ppu.oam_ram[8] = 0x55;
         ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
 
-        ppu.write(OAM_DATA_ADDR, 0xAB, cpu_ram_ptr);
+        ppu.write(OAM_DATA_ADDR, 0xAB);
         assert_eq!(ppu.oam_ram[8], 0x55);
         assert_eq!(ppu.oam_addr, 0x0C);
     }
@@ -1989,13 +1969,12 @@ mod tests {
     #[test]
     fn test_oamdata_write_normal_when_rendering_off() {
         let mut ppu = PPU::new();
-        let mut cpu_ram = [0u8; 2048];
-        let cpu_ram_ptr = cpu_ram.as_mut_ptr();
+
         ppu.scanline = 10;
         ppu.oam_addr = 0x08;
         ppu.ppu_mask = 0;
 
-        ppu.write(OAM_DATA_ADDR, 0xAB, cpu_ram_ptr);
+        ppu.write(OAM_DATA_ADDR, 0xAB);
         assert_eq!(ppu.oam_ram[8], 0xAB);
         assert_eq!(ppu.oam_addr, 0x09);
     }

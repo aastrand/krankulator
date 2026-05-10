@@ -23,9 +23,6 @@ pub fn addr_to_page(addr: u16) -> u16 {
 pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
-
-    /// Base pointer to CPU RAM at $0000 (at least 2 KiB mirrored to $0800–$1FFF). Used for OAM DMA.
-    fn cpu_ram_ptr(&mut self) -> *mut u8;
     fn ppu_read(&self, addr: u16) -> u8;
     fn ppu_fetch(&mut self, addr: u16, _dot: u64) -> u8 {
         self.ppu_a12_transition(addr);
@@ -180,10 +177,6 @@ impl MemoryMapper for IdentityMapper {
     #[inline]
     fn cpu_write(&mut self, addr: u16, value: u8) {
         unsafe { *self.ram_ptr.offset(addr as _) = value }
-    }
-
-    fn cpu_ram_ptr(&mut self) -> *mut u8 {
-        self.ram_ptr
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {

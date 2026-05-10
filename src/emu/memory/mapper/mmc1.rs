@@ -347,10 +347,6 @@ impl MemoryMapper for MMC1Mapper {
         self._write_bus(addr, value);
     }
 
-    fn cpu_ram_ptr(&mut self) -> *mut u8 {
-        self.cpu_ram_ptr
-    }
-
     fn ppu_read(&self, addr: u16) -> u8 {
         self._ppu_read(addr)
     }
