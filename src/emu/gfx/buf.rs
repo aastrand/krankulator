@@ -26,6 +26,8 @@ impl Buffer {
         }
     }
 
+    /// Only used by PPU unit tests; the window path copies [`Self::data`] directly.
+    #[cfg(test)]
     pub fn get_pixel(&self, x: usize, y: usize) -> (u8, u8, u8) {
         let base = y * 3 * self.width + x * 3;
         if base + 2 < self.data.len() {

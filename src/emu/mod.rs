@@ -309,7 +309,7 @@ impl Emulator {
     }
 
     fn sync_ppu_to_dot(&mut self, target_dot: u64) -> bool {
-        let mut cycle_260_scanlines = Vec::new();
+        let mut cycle_260_scanlines = Vec::with_capacity(8);
         let fire_vblank_nmi = {
             let mut fire_vblank_nmi = false;
             while self.ppu.last_synced_dot < target_dot {
@@ -1305,7 +1305,6 @@ impl Emulator {
 
     pub fn trigger_nmi(&mut self) {
         let addr: u16 = self.get_16b_addr(memory::NMI_TARGET_ADDR);
-        //println!("Triggering NMI to {:X}", addr);
         self.push_pc_to_stack(0);
         // hardware interrupts IRQ & NMI will push the B flag as being 0.
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);

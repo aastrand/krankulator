@@ -468,6 +468,7 @@ impl MemoryMapper for MMC3Mapper {
     }
 
     fn poll_irq(&mut self) -> bool {
+        // Level-sensitive: stays asserted until $E000-$FFFE acknowledge; CPU I mask prevents re-entrancy.
         self.irq_pending
     }
 

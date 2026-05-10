@@ -261,10 +261,9 @@ impl PPU {
             STATUS_REG_ADDR => {
                 let status = self.get_status_reg();
 
-                // reading clears VBlank, sprite 0 hit, and sprite overflow (open-bus nuances omitted)
+                // Only vblank (bit 7) clears on read; sprite 0 hit and overflow clear at prerender dot 1
+                // (https://www.nesdev.org/wiki/PPU_programmer_reference#PPUSTATUS_-_Rendering_events_.28.242002_read.29).
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
-                self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
-                self.ppu_status &= !STATUS_SPRITE_OVERFLOW;
                 // reset write toggle - this is crucial for proper scrolling
                 self.w = false;
                 // Legacy support
@@ -535,7 +534,6 @@ impl PPU {
 
         if self.scanline == VBLANK_SCANLINE && self.cycle == 1 {
             self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
-            self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
             let mut fire = self.vblank_nmi_is_enabled();
             if self.nmi_suppress_next_vblank {
                 fire = false;
@@ -549,10 +547,11 @@ impl PPU {
             self.oam_addr = 0;
         }
 
-        // STATUS_SPRITE_ZERO_HIT cleared at dot 1 of the pre-render line. Used for raster timing.
+        // PPUSTATUS bits 5–7 (O, S, V) clear at dot 1 of prerender; games poll sprite 0 hit across frames.
         if self.scanline == PRE_RENDER_SCANLINE && self.cycle == 1 {
             self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
+            self.ppu_status &= !STATUS_SPRITE_OVERFLOW;
             self.clear_background_shift_registers();
             self.nmi_suppress_next_vblank = false;
         }
@@ -1170,6 +1169,7 @@ impl PPU {
         if screen_x == 255 {
             return false;
         }
+        // PPUMASK: no sprite 0 hit in the left column if either BG or sprites are clipped there.
         if screen_x < 8
             && ((self.ppu_mask & MASK_BACKGROUND_LEFT_ENABLE) == 0
                 || (self.ppu_mask & MASK_SPRITES_LEFT_ENABLE) == 0)
