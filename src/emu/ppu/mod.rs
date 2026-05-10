@@ -24,6 +24,7 @@ pub const MASK_BACKGROUND_ENABLE: u8 = 0b0000_1000;
 pub const MASK_SPRITES_ENABLE: u8 = 0b0001_0000;
 pub const MASK_BACKGROUND_LEFT_ENABLE: u8 = 0b0000_0010;
 pub const MASK_SPRITES_LEFT_ENABLE: u8 = 0b0000_0100;
+#[cfg(test)]
 pub const MASK_RENDERING_ENABLE: u8 = 0b0001_1000;
 
 pub const STATUS_VERTICAL_BLANK_BIT: u8 = 0b1000_0000;
@@ -429,7 +430,7 @@ impl PPU {
         self.t
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn step_dot(&mut self) -> StepResult {
         self.step_dot_inner(None)
     }
@@ -720,21 +721,27 @@ impl PPU {
         let tile_index = (pixel_offset / 8) as i16;
         let fine_in_tile = (pixel_offset % 8) as u8;
 
-        let bg_v_curr = Self::coarse_x_offset(self.render_line_v, tile_index);
-        let tile_id_curr = mem.ppu_read(0x2000 | (bg_v_curr & 0x0FFF)) as u16;
-        let fine_y_curr = ((bg_v_curr >> 12) & 0x07) as u16;
         let pat_base = self.ctrl_background_pattern_addr();
-        let pat_lo_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y_curr);
-        let pat_hi_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y_curr + 8);
+
+        let bg_v_curr = Self::coarse_x_offset(self.render_line_v, tile_index);
+        let fine_y = ((bg_v_curr >> 12) & 0x07) as u16;
+        let tile_id_curr = mem.ppu_read(0x2000 | (bg_v_curr & 0x0FFF)) as u16;
+        let pat_lo_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y);
+        let pat_hi_curr = mem.ppu_read(pat_base + tile_id_curr * 16 + fine_y + 8);
         let attr_curr = Self::palette_index_at_coarse_v(mem, bg_v_curr);
         let (al_c, ah_c) = Self::expanded_attr_plane_bytes(attr_curr);
 
-        // Fine-X (self.x) samples bit 15,14,... of the 16-bit shifters. The current tile's bits must
-        // therefore occupy the upper byte; fine_in_tile is how many dots we are into that tile.
-        self.bg_pattern_shift_low = u16::from(pat_lo_curr) << 8;
-        self.bg_pattern_shift_high = u16::from(pat_hi_curr) << 8;
-        self.bg_attr_shift_low = al_c << 8;
-        self.bg_attr_shift_high = ah_c << 8;
+        let bg_v_next = Self::coarse_x_incremented(bg_v_curr);
+        let tile_id_next = mem.ppu_read(0x2000 | (bg_v_next & 0x0FFF)) as u16;
+        let pat_lo_next = mem.ppu_read(pat_base + tile_id_next * 16 + fine_y);
+        let pat_hi_next = mem.ppu_read(pat_base + tile_id_next * 16 + fine_y + 8);
+        let attr_next = Self::palette_index_at_coarse_v(mem, bg_v_next);
+        let (al_n, ah_n) = Self::expanded_attr_plane_bytes(attr_next);
+
+        self.bg_pattern_shift_low = (u16::from(pat_lo_curr) << 8) | u16::from(pat_lo_next);
+        self.bg_pattern_shift_high = (u16::from(pat_hi_curr) << 8) | u16::from(pat_hi_next);
+        self.bg_attr_shift_low = (al_c << 8) | al_n;
+        self.bg_attr_shift_high = (ah_c << 8) | ah_n;
 
         for _ in 0..fine_in_tile {
             self.shift_background_registers();
@@ -1101,7 +1108,7 @@ impl PPU {
         palette::PALETTE[color_idx]
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn catch_up_to<F>(&mut self, target_dot: u64, mut on_step: F) -> bool
     where
         F: FnMut(StepResult),
@@ -1115,7 +1122,7 @@ impl PPU {
         fire_vblank_nmi
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn cycle(&mut self) -> bool {
         let mut fire_vblank_nmi = false;
         for _ in 0..3 {
@@ -1231,14 +1238,8 @@ impl PPU {
         (self.ppu_ctrl & CTRL_NMI_ENABLE) == CTRL_NMI_ENABLE
     }
 
-    #[allow(dead_code)]
-    pub fn is_in_vblank(&mut self) -> bool {
-        (self.get_status_reg() & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
-    }
-
-    #[allow(dead_code)]
-    pub fn read_oam(&self, offset: usize) -> u8 {
-        unsafe { *self.oam_ram_ptr.offset(offset as _) }
+    pub fn is_in_vblank(&self) -> bool {
+        (self.ppu_status & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
     }
 
     pub fn ctrl_sprite_pattern_table_addr(&self) -> u16 {
@@ -1269,7 +1270,7 @@ impl PPU {
         self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn mask_rendering_enabled(&self) -> bool {
         (self.ppu_mask & MASK_RENDERING_ENABLE) == MASK_RENDERING_ENABLE
     }

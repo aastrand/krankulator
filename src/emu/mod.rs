@@ -319,23 +319,25 @@ impl Emulator {
     }
 
     fn sync_ppu_to_dot(&mut self, target_dot: u64) -> bool {
-        let mut cycle_260_scanlines = Vec::with_capacity(8);
-        let fire_vblank_nmi = {
-            let mut fire_vblank_nmi = false;
-            while self.ppu.last_synced_dot < target_dot {
-                let step = self
-                    .ppu
-                    .step_dot_with_rendering(&mut *self.mem, &mut self.buf);
-                fire_vblank_nmi |= step.fire_vblank_nmi;
-                if let Some(scanline) = step.ppu_cycle_260_scanline {
-                    cycle_260_scanlines.push(scanline);
+        let mut cycle_260_scanlines: [u16; 4] = [0; 4];
+        let mut cycle_260_count: usize = 0;
+        let mut fire_vblank_nmi = false;
+
+        while self.ppu.last_synced_dot < target_dot {
+            let step = self
+                .ppu
+                .step_dot_with_rendering(&mut *self.mem, &mut self.buf);
+            fire_vblank_nmi |= step.fire_vblank_nmi;
+            if let Some(scanline) = step.ppu_cycle_260_scanline {
+                if cycle_260_count < cycle_260_scanlines.len() {
+                    cycle_260_scanlines[cycle_260_count] = scanline;
+                    cycle_260_count += 1;
                 }
             }
-            fire_vblank_nmi
-        };
+        }
 
-        for scanline in cycle_260_scanlines {
-            self.mem.ppu_cycle_260(scanline);
+        for i in 0..cycle_260_count {
+            self.mem.ppu_cycle_260(cycle_260_scanlines[i]);
         }
 
         fire_vblank_nmi
