@@ -88,8 +88,8 @@ impl NoiseChannel {
     pub fn set_length_counter(&mut self, value: u8) {
         if self.enabled {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
-            self.envelope_start = true;
         }
+        self.envelope_start = true;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -129,10 +129,6 @@ impl NoiseChannel {
         self.shift_register >>= 1;
         self.shift_register |= feedback << 14;
 
-        // Ensure the shift register never becomes 0 (NES behavior)
-        if self.shift_register == 0 {
-            self.shift_register = 1;
-        }
     }
 
     fn generate_output(&mut self) {

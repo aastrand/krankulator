@@ -176,6 +176,7 @@ impl TriangleChannel {
         }
     }
 
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }

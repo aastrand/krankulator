@@ -11,13 +11,13 @@ pub struct FrameCounter {
     step: u8,
     cycles: u32,
     irq_inhibit: bool,
-    seq_index: u8,
     /// CPU cycles remaining until `pending_write` is applied (see nesdev $4017 delay).
     reset_delay: u8,
     pending_write: u8,
 }
 
 /// NTSC 4-step sequence: cycles between quarter/half-frame clocks (sum 29829).
+/// Source: nesdev wiki "APU Frame Counter", confirmed against Mesen2 NesApu.cpp.
 const NTSC_4: [u32; 4] = [7457, 7456, 7458, 7458];
 /// NTSC 5-step sequence (sum 37281).
 const NTSC_5: [u32; 5] = [7457, 7456, 7458, 7458, 7452];
@@ -29,7 +29,6 @@ impl FrameCounter {
             step: 0,
             cycles: 0,
             irq_inhibit: false,
-            seq_index: 0,
             reset_delay: 0,
             pending_write: 0,
         }
@@ -50,7 +49,6 @@ impl FrameCounter {
                 self.mode = (self.pending_write >> 7) & 1;
                 self.step = 0;
                 self.cycles = 0;
-                self.seq_index = 0;
                 if self.mode == 1 {
                     return FrameStep::Deferred4017Apply {
                         immediate_clock: true,
@@ -69,25 +67,23 @@ impl FrameCounter {
     }
 
     fn cycle_mode_0(&mut self) -> FrameStep {
-        let period = NTSC_4[self.seq_index as usize];
+        let period = NTSC_4[self.step as usize];
         self.cycles += 1;
         if self.cycles < period {
             return FrameStep::None;
         }
         self.cycles = 0;
-        self.seq_index = (self.seq_index + 1) % 4;
         self.step = (self.step + 1) % 4;
         FrameStep::Step(self.step)
     }
 
     fn cycle_mode_1(&mut self) -> FrameStep {
-        let period = NTSC_5[self.seq_index as usize];
+        let period = NTSC_5[self.step as usize];
         self.cycles += 1;
         if self.cycles < period {
             return FrameStep::None;
         }
         self.cycles = 0;
-        self.seq_index = (self.seq_index + 1) % 5;
         self.step = (self.step + 1) % 5;
         if self.step == 0 {
             FrameStep::None

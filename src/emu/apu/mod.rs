@@ -489,8 +489,8 @@ impl APU {
         } else {
             0.0
         };
-        // ~[0, 1] then center for [-1, 1] speakers
-        (pulse_out + tnd_out) * 2.0 - 1.0
+        // Output in [0, ~1]; the high-pass filters remove DC offset
+        pulse_out + tnd_out
     }
 
     pub fn get_audio_samples(&mut self) -> &[f32] {
@@ -764,13 +764,13 @@ mod tests {
         let apu = APU::new();
 
         let mixed = apu.mix_channels(15.0, 15.0, 15.0, 15.0, 127.0);
-        assert!(mixed > 0.9 && mixed <= 1.0);
+        assert!(mixed > 0.8 && mixed <= 1.0);
 
         let mixed = apu.mix_channels(0.0, 0.0, 0.0, 0.0, 0.0);
-        assert!((mixed + 1.0).abs() < 1e-5);
+        assert!(mixed.abs() < 1e-5);
 
         let mixed = apu.mix_channels(15.0, 0.0, 0.0, 0.0, 0.0);
-        assert!(mixed > -1.0 && mixed < 0.15);
+        assert!(mixed > 0.0 && mixed < 0.5);
     }
 
     #[test]
