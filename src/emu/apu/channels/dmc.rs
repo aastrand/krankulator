@@ -144,8 +144,8 @@ impl DmcChannel {
         }
 
         if self.bits_remaining > 0 {
-            let bit = (self.sample_buffer >> 7) & 1;
-            self.sample_buffer <<= 1;
+            let bit = self.sample_buffer & 1;
+            self.sample_buffer >>= 1;
             self.bits_remaining -= 1;
 
             if bit == 1 {
@@ -206,8 +206,7 @@ impl DmcChannel {
             return;
         }
 
-        // Convert 7-bit output level to float centered at 0
-        self.output = (self.output_level as f32 - 64.0) / 64.0;
+        self.output = self.output_level as f32;
     }
 
     pub fn get_sample(&self) -> f32 {
@@ -264,6 +263,22 @@ mod tests {
         fn poll_irq(&mut self) -> bool {
             false
         }
+    }
+
+    #[test]
+    fn test_dmc_sample_bits_lsb_first_order() {
+        let mut dmc = DmcChannel::new();
+        dmc.enabled = true;
+        dmc.bytes_remaining = 10;
+        dmc.bits_remaining = 8;
+        dmc.output_level = 64;
+        dmc.sample_buffer = 0x01;
+        dmc.clock_output(&mut DummyMemory);
+        assert_eq!(dmc.output_level, 66);
+        dmc.sample_buffer = 0x80;
+        dmc.bits_remaining = 8;
+        dmc.clock_output(&mut DummyMemory);
+        assert_eq!(dmc.output_level, 64);
     }
 
     #[test]
@@ -414,15 +429,15 @@ mod tests {
         assert_eq!(dmc.bits_remaining, 7);
         assert!(!dmc.sample_buffer_empty);
 
-        // Test bit processing
-        dmc.sample_buffer = 0x80; // MSB = 1
+        // Test bit processing (LSB-first: use odd byte so first bit is 1)
+        dmc.sample_buffer = 0x01;
         dmc.output_level = 64; // Middle level
         dmc.clock_output(&mut mem);
         assert_eq!(dmc.output_level, 66); // Should increase by 2
         assert_eq!(dmc.bits_remaining, 6); // Should be 6 after processing one bit
 
-        // Test bit processing with 0 bit
-        dmc.sample_buffer = 0x00; // MSB = 0
+        // Test bit processing with 0 bit (LSB of 0x02 is 0)
+        dmc.sample_buffer = 0x02;
         dmc.clock_output(&mut mem);
         assert_eq!(dmc.output_level, 64); // Should decrease by 2
         assert_eq!(dmc.bits_remaining, 5); // Should be 5 after processing another bit
@@ -484,19 +499,20 @@ mod tests {
 
         // Test enabled channel
         dmc.enabled = true;
-        dmc.output_level = 64; // Middle level
+        // Raw 7-bit DAC output to mixer (0–127)
+        dmc.output_level = 64;
         dmc.generate_output();
-        assert_eq!(dmc.output, 0.0); // (64 - 64) / 64 = 0.0
+        assert_eq!(dmc.output, 64.0);
 
         // Test maximum level
         dmc.output_level = 126;
         dmc.generate_output();
-        assert_eq!(dmc.output, (126.0 - 64.0) / 64.0);
+        assert_eq!(dmc.output, 126.0);
 
         // Test minimum level
         dmc.output_level = 2;
         dmc.generate_output();
-        assert_eq!(dmc.output, (2.0 - 64.0) / 64.0);
+        assert_eq!(dmc.output, 2.0);
     }
 
     #[test]
@@ -533,15 +549,15 @@ mod tests {
         dmc.bytes_remaining = 10;
         dmc.bits_remaining = 8;
 
-        // Test output level upper bound
+        // LSB-first: bit 1 increases toward cap
         dmc.output_level = 126;
-        dmc.sample_buffer = 0x80; // MSB = 1
+        dmc.sample_buffer = 0x01;
         dmc.clock_output(&mut DummyMemory);
         assert_eq!(dmc.output_level, 126); // Should not exceed 126
 
-        // Test output level lower bound
+        // LSB 0: decrease but clamp at 1
         dmc.output_level = 1;
-        dmc.sample_buffer = 0x00; // MSB = 0
+        dmc.sample_buffer = 0x00;
         dmc.clock_output(&mut DummyMemory);
         assert_eq!(dmc.output_level, 1); // Should not go below 1
     }

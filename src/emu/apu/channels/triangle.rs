@@ -67,7 +67,6 @@ impl TriangleChannel {
 
     pub fn set_timer_low(&mut self, value: u8) {
         self.timer = (self.timer & 0xFF00) | value as u16;
-        self.timer_value = self.timer;
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
@@ -133,8 +132,7 @@ impl TriangleChannel {
     fn generate_output(&mut self) {
         // Triangle wave pattern
         let triangle_value = TRIANGLE_WAVE[self.step as usize];
-        // Normalize to [-1.0, 1.0]
-        self.output = (triangle_value as f32 - 7.5) / 7.5;
+        self.output = triangle_value as f32;
     }
 
     // Ensure output is zero when channel is inactive
@@ -228,14 +226,21 @@ mod tests {
     fn test_triangle_channel_set_timer() {
         let mut triangle = TriangleChannel::new();
 
-        // Test timer low
+        // Test timer low (does not restart the frequency divider)
         triangle.set_timer_low(0x34);
         assert_eq!(triangle.timer & 0xFF, 0x34);
 
-        // Test timer high
         triangle.set_timer_high(0x12); // Timer bits 0-2, length counter bits 3-7
         assert_eq!(triangle.timer >> 8, 0x02); // Only bits 0-2
         assert!(triangle.linear_counter_reload_flag);
+
+        let tv_after_high = triangle.timer_value;
+        triangle.set_timer_low(0x55);
+        assert_eq!(triangle.timer & 0xFF, 0x55);
+        assert_eq!(
+            triangle.timer_value, tv_after_high,
+            "timer low write only updates reload, not current divider"
+        );
     }
 
     #[test]
@@ -288,13 +293,13 @@ mod tests {
 
         // generate_output is internal and should always work
         triangle.generate_output();
-        // Step 0 should be 15, normalized to (15 - 7.5) / 7.5 = 1.0
-        assert_eq!(triangle.output, 1.0);
+        // Step 0 → DAC 15 (raw, for nonlinear mixer)
+        assert_eq!(triangle.output, 15.0);
 
-        // Test step 15 which should be 0
+        // Step 15 which should be 0
         triangle.step = 15;
         triangle.generate_output();
-        assert_eq!(triangle.output, -1.0); // (0 - 7.5) / 7.5 = -1.0
+        assert_eq!(triangle.output, 0.0);
     }
 
     #[test]

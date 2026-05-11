@@ -4,6 +4,66 @@ pub mod frame_counter;
 pub const SAMPLE_RATE: u32 = 44100;
 pub const CYCLES_PER_SAMPLE: f64 = 1_789_773.0 / SAMPLE_RATE as f64;
 
+/// First-order IIR chain at `SAMPLE_RATE`: HPF ~37 Hz, HPF ~440 Hz, LPF ~14 kHz.
+struct AudioFilter {
+    hp1_x1: f32,
+    hp1_y1: f32,
+    hp1_a: f32,
+    hp2_x1: f32,
+    hp2_y1: f32,
+    hp2_a: f32,
+    lp_y: f32,
+    lp_a: f32,
+}
+
+impl AudioFilter {
+    fn new(sample_rate: u32) -> Self {
+        let sr = sample_rate as f32;
+        let hp_a = |fc: f32| {
+            let rc = 1.0 / (2.0 * std::f32::consts::PI * fc);
+            let dt = 1.0 / sr;
+            rc / (rc + dt)
+        };
+        let lp_a = |fc: f32| {
+            let rc = 1.0 / (2.0 * std::f32::consts::PI * fc);
+            let dt = 1.0 / sr;
+            dt / (rc + dt)
+        };
+        Self {
+            hp1_x1: 0.0,
+            hp1_y1: 0.0,
+            hp1_a: hp_a(37.0),
+            hp2_x1: 0.0,
+            hp2_y1: 0.0,
+            hp2_a: hp_a(440.0),
+            lp_y: 0.0,
+            lp_a: lp_a(14_000.0),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.hp1_x1 = 0.0;
+        self.hp1_y1 = 0.0;
+        self.hp2_x1 = 0.0;
+        self.hp2_y1 = 0.0;
+        self.lp_y = 0.0;
+    }
+
+    fn process(&mut self, x: f32) -> f32 {
+        let y1 = self.hp1_a * (self.hp1_y1 + x - self.hp1_x1);
+        self.hp1_x1 = x;
+        self.hp1_y1 = y1;
+
+        let y2 = self.hp2_a * (self.hp2_y1 + y1 - self.hp2_x1);
+        self.hp2_x1 = y1;
+        self.hp2_y1 = y2;
+
+        let y = self.lp_a * y2 + (1.0 - self.lp_a) * self.lp_y;
+        self.lp_y = y;
+        y
+    }
+}
+
 use crate::emu::apu::frame_counter::FrameStep;
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
 use frame_counter::FrameCounter;
@@ -26,6 +86,8 @@ pub struct APU {
     enabled_channels: u8,
     // Debug override mute independent of $4015 (bit0..bit4: p1,p2,tri,noise,dmc)
     mute_mask: u8,
+
+    audio_filter: AudioFilter,
 }
 
 impl APU {
@@ -45,6 +107,7 @@ impl APU {
             status: 0,
             enabled_channels: 0,
             mute_mask: 0,
+            audio_filter: AudioFilter::new(SAMPLE_RATE),
         };
         apu.reset();
         apu
@@ -62,6 +125,7 @@ impl APU {
         self.status = 0;
         self.enabled_channels = 0;
         self.mute_mask = 0;
+        self.audio_filter.reset();
         for s in &mut self.sample_buffer {
             *s = 0.0;
         }
@@ -121,7 +185,7 @@ impl APU {
         }
     }
 
-    pub fn write(&mut self, addr: u16, value: u8) {
+    pub fn write(&mut self, addr: u16, value: u8, emu_cycle: u64) {
         // Debug: log all APU register writes
         // println!("APU write: ${:04X} = {:02X}", addr, value);
 
@@ -299,19 +363,22 @@ impl APU {
 
             // Frame Counter
             0x4017 => {
-                /*
-                println!(
-                    "  Frame counter: mode={}, irq_inhibit={}",
-                    (value >> 7) & 1,
-                    (value >> 6) & 1
-                );
-                */
-                let immediate_clock = (value & 0x80) != 0;
-                self.frame_counter.write(value);
                 if value & 0x40 != 0 {
-                    self.clear_irq(); // Clear frame IRQ immediately if inhibit set
+                    self.clear_irq();
                 }
-                // Always clock on $4017 write with bit 7 set
+                self.frame_counter.write(value, emu_cycle);
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
+        let frame_step = self.frame_counter.cycle();
+        let mode = self.frame_counter.get_mode();
+
+        match frame_step {
+            FrameStep::Deferred4017Apply { immediate_clock } => {
                 if immediate_clock {
                     self.pulse1.clock_length_counter();
                     self.pulse2.clock_length_counter();
@@ -325,59 +392,37 @@ impl APU {
                     self.triangle.clock_linear_counter();
                 }
             }
+            FrameStep::Step(step) => {
+                // Clock envelopes and linear counter on steps 0, 1, 2, 3 (both modes)
+                if step <= 3 {
+                    self.pulse1.clock_envelope();
+                    self.pulse2.clock_envelope();
+                    self.noise.clock_envelope();
+                    self.triangle.clock_linear_counter();
+                }
+                // Clock length counters and sweep on half-frame edges
+                if (mode == 0 && (step == 0 || step == 2))
+                    || (mode == 1 && (step == 1 || step == 3))
+                {
+                    self.pulse1.clock_length_counter();
+                    self.pulse2.clock_length_counter();
+                    self.triangle.clock_length_counter();
+                    self.noise.clock_length_counter();
 
-            _ => {}
+                    self.pulse1.clock_sweep();
+                    self.pulse2.clock_sweep();
+                }
+                if mode == 0 && step == 0 && !self.frame_counter.irq_inhibit() {
+                    self.status |= 0x40;
+                }
+            }
+            FrameStep::None => {}
         }
-    }
-
-    pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
-        // Run frame counter
-        let frame_step = self.frame_counter.cycle();
-        let mode = self.frame_counter.get_mode();
-
-        // Only clock on step transitions
-        if let FrameStep::Step(step) = frame_step {
-            // Clock envelopes and linear counter on steps 0, 1, 2, 3 (both modes)
-            if step <= 3 {
-                self.pulse1.clock_envelope();
-                self.pulse2.clock_envelope();
-                self.noise.clock_envelope();
-                self.triangle.clock_linear_counter();
-            }
-            // Clock length counters and sweep on steps 0 and 2 (mode 0) or steps 0, 1, 2, 3 (mode 1)
-            if (mode == 0 && (step == 0 || step == 2)) || (mode == 1 && step <= 3) {
-                self.pulse1.clock_length_counter();
-                self.pulse2.clock_length_counter();
-                self.triangle.clock_length_counter();
-                self.noise.clock_length_counter();
-
-                // Clock sweep units (same timing as length counters)
-                self.pulse1.clock_sweep();
-                self.pulse2.clock_sweep();
-            }
-            // Set frame IRQ at the correct time (mode 0, step 0, IRQ not inhibited)
-            if mode == 0 && step == 0 && !self.frame_counter.irq_inhibit() {
-                self.status |= 0x40; // Set frame IRQ bit
-            }
-            // Never set frame IRQ in 5-step mode (mode 1)
-            // (No action needed, as above condition only applies in mode 0)
-        }
-
-        // Update status register
-        // (IRQ logic may need to be updated if you want to handle IRQs on step transitions)
-        // For now, keep as before:
-        // self.status &= 0x40; // Keep DMC IRQ bit
-        // if frame_irq {
-        //     self.status |= 0x40;
-        // }
 
         // Cycle channels
         self.pulse1.cycle();
         self.pulse2.cycle();
-        // Only cycle triangle if it's actually enabled and active
-        if self.triangle.is_enabled() && self.triangle.get_length_counter() > 0 {
-            self.triangle.cycle();
-        }
+        self.triangle.cycle();
         self.noise.cycle();
         self.dmc.cycle(memory);
 
@@ -420,23 +465,32 @@ impl APU {
             noise_sample,
             dmc_sample,
         );
+        let filtered = self.audio_filter.process(mixed_sample);
 
         // Store in buffer
         if self.sample_index < self.sample_buffer.len() {
-            self.sample_buffer[self.sample_index] = mixed_sample;
+            self.sample_buffer[self.sample_index] = filtered;
             self.sample_index += 1;
         }
     }
 
     fn mix_channels(&self, pulse1: f32, pulse2: f32, triangle: f32, noise: f32, dmc: f32) -> f32 {
-        // NES hardware coefficients scaled by each channel's raw DAC range.
-        // Pulse/Noise: 0.0–1.0 (raw 0–15, divided by 15) → scale = coeff * 15
-        // Triangle: -1.0–1.0 (raw 0–15, centered) → scale = coeff * 7.5
-        // DMC: -1.0–1.0 (raw 0–127, centered) → scale = coeff * 64
-        let pulse_out = (pulse1 + pulse2) * (0.00752 * 15.0);
-        let tnd_out =
-            triangle * (0.00851 * 7.5) + noise * (0.00494 * 15.0) + dmc * (0.00335 * 64.0);
-        ((pulse_out + tnd_out) * 1.5).clamp(-1.0, 1.0)
+        // NES nonlinear mixer (NESdev); inputs are raw DAC counts:
+        // pulse/noise 0–15, triangle 0–15, DMC 0–127
+        let pulse_sum = pulse1 + pulse2;
+        let pulse_out = if pulse_sum > 0.0 {
+            95.88 / (8128.0 / pulse_sum + 100.0)
+        } else {
+            0.0
+        };
+        let tnd_sum = triangle / 8227.0 + noise / 12241.0 + dmc / 22638.0;
+        let tnd_out = if tnd_sum > 0.0 {
+            159.79 / (1.0 / tnd_sum + 100.0)
+        } else {
+            0.0
+        };
+        // ~[0, 1] then center for [-1, 1] speakers
+        (pulse_out + tnd_out) * 2.0 - 1.0
     }
 
     pub fn get_audio_samples(&mut self) -> &[f32] {
@@ -505,11 +559,11 @@ mod tests {
         let mut apu = APU::new();
 
         // Test pulse1 control
-        apu.write(0x4000, 0x3F); // Volume 15, constant volume
+        apu.write(0x4000, 0x3F, 0); // Volume 15, constant volume
                                  // Test by enabling and checking output behavior
-        apu.write(0x4015, 0x01); // Enable pulse1
-        apu.write(0x4002, 0x10); // Set timer low
-        apu.write(0x4003, 0x00); // Set timer high
+        apu.write(0x4015, 0x01, 0); // Enable pulse1
+        apu.write(0x4002, 0x10, 0); // Set timer low
+        apu.write(0x4003, 0x00, 0); // Set timer high
 
         // Cycle to generate output
         for _ in 0..100 {
@@ -526,11 +580,11 @@ mod tests {
         let mut apu = APU::new();
 
         // Test pulse2 control
-        apu.write(0x4004, 0x3F); // Volume 15, constant volume
+        apu.write(0x4004, 0x3F, 0); // Volume 15, constant volume
                                  // Test by enabling and checking output behavior
-        apu.write(0x4015, 0x02); // Enable pulse2
-        apu.write(0x4006, 0x10); // Set timer low
-        apu.write(0x4007, 0x00); // Set timer high
+        apu.write(0x4015, 0x02, 0); // Enable pulse2
+        apu.write(0x4006, 0x10, 0); // Set timer low
+        apu.write(0x4007, 0x00, 0); // Set timer high
 
         // Cycle to generate output
         for _ in 0..100 {
@@ -547,12 +601,12 @@ mod tests {
         let mut apu = APU::new();
 
         // Test triangle control and timer
-        apu.write(0x4008, 0x80); // Length counter halt
-        apu.write(0x400A, 0x34); // Timer low
-        apu.write(0x400B, 0x12); // Timer high, length counter
+        apu.write(0x4008, 0x80, 0); // Length counter halt
+        apu.write(0x400A, 0x34, 0); // Timer low
+        apu.write(0x400B, 0x12, 0); // Timer high, length counter
 
         // Test by enabling and checking output behavior
-        apu.write(0x4015, 0x04); // Enable triangle
+        apu.write(0x4015, 0x04, 0); // Enable triangle
 
         // Cycle to generate output
         for _ in 0..100 {
@@ -569,12 +623,12 @@ mod tests {
         let mut apu = APU::new();
 
         // Test noise control and period
-        apu.write(0x400C, 0x3F); // Volume 15, constant volume
-        apu.write(0x400E, 0x0F); // Period 15
-        apu.write(0x400F, 0x20); // Length counter index 4
+        apu.write(0x400C, 0x3F, 0); // Volume 15, constant volume
+        apu.write(0x400E, 0x0F, 0); // Period 15
+        apu.write(0x400F, 0x20, 0); // Length counter index 4
 
         // Test by enabling and checking output behavior
-        apu.write(0x4015, 0x08); // Enable noise
+        apu.write(0x4015, 0x08, 0); // Enable noise
 
         // Cycle to generate output
         for _ in 0..100 {
@@ -591,13 +645,13 @@ mod tests {
         let mut apu = APU::new();
 
         // Test DMC control and parameters
-        apu.write(0x4010, 0x8F); // IRQ enable, period 15
-        apu.write(0x4011, 0x7F); // Direct load
-        apu.write(0x4012, 0x40); // Sample address
-        apu.write(0x4013, 0x10); // Sample length
+        apu.write(0x4010, 0x8F, 0); // IRQ enable, period 15
+        apu.write(0x4011, 0x7F, 0); // Direct load
+        apu.write(0x4012, 0x40, 0); // Sample address
+        apu.write(0x4013, 0x10, 0); // Sample length
 
         // Test by enabling and checking output behavior
-        apu.write(0x4015, 0x10); // Enable DMC
+        apu.write(0x4015, 0x10, 0); // Enable DMC
 
         // Cycle to generate output
         for _ in 0..100 {
@@ -614,7 +668,7 @@ mod tests {
         let mut apu = APU::new();
 
         // Test enabling all channels
-        apu.write(0x4015, 0x1F); // Enable all channels
+        apu.write(0x4015, 0x1F, 0); // Enable all channels
         assert!(apu.pulse1.is_enabled());
         assert!(apu.pulse2.is_enabled());
         assert!(apu.triangle.is_enabled());
@@ -623,7 +677,7 @@ mod tests {
         assert_eq!(apu.enabled_channels, 0x1F);
 
         // Test disabling all channels
-        apu.write(0x4015, 0x00); // Disable all channels
+        apu.write(0x4015, 0x00, 0); // Disable all channels
         assert!(!apu.pulse1.is_enabled());
         assert!(!apu.pulse2.is_enabled());
         assert!(!apu.triangle.is_enabled());
@@ -632,7 +686,7 @@ mod tests {
         assert_eq!(apu.enabled_channels, 0x00);
 
         // Test enabling individual channels
-        apu.write(0x4015, 0x01); // Enable only pulse1
+        apu.write(0x4015, 0x01, 0); // Enable only pulse1
         assert!(apu.pulse1.is_enabled());
         assert!(!apu.pulse2.is_enabled());
         assert!(!apu.triangle.is_enabled());
@@ -644,17 +698,26 @@ mod tests {
     fn test_apu_write_frame_counter() {
         let mut apu = APU::new();
 
-        // Test frame counter mode 0
-        apu.write(0x4017, 0x00);
+        apu.write(0x4017, 0x00, 0);
+        assert_eq!(apu.frame_counter.get_mode(), 0);
+        for _ in 0..3 {
+            apu.cycle(&mut DummyMemory);
+        }
         assert_eq!(apu.frame_counter.get_mode(), 0);
 
-        // Test frame counter mode 1
-        apu.write(0x4017, 0x80);
+        apu.write(0x4017, 0x80, 0);
+        assert_eq!(apu.frame_counter.get_mode(), 0);
+        for _ in 0..3 {
+            apu.cycle(&mut DummyMemory);
+        }
         assert_eq!(apu.frame_counter.get_mode(), 1);
 
-        // Test frame counter IRQ inhibit
-        apu.write(0x4017, 0x40);
+        apu.write(0x4017, 0x40, 0);
+        for _ in 0..3 {
+            apu.cycle(&mut DummyMemory);
+        }
         assert_eq!(apu.frame_counter.get_mode(), 0);
+        assert!(apu.frame_counter.irq_inhibit());
     }
 
     #[test]
@@ -675,14 +738,17 @@ mod tests {
         let mut apu = APU::new();
 
         // Set up frame counter mode 0
-        apu.write(0x4017, 0x00);
+        apu.write(0x4017, 0x00, 0);
+        for _ in 0..3 {
+            apu.cycle(&mut DummyMemory);
+        }
 
         // Enable triangle channel
-        apu.write(0x4015, 0x04);
+        apu.write(0x4015, 0x04, 0);
 
         // Set triangle timer
-        apu.write(0x400A, 0x10);
-        apu.write(0x400B, 0x00);
+        apu.write(0x400A, 0x10, 0);
+        apu.write(0x400B, 0x00, 0);
 
         // Cycle through frame counter steps
         for _ in 0..7457 {
@@ -697,24 +763,14 @@ mod tests {
     fn test_apu_mix_channels() {
         let apu = APU::new();
 
-        // Test mixing with all channels at maximum
-        let mixed = apu.mix_channels(1.0, 1.0, 1.0, 1.0, 1.0);
-        assert!(mixed > 0.0);
-        assert!(mixed <= 1.0);
+        let mixed = apu.mix_channels(15.0, 15.0, 15.0, 15.0, 127.0);
+        assert!(mixed > 0.9 && mixed <= 1.0);
 
-        // Test mixing with all channels at minimum
-        let mixed = apu.mix_channels(-1.0, -1.0, -1.0, -1.0, -1.0);
-        assert!(mixed < 0.0);
-        assert!(mixed >= -1.0);
-
-        // Test mixing with zero input
         let mixed = apu.mix_channels(0.0, 0.0, 0.0, 0.0, 0.0);
-        assert_eq!(mixed, 0.0);
+        assert!((mixed + 1.0).abs() < 1e-5);
 
-        // Test mixing with individual channels
-        let mixed = apu.mix_channels(1.0, 0.0, 0.0, 0.0, 0.0);
-        assert!(mixed > 0.0);
-        assert!(mixed < 1.0);
+        let mixed = apu.mix_channels(15.0, 0.0, 0.0, 0.0, 0.0);
+        assert!(mixed > -1.0 && mixed < 0.15);
     }
 
     #[test]
@@ -722,10 +778,10 @@ mod tests {
         let mut apu = APU::new();
 
         // Enable pulse1 and set it to produce output
-        apu.write(0x4015, 0x01); // Enable pulse1
-        apu.write(0x4000, 0x3F); // Volume 15, constant volume
-        apu.write(0x4002, 0x10); // Timer low
-        apu.write(0x4003, 0x00); // Timer high
+        apu.write(0x4015, 0x01, 0); // Enable pulse1
+        apu.write(0x4000, 0x3F, 0); // Volume 15, constant volume
+        apu.write(0x4002, 0x10, 0); // Timer low
+        apu.write(0x4003, 0x00, 0); // Timer high
 
         for _ in 0..CYCLES_PER_SAMPLE as u32 + 1 {
             apu.cycle(&mut DummyMemory);
@@ -775,14 +831,17 @@ mod tests {
         let mut apu = APU::new();
 
         // Set up frame counter mode 0
-        apu.write(0x4017, 0x00);
+        apu.write(0x4017, 0x00, 0);
+        for _ in 0..3 {
+            apu.cycle(&mut DummyMemory);
+        }
 
         // Enable pulse1 and set envelope
-        apu.write(0x4015, 0x01);
-        apu.write(0x4000, 0x20); // Volume 0, envelope enabled
+        apu.write(0x4015, 0x01, 0);
+        apu.write(0x4000, 0x20, 0); // Volume 0, envelope enabled
 
         // Cycle through frame counter steps 0, 1, 2, 3 (should clock envelope)
-        for _ in 0..7457 * 4 {
+        for _ in 0..29829 {
             apu.cycle(&mut DummyMemory);
         }
 

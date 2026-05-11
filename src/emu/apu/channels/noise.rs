@@ -71,9 +71,6 @@ impl NoiseChannel {
         self.length_counter_halt = (value >> 5) & 1 != 0;
         self.constant_volume = (value >> 4) & 1 != 0;
         self.volume = value & 0x0F;
-
-        // Start envelope when control is written
-        self.envelope_start = true;
     }
 
     pub fn set_period(&mut self, value: u8) {
@@ -91,6 +88,7 @@ impl NoiseChannel {
     pub fn set_length_counter(&mut self, value: u8) {
         if self.enabled {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
+            self.envelope_start = true;
         }
     }
 
@@ -120,8 +118,8 @@ impl NoiseChannel {
 
     fn clock_shift_register(&mut self) {
         let feedback = if (self.control & 0x80) != 0 {
-            // Mode 1: 6-bit feedback (bit 6 XOR bit 5)
-            ((self.shift_register >> 6) & 1) ^ ((self.shift_register >> 5) & 1)
+            // Mode 1: bit 0 XOR bit 6 (short period / "metal" noise)
+            (self.shift_register & 1) ^ ((self.shift_register >> 6) & 1)
         } else {
             // Mode 0: 1-bit feedback (bit 1 XOR bit 0)
             ((self.shift_register >> 1) & 1) ^ (self.shift_register & 1)
@@ -143,8 +141,8 @@ impl NoiseChannel {
             return;
         }
 
-        // Check if the least significant bit is set
-        if (self.shift_register & 1) == 0 {
+        // Mute when LSB of LFSR is 1 (inverted from earliest buggy interpretation)
+        if (self.shift_register & 1) == 1 {
             self.output = 0.0;
         } else {
             let vol = if self.constant_volume {
@@ -152,8 +150,7 @@ impl NoiseChannel {
             } else {
                 self.envelope_decay_level
             };
-            // Output in [0.0, 1.0]
-            self.output = vol as f32 / 15.0;
+            self.output = vol as f32;
         }
     }
 
@@ -161,9 +158,9 @@ impl NoiseChannel {
         if self.envelope_start {
             self.envelope_start = false;
             self.envelope_decay_level = 15;
-            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
+            self.envelope_divider = self.volume;
         } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.volume + 1; // NES APU: divider = volume + 1
+            self.envelope_divider = self.volume;
             if self.envelope_decay_level > 0 {
                 self.envelope_decay_level -= 1;
             } else if self.length_counter_halt {
@@ -244,8 +241,8 @@ mod tests {
         noise.set_control(0b00001111); // Volume 15
         assert_eq!(noise.volume, 15);
 
-        // Test envelope start flag
-        assert!(noise.envelope_start);
+        // Envelope only restarts on length counter write ($400F), not $400C
+        assert!(!noise.envelope_start);
     }
 
     #[test]
@@ -277,8 +274,10 @@ mod tests {
 
         // Test when enabled
         noise.enabled = true;
+        noise.envelope_start = false;
         noise.set_length_counter(0x20); // Length counter index 4
         assert_eq!(noise.length_counter, LENGTH_COUNTER_TABLE[4]);
+        assert!(noise.envelope_start);
     }
 
     #[test]
@@ -332,12 +331,18 @@ mod tests {
         // Feedback should be 1 ^ 0 = 1, so new value should be 0x4000
         assert_eq!(noise.shift_register, 0x4000);
 
-        // Test mode 1 (6-bit feedback)
+        // Test mode 1 (bit 0 XOR bit 6): same as legacy when only bit 6 is set
         noise.shift_register = 0x0040; // Bit 6 set
         noise.control = 0x80; // Mode 1
         noise.clock_shift_register();
-        // Feedback should be 1 ^ 0 = 1, so new value should be 0x4020
         assert_eq!(noise.shift_register, 0x4020);
+
+        // Diverges from old (bit6 XOR bit5) when bit 5 contributes but bit 0 does not
+        noise.shift_register = 0x0020; // bit 5 set, bit 6 clear, LSB clear
+        noise.control = 0x80;
+        noise.clock_shift_register();
+        // feedback = 0 XOR 0 = 0 → high bit of result is 0, not 0x4000
+        assert_eq!(noise.shift_register, 0x0010);
     }
 
     #[test]
@@ -354,24 +359,25 @@ mod tests {
         noise.generate_output();
         assert_eq!(noise.output, 0.0);
 
-        // Test enabled channel with valid conditions and LSB = 0
+        // LSB = 0 → audible (raw DAC 0–15)
         noise.length_counter = 10;
         noise.shift_register = 0x0002; // LSB = 0
         noise.constant_volume = true;
         noise.volume = 8;
         noise.generate_output();
-        assert_eq!(noise.output, 0.0); // LSB is 0, so output is 0
+        assert_eq!(noise.output, 8.0);
 
-        // Test enabled channel with LSB = 1 and constant volume
+        // LSB = 1 → muted
         noise.shift_register = 0x0001; // LSB = 1
         noise.generate_output();
-        assert_eq!(noise.output, 8.0 / 15.0); // Volume 8 normalized to [0.0, 1.0]
+        assert_eq!(noise.output, 0.0);
 
-        // Test enabled channel with envelope volume
+        // Envelope path: LSB = 0 uses decay level
+        noise.shift_register = 0x0002;
         noise.constant_volume = false;
         noise.envelope_decay_level = 12;
         noise.generate_output();
-        assert_eq!(noise.output, 12.0 / 15.0); // Envelope level 12 normalized to [0.0, 1.0]
+        assert_eq!(noise.output, 12.0);
     }
 
     #[test]
@@ -383,13 +389,13 @@ mod tests {
         noise.volume = 5;
         noise.clock_envelope();
         assert_eq!(noise.envelope_decay_level, 15);
-        assert_eq!(noise.envelope_divider, 6); // Should be volume + 1
+        assert_eq!(noise.envelope_divider, 5);
         assert!(!noise.envelope_start);
 
         // Test normal divider countdown
         noise.envelope_divider = 0; // Set to 0 to trigger reset
         noise.clock_envelope();
-        assert_eq!(noise.envelope_divider, 6); // Should reset to volume + 1
+        assert_eq!(noise.envelope_divider, 5);
         assert_eq!(noise.envelope_decay_level, 14); // Should decrement
 
         // Test envelope reaching 0
@@ -451,17 +457,23 @@ mod tests {
         let mut noise = NoiseChannel::new();
         noise.enabled = true;
         noise.length_counter = 10;
-        noise.shift_register = 0x0001; // LSB = 1
+        noise.shift_register = 0x0002; // LSB = 0 → not muted by LFSR
 
-        // Test maximum volume
+        // Test maximum volume (raw DAC)
         noise.constant_volume = true;
         noise.volume = 15;
         noise.generate_output();
-        assert_eq!(noise.output, 1.0); // 15/15 = 1.0
+        assert_eq!(noise.output, 15.0);
 
         // Test minimum volume
         noise.volume = 0;
         noise.generate_output();
-        assert_eq!(noise.output, 0.0); // 0/15 = 0.0 (minimum volume)
+        assert_eq!(noise.output, 0.0);
+
+        // LSB = 1 always silences regardless of volume
+        noise.shift_register = 0x0001;
+        noise.volume = 15;
+        noise.generate_output();
+        assert_eq!(noise.output, 0.0);
     }
 }

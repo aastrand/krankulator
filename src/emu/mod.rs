@@ -1070,7 +1070,12 @@ impl Emulator {
                 self.ppu.oam_dma_write(i as u8, byte);
             }
         } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
-            self.apu.write(addr, value);
+            let apu_cycle_tag = if addr == 0x4017 {
+                self.cpu.cycle.wrapping_add(u64::from(self.cpu_bus_cycle_offset))
+            } else {
+                0
+            };
+            self.apu.write(addr, value, apu_cycle_tag);
         } else {
             self.mem.cpu_write(addr, value);
         }

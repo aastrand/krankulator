@@ -94,9 +94,6 @@ impl PulseChannel {
         self.length_counter_halt = (value >> 5) & 1 != 0;
         self.constant_volume = (value >> 4) & 1 != 0;
         self.volume = value & 0x0F;
-
-        // Start envelope when control is written
-        self.envelope_start = true;
     }
 
     pub fn set_sweep(&mut self, value: u8) {
@@ -210,7 +207,7 @@ impl PulseChannel {
             } else {
                 self.envelope_decay_level
             };
-            self.output = vol as f32 / 15.0;
+            self.output = vol as f32;
         }
     }
 
@@ -306,8 +303,8 @@ mod tests {
         pulse.set_control(0b00001111); // Volume 15
         assert_eq!(pulse.volume, 15);
 
-        // Test envelope start
-        assert!(pulse.envelope_start);
+        // Envelope restarts on $4003/$4007 write only, not $4000/$4004
+        assert!(!pulse.envelope_start);
     }
 
     #[test]
@@ -405,7 +402,7 @@ mod tests {
         // Test step 4 which should be 1
         pulse.duty_step = 4;
         pulse.generate_output();
-        assert_eq!(pulse.output, 1.0); // 15/15 = 1.0
+        assert_eq!(pulse.output, 15.0);
     }
 
     #[test]
@@ -526,7 +523,7 @@ mod tests {
         // Test valid timer produces output
         pulse.timer = 100;
         pulse.generate_output();
-        assert_eq!(pulse.output, 1.0, "Valid timer should produce output");
+        assert_eq!(pulse.output, 15.0, "Valid timer should produce output");
 
         // Test sweep muting (target period > 0x7FF)
         pulse.timer = 0x7FF;
@@ -640,7 +637,7 @@ mod tests {
             pulse.duty_step = step;
             pulse.generate_output();
             if step == 1 {
-                assert_eq!(pulse.output, 1.0, "12.5% duty should be high on step 1");
+                assert_eq!(pulse.output, 15.0, "12.5% duty should be high on step 1");
             } else {
                 assert_eq!(
                     pulse.output, 0.0,
@@ -657,7 +654,7 @@ mod tests {
             pulse.generate_output();
             if (1..=4).contains(&step) {
                 assert_eq!(
-                    pulse.output, 1.0,
+                    pulse.output, 15.0,
                     "50% duty should be high on step {}",
                     step
                 );
@@ -683,7 +680,7 @@ mod tests {
         pulse.generate_output();
         assert_eq!(
             pulse.output,
-            10.0 / 15.0,
+            10.0,
             "Should use volume in constant volume mode"
         );
 
@@ -692,7 +689,7 @@ mod tests {
         pulse.generate_output();
         assert_eq!(
             pulse.output,
-            5.0 / 15.0,
+            5.0,
             "Should use envelope decay level in envelope mode"
         );
     }

@@ -2,6 +2,8 @@
 pub enum FrameStep {
     None,
     Step(u8),
+    /// $4017 reset finished; if `immediate_clock`, clock length/half/quarter once (5-step entry).
+    Deferred4017Apply { immediate_clock: bool },
 }
 
 pub struct FrameCounter {
@@ -9,7 +11,16 @@ pub struct FrameCounter {
     step: u8,
     cycles: u32,
     irq_inhibit: bool,
+    seq_index: u8,
+    /// CPU cycles remaining until `pending_write` is applied (see nesdev $4017 delay).
+    reset_delay: u8,
+    pending_write: u8,
 }
+
+/// NTSC 4-step sequence: cycles between quarter/half-frame clocks (sum 29829).
+const NTSC_4: [u32; 4] = [7457, 7456, 7458, 7458];
+/// NTSC 5-step sequence (sum 37281).
+const NTSC_5: [u32; 5] = [7457, 7456, 7458, 7458, 7452];
 
 impl FrameCounter {
     pub fn new() -> Self {
@@ -18,28 +29,38 @@ impl FrameCounter {
             step: 0,
             cycles: 0,
             irq_inhibit: false,
+            seq_index: 0,
+            reset_delay: 0,
+            pending_write: 0,
         }
     }
 
-    pub fn write(&mut self, value: u8) -> bool {
-        self.mode = (value >> 7) & 1;
+    /// Call for $4017 writes. `emu_cycle` should match the global 1:1 CPU cycle counter when the
+    /// write is sampled (even CPU cycle → 3 A cycles delay, odd → 4).
+    pub fn write(&mut self, value: u8, emu_cycle: u64) {
         self.irq_inhibit = (value >> 6) & 1 != 0;
-
-        if self.irq_inhibit {
-            // Clear IRQ immediately
-            // This would be handled by the main APU
-        }
-
-        // Reset step counter
-        self.step = 0;
-        self.cycles = 0;
-
-        // Return true if immediate clocking should occur
-        // This happens when switching to mode 1 (bit 7 set)
-        self.mode == 1
+        self.pending_write = value;
+        self.reset_delay = if (emu_cycle & 1) == 0 { 3 } else { 4 };
     }
 
     pub fn cycle(&mut self) -> FrameStep {
+        if self.reset_delay > 0 {
+            self.reset_delay -= 1;
+            if self.reset_delay == 0 {
+                self.mode = (self.pending_write >> 7) & 1;
+                self.step = 0;
+                self.cycles = 0;
+                self.seq_index = 0;
+                if self.mode == 1 {
+                    return FrameStep::Deferred4017Apply {
+                        immediate_clock: true,
+                    };
+                }
+                return FrameStep::None;
+            }
+            return FrameStep::None;
+        }
+
         match self.mode {
             0 => self.cycle_mode_0(),
             1 => self.cycle_mode_1(),
@@ -48,44 +69,33 @@ impl FrameCounter {
     }
 
     fn cycle_mode_0(&mut self) -> FrameStep {
-        let frame_length = 7457;
+        let period = NTSC_4[self.seq_index as usize];
         self.cycles += 1;
-
-        if self.cycles == frame_length {
-            self.cycles = 0;
-            self.step = (self.step + 1) % 4;
-            if self.step == 0 {
-                if !self.irq_inhibit {
-                    FrameStep::Step(0)
-                } else {
-                    FrameStep::None
-                }
-            } else {
-                FrameStep::Step(self.step)
-            }
-        } else {
-            FrameStep::None
+        if self.cycles < period {
+            return FrameStep::None;
         }
+        self.cycles = 0;
+        self.seq_index = (self.seq_index + 1) % 4;
+        self.step = (self.step + 1) % 4;
+        FrameStep::Step(self.step)
     }
 
     fn cycle_mode_1(&mut self) -> FrameStep {
-        let frame_length = if self.step == 3 { 7456 } else { 7457 };
+        let period = NTSC_5[self.seq_index as usize];
         self.cycles += 1;
-
-        if self.cycles == frame_length {
-            self.cycles = 0;
-            self.step = (self.step + 1) % 5;
-            if self.step == 0 {
-                FrameStep::None
-            } else {
-                FrameStep::Step(self.step)
-            }
-        } else {
+        if self.cycles < period {
+            return FrameStep::None;
+        }
+        self.cycles = 0;
+        self.seq_index = (self.seq_index + 1) % 5;
+        self.step = (self.step + 1) % 5;
+        if self.step == 0 {
             FrameStep::None
+        } else {
+            FrameStep::Step(self.step)
         }
     }
 
-    // only used for testing
     #[cfg(test)]
     pub fn get_step(&self) -> u8 {
         self.step
@@ -117,168 +127,170 @@ mod tests {
     fn test_frame_counter_write() {
         let mut fc = FrameCounter::new();
 
-        // Test mode 0
-        assert!(!fc.write(0x00));
+        fc.write(0x00, 0);
         assert_eq!(fc.mode, 0);
         assert!(!fc.irq_inhibit);
-        assert_eq!(fc.step, 0);
-        assert_eq!(fc.cycles, 0);
+        assert_eq!(fc.reset_delay, 3);
 
-        // Test mode 1
-        assert!(fc.write(0x80));
-        assert_eq!(fc.mode, 1);
-        assert!(!fc.irq_inhibit);
-
-        // Test IRQ inhibit
-        assert!(!fc.write(0x40));
+        fc.write(0x40, 0);
         assert_eq!(fc.mode, 0);
         assert!(fc.irq_inhibit);
 
-        // Test both mode 1 and IRQ inhibit
-        assert!(fc.write(0xC0));
-        assert_eq!(fc.mode, 1);
+        fc.write(0xC0, 1);
+        assert_eq!(fc.reset_delay, 4);
         assert!(fc.irq_inhibit);
     }
 
     #[test]
     fn test_frame_counter_mode_0_cycle() {
         let mut fc = FrameCounter::new();
-        fc.write(0x00); // Mode 0
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        assert_eq!(fc.cycle(), FrameStep::None);
+        assert_eq!(fc.mode, 0);
 
-        // Test first few cycles
         for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-
-        // 7457th cycle should advance step
         assert_eq!(fc.cycle(), FrameStep::Step(1));
         assert_eq!(fc.step, 1);
-        assert_eq!(fc.cycles, 0);
 
-        // Test step progression
-        for _ in 0..7456 {
+        for _ in 0..7455 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
         assert_eq!(fc.cycle(), FrameStep::Step(2));
-        assert_eq!(fc.step, 2);
 
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
         assert_eq!(fc.cycle(), FrameStep::Step(3));
-        assert_eq!(fc.step, 3);
 
-        // Step 3 should generate IRQ (if not inhibited)
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-        assert_eq!(fc.cycle(), FrameStep::Step(0)); // Should return true for IRQ
-        assert_eq!(fc.step, 0); // Should wrap around
+        assert_eq!(fc.cycle(), FrameStep::Step(0));
+        assert_eq!(fc.step, 0);
     }
 
     #[test]
     fn test_frame_counter_mode_0_irq() {
         let mut fc = FrameCounter::new();
-        fc.write(0x00); // Mode 0, no IRQ inhibit
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
 
-        // Advance to step 3
-        for _ in 0..7457 * 3 {
+        for _ in 0..22371 {
             fc.cycle();
         }
         assert_eq!(fc.step, 3);
 
-        // Step 3 should generate IRQ
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-        assert_eq!(fc.cycle(), FrameStep::Step(0)); // Should return true for IRQ
+        assert_eq!(fc.cycle(), FrameStep::Step(0));
         assert_eq!(fc.step, 0);
     }
 
     #[test]
-    fn test_frame_counter_mode_0_irq_inhibit() {
+    fn test_frame_counter_mode_0_irq_inhibit_still_clocks_step0() {
         let mut fc = FrameCounter::new();
-        fc.write(0x40); // Mode 0, IRQ inhibit
+        fc.write(0x40, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
 
-        // Advance to step 3
-        for _ in 0..7457 * 3 {
+        for _ in 0..22371 {
             fc.cycle();
         }
         assert_eq!(fc.step, 3);
 
-        // Step 3 should not generate IRQ when inhibited
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-        assert_eq!(fc.cycle(), FrameStep::None); // Should return false for IRQ
+        assert_eq!(fc.cycle(), FrameStep::Step(0));
         assert_eq!(fc.step, 0);
     }
 
     #[test]
     fn test_frame_counter_mode_1_cycle() {
         let mut fc = FrameCounter::new();
-        fc.write(0x80); // Mode 1
+        fc.write(0x80, 0);
+        for _ in 0..2 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        assert_eq!(
+            fc.cycle(),
+            FrameStep::Deferred4017Apply {
+                immediate_clock: true
+            }
+        );
 
-        // Test first step (7457 cycles)
         for _ in 0..7456 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
         assert_eq!(fc.cycle(), FrameStep::Step(1));
-        assert_eq!(fc.step, 1);
-        assert_eq!(fc.cycles, 0);
 
-        // Test second step (7457 cycles)
-        for _ in 0..7456 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(2));
-        assert_eq!(fc.step, 2);
-
-        // Test third step (7457 cycles)
-        for _ in 0..7456 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(3));
-        assert_eq!(fc.step, 3);
-
-        // Test fourth step (7456 cycles - shorter)
         for _ in 0..7455 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-        assert_eq!(fc.cycle(), FrameStep::Step(4));
-        assert_eq!(fc.step, 4);
+        assert_eq!(fc.cycle(), FrameStep::Step(2));
 
-        // Test fifth step (7457 cycles)
-        for _ in 0..7456 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
-        assert_eq!(fc.cycle(), FrameStep::None); // Step 0 returns None
-        assert_eq!(fc.step, 0); // Should wrap around
+        assert_eq!(fc.cycle(), FrameStep::Step(3));
+
+        for _ in 0..7457 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        assert_eq!(fc.cycle(), FrameStep::Step(4));
+
+        for _ in 0..7451 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        assert_eq!(fc.cycle(), FrameStep::None);
+        assert_eq!(fc.step, 0);
     }
 
     #[test]
     fn test_frame_counter_mode_1_no_irq() {
         let mut fc = FrameCounter::new();
-        fc.write(0x80); // Mode 1
+        fc.write(0x80, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        assert_eq!(
+            fc.cycle(),
+            FrameStep::Deferred4017Apply {
+                immediate_clock: true
+            }
+        );
 
-        // Cycle through all steps - should never generate IRQ
         let mut step_count = 0;
-        for _ in 0..7457 * 4 + 7456 {
+        for _ in 0..37281 {
             let result = fc.cycle();
-            if result != FrameStep::None {
+            if let FrameStep::Step(_) = result {
                 step_count += 1;
             }
         }
         assert_eq!(fc.step, 0);
-        assert_eq!(step_count, 4); // Should have seen 4 steps (1,2,3,4) but no step 0
+        assert_eq!(step_count, 4);
     }
 
     #[test]
     fn test_frame_counter_get_step() {
         let mut fc = FrameCounter::new();
-        assert_eq!(fc.get_step(), 0);
 
-        fc.write(0x00); // Mode 0
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
         for _ in 0..7457 {
             fc.cycle();
         }
@@ -290,46 +302,61 @@ mod tests {
         let mut fc = FrameCounter::new();
         assert_eq!(fc.get_mode(), 0);
 
-        fc.write(0x80); // Mode 1
+        fc.write(0x80, 0);
+        assert_eq!(fc.get_mode(), 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
         assert_eq!(fc.get_mode(), 1);
 
-        fc.write(0x00); // Mode 0
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
         assert_eq!(fc.get_mode(), 0);
     }
 
     #[test]
     fn test_frame_counter_timing_accuracy() {
         let mut fc = FrameCounter::new();
-        fc.write(0x00); // Mode 0
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
 
-        // Test that exactly 7457 cycles advance one step
         for _ in 0..7457 {
             fc.cycle();
         }
-        assert_eq!(fc.cycles, 0); // Should reset to 0
+        assert_eq!(fc.cycles, 0);
         assert_eq!(fc.step, 1);
 
-        // Test that 7456 cycles don't advance
-        fc.write(0x00); // Reset
+        fc.write(0x00, 0);
+        for _ in 0..2 {
+            fc.cycle();
+        }
+        fc.cycle();
         for _ in 0..7456 {
             fc.cycle();
         }
-        assert_eq!(fc.step, 0); // Should still be 0
+        assert_eq!(fc.step, 0);
     }
 
     #[test]
     fn test_frame_counter_mode_1_timing_accuracy() {
         let mut fc = FrameCounter::new();
-        fc.write(0x80); // Mode 1
+        fc.write(0x80, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
 
-        // Advance to step 3
-        for _ in 0..7457 * 3 {
+        for _ in 0..22371 {
             fc.cycle();
         }
         assert_eq!(fc.step, 3);
 
-        // Step 3 should take 7456 cycles
-        for _ in 0..7455 {
+        for _ in 0..7457 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
         assert_eq!(fc.cycle(), FrameStep::Step(4));
