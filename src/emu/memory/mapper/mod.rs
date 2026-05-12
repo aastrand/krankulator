@@ -38,12 +38,11 @@ fn mirror_nametable_addr(addr: u16, mirroring: NametableMirror) -> u16 {
             addr & 0x07FF
         }
         NametableMirror::Horizontal => {
-            // $2000-$23FF, $2800-$2BFF -> 0x000-0x3FF
-            // $2400-$27FF, $2C00-$2FFF -> 0x400-0x7FF
-            (addr & 0x0400) | (addr & 0x03FF)
+            // $2000=$2400 -> 0x000-0x3FF, $2800=$2C00 -> 0x400-0x7FF
+            ((addr >> 1) & 0x0400) | (addr & 0x03FF)
         }
-        NametableMirror::Lower => 0x2000 + (addr % 0x400),
-        NametableMirror::Higher => 0x2800 + (addr % 0x400),
+        NametableMirror::Lower => addr & 0x03FF,
+        NametableMirror::Higher => 0x0400 | (addr & 0x03FF),
     };
     vram_index
 }
@@ -62,110 +61,36 @@ mod tests {
 
     #[test]
     fn test_mirror_nametable_addr() {
-        // Horizontal mirroring (NESDev-correct)
-        // $2000-$23FF, $2800-$2BFF -> 0x000-0x3FF
-        // $2400-$27FF, $2C00-$2FFF -> 0x400-0x7FF
-        assert_eq!(
-            mirror_nametable_addr(0x2000, NametableMirror::Horizontal),
-            0x0000
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x23FF, NametableMirror::Horizontal),
-            0x03FF
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2400, NametableMirror::Horizontal),
-            0x0400
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x27FF, NametableMirror::Horizontal),
-            0x07FF
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2800, NametableMirror::Horizontal),
-            0x0000
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2BFF, NametableMirror::Horizontal),
-            0x03FF
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2C00, NametableMirror::Horizontal),
-            0x0400
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2FFF, NametableMirror::Horizontal),
-            0x07FF
-        );
+        // Horizontal mirroring: $2000=$2400, $2800=$2C00
+        assert_eq!(mirror_nametable_addr(0x2000, NametableMirror::Horizontal), 0x0000);
+        assert_eq!(mirror_nametable_addr(0x23FF, NametableMirror::Horizontal), 0x03FF);
+        assert_eq!(mirror_nametable_addr(0x2400, NametableMirror::Horizontal), 0x0000);
+        assert_eq!(mirror_nametable_addr(0x27FF, NametableMirror::Horizontal), 0x03FF);
+        assert_eq!(mirror_nametable_addr(0x2800, NametableMirror::Horizontal), 0x0400);
+        assert_eq!(mirror_nametable_addr(0x2BFF, NametableMirror::Horizontal), 0x07FF);
+        assert_eq!(mirror_nametable_addr(0x2C00, NametableMirror::Horizontal), 0x0400);
+        assert_eq!(mirror_nametable_addr(0x2FFF, NametableMirror::Horizontal), 0x07FF);
 
-        // Vertical mirroring (NESDev-correct)
-        // $2000-$27FF -> 0x000-0x7FF, $2800-$2FFF -> 0x000-0x7FF
-        assert_eq!(
-            mirror_nametable_addr(0x2000, NametableMirror::Vertical),
-            0x0000
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x23FF, NametableMirror::Vertical),
-            0x03FF
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2400, NametableMirror::Vertical),
-            0x0400
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x27FF, NametableMirror::Vertical),
-            0x07FF
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2800, NametableMirror::Vertical),
-            0x0800 & 0x07FF
-        ); // 0x0000
-        assert_eq!(
-            mirror_nametable_addr(0x2BFF, NametableMirror::Vertical),
-            0x0BFF & 0x07FF
-        ); // 0x03FF
-        assert_eq!(
-            mirror_nametable_addr(0x2C00, NametableMirror::Vertical),
-            0x0C00 & 0x07FF
-        ); // 0x0400
-        assert_eq!(
-            mirror_nametable_addr(0x2FFF, NametableMirror::Vertical),
-            0x0FFF & 0x07FF
-        ); // 0x07FF
+        // Vertical mirroring: $2000=$2800, $2400=$2C00
+        assert_eq!(mirror_nametable_addr(0x2000, NametableMirror::Vertical), 0x0000);
+        assert_eq!(mirror_nametable_addr(0x23FF, NametableMirror::Vertical), 0x03FF);
+        assert_eq!(mirror_nametable_addr(0x2400, NametableMirror::Vertical), 0x0400);
+        assert_eq!(mirror_nametable_addr(0x27FF, NametableMirror::Vertical), 0x07FF);
+        assert_eq!(mirror_nametable_addr(0x2800, NametableMirror::Vertical), 0x0000);
+        assert_eq!(mirror_nametable_addr(0x2BFF, NametableMirror::Vertical), 0x03FF);
+        assert_eq!(mirror_nametable_addr(0x2C00, NametableMirror::Vertical), 0x0400);
+        assert_eq!(mirror_nametable_addr(0x2FFF, NametableMirror::Vertical), 0x07FF);
 
-        // Lower and Higher mirroring (unchanged)
-        assert_eq!(
-            mirror_nametable_addr(0x2123, NametableMirror::Lower),
-            0x2123
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2523, NametableMirror::Lower),
-            0x2123
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2923, NametableMirror::Lower),
-            0x2123
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2d23, NametableMirror::Lower),
-            0x2123
-        );
+        // Lower: all nametables map to first physical page (0x000-0x3FF)
+        assert_eq!(mirror_nametable_addr(0x2123, NametableMirror::Lower), 0x0123);
+        assert_eq!(mirror_nametable_addr(0x2523, NametableMirror::Lower), 0x0123);
+        assert_eq!(mirror_nametable_addr(0x2923, NametableMirror::Lower), 0x0123);
+        assert_eq!(mirror_nametable_addr(0x2D23, NametableMirror::Lower), 0x0123);
 
-        assert_eq!(
-            mirror_nametable_addr(0x2123, NametableMirror::Higher),
-            0x2923
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2523, NametableMirror::Higher),
-            0x2923
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2923, NametableMirror::Higher),
-            0x2923
-        );
-        assert_eq!(
-            mirror_nametable_addr(0x2d23, NametableMirror::Higher),
-            0x2923
-        );
+        // Higher: all nametables map to second physical page (0x400-0x7FF)
+        assert_eq!(mirror_nametable_addr(0x2123, NametableMirror::Higher), 0x0523);
+        assert_eq!(mirror_nametable_addr(0x2523, NametableMirror::Higher), 0x0523);
+        assert_eq!(mirror_nametable_addr(0x2923, NametableMirror::Higher), 0x0523);
+        assert_eq!(mirror_nametable_addr(0x2D23, NametableMirror::Higher), 0x0523);
     }
 }

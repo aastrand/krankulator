@@ -73,9 +73,9 @@ impl UxROMMapper {
         let vrm_ptr = vram.as_mut_ptr();
 
         let nametable_alignment = if flags & super::NAMETABLE_ALIGNMENT_BIT == 1 {
-            NametableMirror::Horizontal
-        } else {
             NametableMirror::Vertical
+        } else {
+            NametableMirror::Horizontal
         };
 
         UxROMMapper {

@@ -97,11 +97,10 @@ impl MMC3Mapper {
             irq_pending: false,
             a12_state: false,
             last_a12_low_dot: 0,
-            // Initialize mirroring from iNES header flags
             mirroring: if flags & 1 == 0 {
-                NametableMirror::Horizontal
-            } else {
                 NametableMirror::Vertical
+            } else {
+                NametableMirror::Horizontal
             },
             vram: Box::new([0; 0x800]),
             cpu_ram: Box::new([0; 0x800]),
