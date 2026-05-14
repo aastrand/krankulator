@@ -102,6 +102,7 @@ impl Loader for InesLoader {
         let mapper = flags >> 4;
         let has_battery = (flags & 0x02) != 0;
         let prg_ram_units = bytes[8];
+        let submapper = if is_nes2_header { (bytes[8] >> 4) & 0x0F } else { 0 };
         let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
@@ -217,6 +218,7 @@ impl Loader for InesLoader {
                 chr_banks,
                 has_battery,
                 sram_data.clone(),
+                submapper,
             )),
             7 => {
                 // AxROM expects 32KB PRG banks
