@@ -1,6 +1,6 @@
 pub mod mapper;
 use super::io::controller;
-use super::savestate::{SavestateWriter, SavestateReader};
+use super::savestate::{SavestateReader, SavestateWriter};
 
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 #[allow(dead_code)] // only used in tests
@@ -36,18 +36,27 @@ pub trait MemoryMapper {
     fn code_start(&mut self) -> u16;
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
     fn poll_irq(&mut self) -> bool;
+    fn poll_irq_at_dot(&self, _deadline_dot: u64) -> bool {
+        true
+    }
 
     fn sram_data(&self) -> Option<&[u8]> {
         None
     }
 
-    fn mapper_id(&self) -> u8 { 0xFF }
+    fn mapper_id(&self) -> u8 {
+        0xFF
+    }
     #[allow(dead_code)] // used in tests
-    fn submapper_id(&self) -> u8 { 0 }
+    fn submapper_id(&self) -> u8 {
+        0
+    }
     #[allow(dead_code)] // used in tests
     fn set_submapper(&mut self, _submapper: u8) {}
     fn save_state(&self, _w: &mut SavestateWriter) {}
-    fn load_state(&mut self, _r: &mut SavestateReader) -> std::io::Result<()> { Ok(()) }
+    fn load_state(&mut self, _r: &mut SavestateReader) -> std::io::Result<()> {
+        Ok(())
+    }
 
     /// When false, CPU accesses to `$2000-$2007` are not mapped to PPU registers (flat RAM for test ROMs).
     fn cpu_maps_ppu_registers(&self) -> bool {

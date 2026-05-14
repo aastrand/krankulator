@@ -1,7 +1,7 @@
 use super::super::super::io;
 use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
 use crate::emu::memory::MemoryMapper;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
@@ -26,6 +26,7 @@ pub struct MMC3Mapper {
     irq_enable: bool,
     irq_reload: bool,
     irq_pending: bool,
+    irq_pending_since_dot: u64,
 
     // A12 tracking for IRQ
     a12_state: bool,
@@ -115,6 +116,7 @@ impl MMC3Mapper {
             irq_enable: false,
             irq_reload: false,
             irq_pending: false,
+            irq_pending_since_dot: 0,
             a12_state: false,
             last_a12_low_dot: 0,
             mirroring: if flags & 1 == 0 {
@@ -269,20 +271,16 @@ impl MMC3Mapper {
         let current_a12 = (addr & 0x1000) != 0;
 
         if current_a12 {
-            // A12 rising: clock if A12 was low for >= 3 CPU cycles (9 PPU dots).
-            if self.last_a12_low_dot > 0
-                && dot.saturating_sub(self.last_a12_low_dot) >= 9
-            {
-                self.clock_irq_counter();
+            if self.last_a12_low_dot > 0 && dot.saturating_sub(self.last_a12_low_dot) >= 16 {
+                self.clock_irq_counter(dot);
             }
             self.last_a12_low_dot = 0;
         } else if self.last_a12_low_dot == 0 {
-            // First A12-low after A12 was high — record the timestamp.
             self.last_a12_low_dot = dot;
         }
     }
 
-    fn clock_irq_counter(&mut self) {
+    fn clock_irq_counter(&mut self, dot: u64) {
         let old_counter = self.irq_counter;
         let was_reload = self.irq_reload;
 
@@ -295,17 +293,15 @@ impl MMC3Mapper {
         self.irq_reload = false;
 
         if self.irq_counter == 0 && self.irq_enable {
-            match self.submapper {
-                1 => {
-                    // MMC6: only fire on decrement-to-zero or explicit reload-to-zero
-                    if old_counter != 0 || was_reload {
-                        self.irq_pending = true;
-                    }
+            let should_fire = match self.submapper {
+                1 => old_counter != 0 || was_reload,
+                _ => true,
+            };
+            if should_fire {
+                if !self.irq_pending {
+                    self.irq_pending_since_dot = dot;
                 }
-                _ => {
-                    // Standard MMC3: fire whenever counter reaches zero
-                    self.irq_pending = true;
-                }
+                self.irq_pending = true;
             }
         }
     }
@@ -387,13 +383,9 @@ impl MemoryMapper for MMC3Mapper {
             }
             0xE000..=0xFFFF => {
                 if addr & 1 == 0 {
-                    // IRQ disable
-                    //println!("MMC3: IRQ disabled at addr {:04X}", addr);
                     self.irq_enable = false;
                     self.irq_pending = false;
                 } else {
-                    // IRQ enable
-                    //println!("MMC3: IRQ enabled at addr {:04X}", addr);
                     self.irq_enable = true;
                 }
             }
@@ -501,15 +493,16 @@ impl MemoryMapper for MMC3Mapper {
         self.irq_pending
     }
 
+    fn poll_irq_at_dot(&self, deadline_dot: u64) -> bool {
+        self.irq_pending && self.irq_pending_since_dot <= deadline_dot
+    }
+
     fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
         self.check_a12_transition(addr, dot);
         self.ppu_read(addr)
     }
 
-    fn ppu_cycle_260(&mut self, _scanline: u16) {
-        // Phase 3 drives MMC3 IRQ timing from observed PPU fetch A12 edges instead of
-        // the older one-clock-per-scanline approximation.
-    }
+    fn ppu_cycle_260(&mut self, _scanline: u16) {}
 
     fn ppu_a12_transition(&mut self, addr: u16, dot: u64) {
         self.check_a12_transition(addr, dot);
@@ -523,9 +516,16 @@ impl MemoryMapper for MMC3Mapper {
         }
     }
 
-    fn mapper_id(&self) -> u8 { 4 }
-    fn submapper_id(&self) -> u8 { self.submapper }
-    fn set_submapper(&mut self, submapper: u8) { self.submapper = submapper; }
+    fn mapper_id(&self) -> u8 {
+        4
+    }
+    fn submapper_id(&self) -> u8 {
+        self.submapper
+    }
+
+    fn set_submapper(&mut self, submapper: u8) {
+        self.submapper = submapper;
+    }
 
     fn save_state(&self, w: &mut SavestateWriter) {
         w.write_bytes(&*self.cpu_ram);
@@ -546,6 +546,7 @@ impl MemoryMapper for MMC3Mapper {
         w.write_bool(self.irq_enable);
         w.write_bool(self.irq_reload);
         w.write_bool(self.irq_pending);
+        w.write_u64(self.irq_pending_since_dot);
         w.write_bool(self.a12_state);
         w.write_u64(self.last_a12_low_dot);
         w.write_u8(self.submapper);
@@ -572,6 +573,7 @@ impl MemoryMapper for MMC3Mapper {
         self.irq_enable = r.read_bool()?;
         self.irq_reload = r.read_bool()?;
         self.irq_pending = r.read_bool()?;
+        self.irq_pending_since_dot = r.read_u64()?;
         self.a12_state = r.read_bool()?;
         self.last_a12_low_dot = r.read_u64()?;
         self.submapper = r.read_u8()?;
@@ -615,21 +617,21 @@ mod tests {
         mapper.irq_enable = true;
         mapper.irq_reload = true;
 
-        // Gap of 4 dots (< 9 threshold) — filtered, no clock
+        // Gap of 10 dots (< 16 threshold) — filtered, no clock
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 14);
+        mapper.ppu_fetch(0x1000, 20);
         assert_eq!(mapper.irq_reload, true);
 
-        // Gap of 10 dots (>= 9 threshold) — clocks, reload from latch
-        mapper.ppu_fetch(0x0000, 20);
-        mapper.ppu_fetch(0x1000, 30);
+        // Gap of 20 dots (>= 16 threshold) — clocks, reload from latch
+        mapper.ppu_fetch(0x0000, 30);
+        mapper.ppu_fetch(0x1000, 50);
         assert_eq!(mapper.irq_counter, 1);
         assert_eq!(mapper.irq_reload, false);
         assert_eq!(mapper.poll_irq(), false);
 
         // Another valid edge — counter decrements to 0, IRQ fires
-        mapper.ppu_fetch(0x0000, 40);
-        mapper.ppu_fetch(0x1000, 50);
+        mapper.ppu_fetch(0x0000, 60);
+        mapper.ppu_fetch(0x1000, 80);
         assert_eq!(mapper.poll_irq(), true);
     }
 
@@ -656,7 +658,7 @@ mod tests {
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 20);
+        mapper.ppu_fetch(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 0);
         assert_eq!(mapper.irq_reload, false);
@@ -671,7 +673,7 @@ mod tests {
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 20);
+        mapper.ppu_fetch(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 2);
         assert_eq!(mapper.irq_reload, false);
@@ -687,9 +689,9 @@ mod tests {
 
         // Simulate BG fetches at $0xxx then sprite fetches at $1xxx with big gap
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 20);
-        mapper.ppu_fetch(0x0000, 30);
-        mapper.ppu_fetch(0x1000, 40);
+        mapper.ppu_fetch(0x1000, 30);
+        mapper.ppu_fetch(0x0000, 40);
+        mapper.ppu_fetch(0x1000, 60);
 
         assert_eq!(mapper.poll_irq(), true);
     }
@@ -702,7 +704,7 @@ mod tests {
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_a12_transition(0x1000, 20);
+        mapper.ppu_a12_transition(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 1);
         assert_eq!(mapper.irq_reload, false);
@@ -754,12 +756,18 @@ mod tests {
 
     #[test]
     fn test_mmc3_3_a12_clocking() {
-        run_mmc3_rom("input/nes/mappers/mmc3/3-A12_clocking.nes", "3-A12_clocking");
+        run_mmc3_rom(
+            "input/nes/mappers/mmc3/3-A12_clocking.nes",
+            "3-A12_clocking",
+        );
     }
 
     #[test]
     fn test_mmc3_4_scanline_timing() {
-        run_mmc3_rom("input/nes/mappers/mmc3/4-scanline_timing.nes", "4-scanline_timing");
+        run_mmc3_rom(
+            "input/nes/mappers/mmc3/4-scanline_timing.nes",
+            "4-scanline_timing",
+        );
     }
 
     #[test]
