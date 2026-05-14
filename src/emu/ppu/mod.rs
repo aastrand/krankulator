@@ -1,6 +1,6 @@
 use super::gfx::{buf::Buffer, palette};
 use super::memory;
-use super::savestate::{SavestateWriter, SavestateReader};
+use super::savestate::{SavestateReader, SavestateWriter};
 
 /*
 Common Name	Address	Bits	Notes
@@ -510,8 +510,8 @@ impl PPU {
                 }
                 self.inc_vram_addr_v();
             }
-            OAM_DMA => {}  // Handled by Emulator::cpu_write which has mapper access
-            _ => {} //println!("addr {:X} not mapped for write!", addr),
+            OAM_DMA => {} // Handled by Emulator::cpu_write which has mapper access
+            _ => {}       //println!("addr {:X} not mapped for write!", addr),
         }
 
         self.ppu_open_bus = value;
@@ -794,8 +794,7 @@ impl PPU {
             }
 
             let bit = 7 - col;
-            let value =
-                ((e.pattern_lo >> bit) & 0x01) | (((e.pattern_hi >> bit) & 0x01) << 1);
+            let value = ((e.pattern_lo >> bit) & 0x01) | (((e.pattern_hi >> bit) & 0x01) << 1);
             if value == 0 {
                 continue;
             }
@@ -812,7 +811,11 @@ impl PPU {
 
     /// After `$2006` realigns `render_line_v`, rebuild BG shift registers so the next visible pixel
     /// matches hardware for the current fine-X scroll and `draw_cycle` (1–256).
-    fn resync_background_shifters_for_dot(&mut self, mem: &dyn memory::MemoryMapper, draw_cycle: u16) {
+    fn resync_background_shifters_for_dot(
+        &mut self,
+        mem: &dyn memory::MemoryMapper,
+        draw_cycle: u16,
+    ) {
         if draw_cycle == 0 || draw_cycle > 256 {
             return;
         }
@@ -915,10 +918,14 @@ impl PPU {
         };
         self.next_render_line_v = self.v;
 
-        let rendering_scanline = self.scanline < SCREEN_HEIGHT as u16
-            || self.scanline == PRE_RENDER_SCANLINE;
+        let rendering_scanline =
+            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == PRE_RENDER_SCANLINE;
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
-        if rendering_scanline && rendering_enabled && self.scanline < SCREEN_HEIGHT as u16 && self.cycle < 256 {
+        if rendering_scanline
+            && rendering_enabled
+            && self.scanline < SCREEN_HEIGHT as u16
+            && self.cycle < 256
+        {
             self.bg_shifter_resync_pending = true;
         }
     }
@@ -1060,8 +1067,7 @@ impl PPU {
             let y = self.oam_ram[base];
             if in_sprite_y_range(y) && self.secondary_oam_count < 8 {
                 let dst = self.secondary_oam_count as usize * 4;
-                self.secondary_oam[dst..dst + 4]
-                    .copy_from_slice(&self.oam_ram[base..base + 4]);
+                self.secondary_oam[dst..dst + 4].copy_from_slice(&self.oam_ram[base..base + 4]);
                 if n == 0 {
                     self.sprite_zero_pending_next_line = true;
                 }
@@ -2095,7 +2101,10 @@ mod tests {
         ppu.ppu_open_bus = 0x1A;
         ppu.ppu_status = STATUS_VERTICAL_BLANK_BIT | STATUS_SPRITE_ZERO_HIT;
         let v = ppu.read(STATUS_REG_ADDR, &mem);
-        assert_eq!(v & 0xE0, (STATUS_VERTICAL_BLANK_BIT | STATUS_SPRITE_ZERO_HIT) & 0xE0);
+        assert_eq!(
+            v & 0xE0,
+            (STATUS_VERTICAL_BLANK_BIT | STATUS_SPRITE_ZERO_HIT) & 0xE0
+        );
         assert_eq!(v & 0x1F, 0x1A);
         assert_eq!(ppu.ppu_open_bus, v);
     }
@@ -2130,7 +2139,10 @@ mod tests {
         ppu.sprite_line[0].attr = 0x01; // in front
         let sprite_over = ppu.render_pixel(&mem);
         assert_ne!(bg_only, sprite_over);
-        assert_eq!(bg_only, palette::PALETTE[0x20 as usize % palette::PALETTE_SIZE]);
+        assert_eq!(
+            bg_only,
+            palette::PALETTE[0x20 as usize % palette::PALETTE_SIZE]
+        );
     }
 
     #[test]
@@ -2155,8 +2167,14 @@ mod tests {
 
         ppu.sprite_line[0].attr = 0x40;
         let flipped = ppu.render_pixel(&mem);
-        assert_eq!(no_flip, palette::PALETTE[0x0E as usize % palette::PALETTE_SIZE]);
-        assert_eq!(flipped, palette::PALETTE[0x10 as usize % palette::PALETTE_SIZE]);
+        assert_eq!(
+            no_flip,
+            palette::PALETTE[0x0E as usize % palette::PALETTE_SIZE]
+        );
+        assert_eq!(
+            flipped,
+            palette::PALETTE[0x10 as usize % palette::PALETTE_SIZE]
+        );
     }
 
     #[test]

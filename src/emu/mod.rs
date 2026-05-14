@@ -52,6 +52,8 @@ pub struct Emulator {
     pub master_clock: u64,
     instruction_start_dot: u64,
     cpu_bus_cycle_offset: u8,
+    irq_sample_deadline: u64,
+    irq_inhibit_one: bool,
 
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
@@ -118,6 +120,8 @@ impl Emulator {
             master_clock: 0,
             instruction_start_dot: 0,
             cpu_bus_cycle_offset: 0,
+            irq_sample_deadline: 0,
+            irq_inhibit_one: false,
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
             audio: audio,
@@ -179,6 +183,8 @@ impl Emulator {
         w.write_u64(self.master_clock);
         w.write_u64(self.instruction_start_dot);
         w.write_u8(self.cpu_bus_cycle_offset);
+        w.write_u64(self.irq_sample_deadline);
+        w.write_bool(self.irq_inhibit_one);
         w.write_bool(self.should_trigger_nmi);
         w.write_i8(self.nmi_triggered_countdown);
         w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
@@ -235,6 +241,8 @@ impl Emulator {
         self.master_clock = r.read_u64()?;
         self.instruction_start_dot = r.read_u64()?;
         self.cpu_bus_cycle_offset = r.read_u8()?;
+        self.irq_sample_deadline = r.read_u64()?;
+        self.irq_inhibit_one = r.read_bool()?;
         self.should_trigger_nmi = r.read_bool()?;
         self.nmi_triggered_countdown = r.read_i8()?;
         self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
@@ -302,8 +310,20 @@ impl Emulator {
             }
 
             if !self.service_pending_irq() {
+                let cycle_before = self.cpu.cycle;
+                let i_flag_before = self.cpu.interrupt_flag();
                 let opcode = self.execute_instruction();
                 self.log_instruction(opcode, self.cpu.last_instruction);
+
+                let actual_cycles = self.cpu.cycle - cycle_before;
+                let penultimate = actual_cycles.saturating_sub(2);
+                self.irq_sample_deadline = self.instruction_start_dot + penultimate * 3 + 1;
+
+                if i_flag_before && !self.cpu.interrupt_flag()
+                    && (opcode == opcodes::CLI || opcode == opcodes::PLP)
+                {
+                    self.irq_inhibit_one = true;
+                }
 
                 if self.nmi_triggered_countdown > 0 {
                     self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
@@ -461,7 +481,12 @@ impl Emulator {
             return false;
         }
 
-        if self.mem.poll_irq() {
+        if self.irq_inhibit_one {
+            self.irq_inhibit_one = false;
+            return false;
+        }
+
+        if self.mem.poll_irq() && self.mem.poll_irq_at_dot(self.irq_sample_deadline) {
             self.trigger_irq();
             return true;
         }
