@@ -588,7 +588,7 @@ impl PPU {
 
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
         let rendering_scanline =
-            self.scanline < VBLANK_SCANLINE || self.scanline == PRE_RENDER_SCANLINE;
+            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == PRE_RENDER_SCANLINE;
 
         let mut result = StepResult::default();
 
@@ -1097,7 +1097,9 @@ impl PPU {
     fn secondary_sprite_pattern_addr(&self, slot: usize) -> u16 {
         let b = slot * 4;
         if slot >= self.secondary_oam_count as usize {
-            return 0;
+            // Empty sprite slots: fetch from pattern table using tile $FF at row 0,
+            // matching real hardware which reads Y=$FF (off-screen) from cleared OAM.
+            return self.sprite_pattern_addr_for(0xFF, 0, u16::from(self.ctrl_sprite_size()));
         }
 
         let tile_id = u16::from(self.secondary_oam[b + 1]);

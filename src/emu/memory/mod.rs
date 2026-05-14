@@ -25,8 +25,8 @@ pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
     fn ppu_read(&self, addr: u16) -> u8;
-    fn ppu_fetch(&mut self, addr: u16, _dot: u64) -> u8 {
-        self.ppu_a12_transition(addr);
+    fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
+        self.ppu_a12_transition(addr, dot);
         self.ppu_read(addr)
     }
     #[allow(dead_code)]
@@ -62,7 +62,7 @@ pub trait MemoryMapper {
     }
 
     // Called when PPU address changes to detect A12 transitions for MMC3
-    fn ppu_a12_transition(&mut self, _addr: u16) {
+    fn ppu_a12_transition(&mut self, _addr: u16, _dot: u64) {
         // Default implementation does nothing
     }
 

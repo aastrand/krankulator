@@ -476,7 +476,7 @@ impl Emulator {
             let v = self.ppu.read(reg, &*self.mem);
             if reg == ppu::DATA_ADDR {
                 let a = self.ppu.get_current_vram_addr();
-                self.mem.ppu_a12_transition(a);
+                self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
             }
             v
         } else if addr == ppu::OAM_DMA {
@@ -1161,7 +1161,7 @@ impl Emulator {
                 } else {
                     self.ppu.get_current_vram_addr()
                 };
-                self.mem.ppu_a12_transition(ppu_addr);
+                self.mem.ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
             }
         } else if addr == ppu::OAM_DMA {
             if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
