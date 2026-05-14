@@ -29,7 +29,6 @@ pub struct MMC3Mapper {
     irq_pending_since_dot: u64,
 
     // A12 tracking for IRQ
-    a12_state: bool,
     last_a12_low_dot: u64,
 
     // Mirroring
@@ -117,7 +116,6 @@ impl MMC3Mapper {
             irq_reload: false,
             irq_pending: false,
             irq_pending_since_dot: 0,
-            a12_state: false,
             last_a12_low_dot: 0,
             mirroring: if flags & 1 == 0 {
                 NametableMirror::Vertical
@@ -546,10 +544,7 @@ impl MemoryMapper for MMC3Mapper {
         w.write_bool(self.irq_enable);
         w.write_bool(self.irq_reload);
         w.write_bool(self.irq_pending);
-        w.write_u64(self.irq_pending_since_dot);
-        w.write_bool(self.a12_state);
         w.write_u64(self.last_a12_low_dot);
-        w.write_u8(self.submapper);
         super::save_mirroring(w, self.mirroring);
         super::save_controllers(w, &self.controllers);
     }
@@ -573,10 +568,7 @@ impl MemoryMapper for MMC3Mapper {
         self.irq_enable = r.read_bool()?;
         self.irq_reload = r.read_bool()?;
         self.irq_pending = r.read_bool()?;
-        self.irq_pending_since_dot = r.read_u64()?;
-        self.a12_state = r.read_bool()?;
         self.last_a12_low_dot = r.read_u64()?;
-        self.submapper = r.read_u8()?;
         self.mirroring = super::load_mirroring(r)?;
         super::load_controllers(r, &mut self.controllers)?;
         Ok(())

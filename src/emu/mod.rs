@@ -183,8 +183,6 @@ impl Emulator {
         w.write_u64(self.master_clock);
         w.write_u64(self.instruction_start_dot);
         w.write_u8(self.cpu_bus_cycle_offset);
-        w.write_u64(self.irq_sample_deadline);
-        w.write_bool(self.irq_inhibit_one);
         w.write_bool(self.should_trigger_nmi);
         w.write_i8(self.nmi_triggered_countdown);
         w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
@@ -241,8 +239,6 @@ impl Emulator {
         self.master_clock = r.read_u64()?;
         self.instruction_start_dot = r.read_u64()?;
         self.cpu_bus_cycle_offset = r.read_u8()?;
-        self.irq_sample_deadline = r.read_u64()?;
-        self.irq_inhibit_one = r.read_bool()?;
         self.should_trigger_nmi = r.read_bool()?;
         self.nmi_triggered_countdown = r.read_i8()?;
         self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
