@@ -11,12 +11,11 @@ use cpu::opcodes;
 
 extern crate shrust;
 use std::collections::HashSet;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use self::audio::{AudioBackend, AudioOutput, SilentAudioOutput};
 
-const FRAME_BUDGET: Duration = Duration::from_micros(16_667);
+
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -55,7 +54,6 @@ pub struct Emulator {
 
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
-    last_rendered: Instant,
     pub audio: Box<dyn AudioBackend>,
     /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
     ppu_register_warmup_until_cpu_cycle: u64,
@@ -117,7 +115,6 @@ impl Emulator {
             cpu_bus_cycle_offset: 0,
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
-            last_rendered: Instant::now(),
             audio: audio,
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: 29_658,
@@ -162,6 +159,7 @@ impl Emulator {
     pub(crate) fn test_cpu_write(&mut self, addr: u16, value: u8) {
         self.cpu_write(addr, value);
     }
+
 
     pub fn run(&mut self) {
         match self.iohandler.init() {
@@ -233,12 +231,11 @@ impl Emulator {
             self.nmi_triggered_countdown = -1;
 
             self.iohandler.render(&self.buf);
-            thread::sleep(FRAME_BUDGET.saturating_sub(self.last_rendered.elapsed()));
-            self.last_rendered = Instant::now();
         }
-        if self.cycles % 16666 == 0 {
+        // Poll events at regular intervals (much less frequently than before)
+        if self.cycles % 50000 == 0 {
             if self.iohandler.poll(&mut *self.mem, &mut self.apu, &mut self.cpu) {
-                state = CycleState::Exiting
+                state = CycleState::Exiting;
             }
         }
 

@@ -2,7 +2,10 @@ pub mod controller;
 pub mod loader;
 pub mod log;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+// NES runs at 60.0988 FPS
+const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
 use pixels::{Pixels, SurfaceTexture};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
@@ -66,6 +69,7 @@ pub struct WinitPixelsIOHandler {
     event_loop: Option<EventLoop<()>>,
     window: Option<&'static Window>,
     muted: bool,
+    last_frame_time: Instant,
 }
 
 struct InitHandler {
@@ -124,6 +128,7 @@ impl WinitPixelsIOHandler {
             event_loop: Some(event_loop),
             window: init.window,
             muted: false,
+            last_frame_time: Instant::now(),
         }
     }
 }
@@ -307,6 +312,21 @@ impl IOHandler for WinitPixelsIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
+        // Rate limit to 60 FPS regardless of display refresh rate
+        let elapsed = self.last_frame_time.elapsed();
+        if elapsed < NES_FRAME_DURATION {
+            let sleep_duration = NES_FRAME_DURATION - elapsed;
+            // Use a small sleep for most of the wait, then busy-wait for precision
+            if sleep_duration > Duration::from_millis(1) {
+                std::thread::sleep(sleep_duration - Duration::from_millis(1));
+            }
+            // Busy-wait for the last bit for higher precision
+            while self.last_frame_time.elapsed() < NES_FRAME_DURATION {
+                std::hint::spin_loop();
+            }
+        }
+        self.last_frame_time = Instant::now();
+
         let pixels = self.pixels.as_mut().unwrap();
         let frame = pixels.frame_mut();
         let pixel_count = buf.data.len() / 3;
