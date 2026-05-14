@@ -42,6 +42,10 @@ pub trait MemoryMapper {
     }
 
     fn mapper_id(&self) -> u8 { 0xFF }
+    #[allow(dead_code)] // used in tests
+    fn submapper_id(&self) -> u8 { 0 }
+    #[allow(dead_code)] // used in tests
+    fn set_submapper(&mut self, _submapper: u8) {}
     fn save_state(&self, _w: &mut SavestateWriter) {}
     fn load_state(&mut self, _r: &mut SavestateReader) -> std::io::Result<()> { Ok(()) }
 

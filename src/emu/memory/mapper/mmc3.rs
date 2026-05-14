@@ -42,6 +42,9 @@ pub struct MMC3Mapper {
 
     // Palette RAM for colors
     palette_ram: [u8; 32],
+
+    // iNES 2.0 submapper (0 = standard MMC3, 1 = MMC6, etc.)
+    submapper: u8,
 }
 
 impl MMC3Mapper {
@@ -51,6 +54,7 @@ impl MMC3Mapper {
         chr_banks: Vec<[u8; 8192]>,
         has_battery: bool,
         sram_data: Option<Vec<u8>>,
+        submapper: u8,
     ) -> MMC3Mapper {
         // Flatten PRG/CHR banks into 8K/1K chunks
         let mut prg_rom = vec![];
@@ -121,6 +125,7 @@ impl MMC3Mapper {
             vram: Box::new([0; 0x800]),
             cpu_ram: Box::new([0; 0x800]),
             palette_ram: [0x0F; 32],
+            submapper,
         }
     }
 
@@ -278,6 +283,9 @@ impl MMC3Mapper {
     }
 
     fn clock_irq_counter(&mut self) {
+        let old_counter = self.irq_counter;
+        let was_reload = self.irq_reload;
+
         if self.irq_reload || self.irq_counter == 0 {
             self.irq_counter = self.irq_latch;
         } else {
@@ -285,8 +293,20 @@ impl MMC3Mapper {
         }
 
         self.irq_reload = false;
+
         if self.irq_counter == 0 && self.irq_enable {
-            self.irq_pending = true;
+            match self.submapper {
+                1 => {
+                    // MMC6: only fire on decrement-to-zero or explicit reload-to-zero
+                    if old_counter != 0 || was_reload {
+                        self.irq_pending = true;
+                    }
+                }
+                _ => {
+                    // Standard MMC3: fire whenever counter reaches zero
+                    self.irq_pending = true;
+                }
+            }
         }
     }
 }
@@ -504,6 +524,8 @@ impl MemoryMapper for MMC3Mapper {
     }
 
     fn mapper_id(&self) -> u8 { 4 }
+    fn submapper_id(&self) -> u8 { self.submapper }
+    fn set_submapper(&mut self, submapper: u8) { self.submapper = submapper; }
 
     fn save_state(&self, w: &mut SavestateWriter) {
         w.write_bytes(&*self.cpu_ram);
@@ -526,6 +548,7 @@ impl MemoryMapper for MMC3Mapper {
         w.write_bool(self.irq_pending);
         w.write_bool(self.a12_state);
         w.write_u64(self.last_a12_low_dot);
+        w.write_u8(self.submapper);
         super::save_mirroring(w, self.mirroring);
         super::save_controllers(w, &self.controllers);
     }
@@ -551,6 +574,7 @@ impl MemoryMapper for MMC3Mapper {
         self.irq_pending = r.read_bool()?;
         self.a12_state = r.read_bool()?;
         self.last_a12_low_dot = r.read_u64()?;
+        self.submapper = r.read_u8()?;
         self.mirroring = super::load_mirroring(r)?;
         super::load_controllers(r, &mut self.controllers)?;
         Ok(())
@@ -567,7 +591,7 @@ mod tests {
     use crate::emu::io::loader;
 
     fn test_mapper() -> MMC3Mapper {
-        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None)
+        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0)
     }
 
     #[test]
@@ -685,10 +709,18 @@ mod tests {
     }
 
     fn run_mmc3_rom(path: &str, name: &str) {
+        run_mmc3_rom_with_submapper(path, name, None);
+    }
+
+    fn run_mmc3_rom_with_submapper(path: &str, name: &str, submapper: Option<u8>) {
         use crate::util::get_status_str;
 
-        let mut emu: emu::Emulator =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(path)));
+        let mut mapper = loader::load_nes(&String::from(path));
+        if let Some(sm) = submapper {
+            mapper.set_submapper(sm);
+        }
+
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(mapper);
 
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
@@ -737,6 +769,6 @@ mod tests {
 
     #[test]
     fn test_mmc3_6_mmc6() {
-        run_mmc3_rom("input/nes/mappers/mmc3/6-MMC6.nes", "6-MMC6");
+        run_mmc3_rom_with_submapper("input/nes/mappers/mmc3/6-MMC6.nes", "6-MMC6", Some(1));
     }
 }
