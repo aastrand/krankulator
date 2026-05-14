@@ -36,6 +36,10 @@ pub trait MemoryMapper {
     fn controllers(&mut self) -> &mut [controller::Controller; 2];
     fn poll_irq(&mut self) -> bool;
 
+    fn sram_data(&self) -> Option<&[u8]> {
+        None
+    }
+
     /// When false, CPU accesses to `$2000-$2007` are not mapped to PPU registers (flat RAM for test ROMs).
     fn cpu_maps_ppu_registers(&self) -> bool {
         true

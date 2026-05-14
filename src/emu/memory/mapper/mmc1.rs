@@ -21,6 +21,7 @@ pub struct MMC1Mapper {
     _mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
     mmc_ram_ptr: *mut u8,
     mmc_ram_enabled: bool,
+    has_battery: bool,
 
     banks: Vec<[u8; BANK_SIZE]>,
     low_bank_idx: usize,
@@ -52,6 +53,8 @@ impl MMC1Mapper {
         _flags: u8,
         mut prg_banks: Vec<[u8; BANK_SIZE]>,
         chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]>,
+        has_battery: bool,
+        sram_data: Option<Vec<u8>>,
     ) -> MMC1Mapper {
         if prg_banks.len() < 2 {
             if prg_banks.len() == 1 {
@@ -65,6 +68,10 @@ impl MMC1Mapper {
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
         let mut mmc_ram = Box::new([0; MMC_RAM_SIZE]);
+        if let Some(data) = sram_data {
+            let len = data.len().min(MMC_RAM_SIZE);
+            mmc_ram[..len].copy_from_slice(&data[..len]);
+        }
         let mmc_ram_ptr = mmc_ram.as_mut_ptr();
 
         // If CHR banks are 8K, split into 4K banks; otherwise, use as-is
@@ -91,6 +98,7 @@ impl MMC1Mapper {
             _mmc_ram: mmc_ram,
             mmc_ram_ptr: mmc_ram_ptr,
             mmc_ram_enabled: true,
+            has_battery,
 
             banks: prg_banks,
             low_bank_idx: 0,
@@ -377,6 +385,14 @@ impl MemoryMapper for MMC1Mapper {
     fn poll_irq(&mut self) -> bool {
         false
     }
+
+    fn sram_data(&self) -> Option<&[u8]> {
+        if self.has_battery {
+            Some(&self._mmc_ram[..])
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -397,7 +413,7 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(0, prg_banks, chr_banks));
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(0, prg_banks, chr_banks, false, None));
 
         assert_eq!(mapper.code_start(), 0x4711);
     }
@@ -413,7 +429,7 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
 
         // CPU ram
         mapper._write_bus(0x1173, 0x42);
@@ -437,7 +453,7 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         mapper.reg0 = 0b11001;
 
         mapper._write_bus(0x8000, 0x80);
@@ -457,7 +473,7 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
 
         // After power-on, shift register is 0x10, so first 5 writes will set reg0 to 0x10 >> 1 | (D0 << 4) ...
         // For 5 writes of value 0, reg0 will be 0x10 >> 5 = 0
@@ -487,7 +503,7 @@ mod tests {
         let mut chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]> = vec![];
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set PRG mode 3 (0b01100, LSB-first: 0,0,1,1,0) to reg0
         mapper._write_bus(0x8000, 0);
         mapper._write_bus(0xa000, 0);
@@ -512,7 +528,7 @@ mod tests {
         let mut chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]> = vec![];
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set PRG mode 3 (0b01100, LSB-first: 0,0,1,1,0) to reg0
         mapper._write_bus(0x8000, 0);
         mapper._write_bus(0xa000, 0);
@@ -539,7 +555,7 @@ mod tests {
         let mut chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]> = vec![];
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set PRG mode 0 (0b00000, LSB-first: 0,0,0,0,0) to reg0
         for _ in 0..5 {
             mapper._write_bus(0x8000, 0);
@@ -565,7 +581,7 @@ mod tests {
         for b in 0..16 {
             chr_banks.push([b; io::loader::CHR_BANK_SIZE as _]);
         }
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set chr switching to 4k (write 0b10000 to reg0, LSB-first: 0,0,0,0,1)
         for _ in 0..4 {
             mapper._write_bus(0x8000, 0);
@@ -594,7 +610,7 @@ mod tests {
         for b in 0..16 {
             chr_banks.push([b; io::loader::CHR_BANK_SIZE as _]);
         }
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set chr switching to 4k (write 0b10000 to reg0)
         for _ in 0..4 {
             mapper._write_bus(0x8000, 0);
@@ -622,7 +638,7 @@ mod tests {
         for b in 0..16 {
             chr_banks.push([b; io::loader::CHR_BANK_SIZE as _]);
         }
-        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks);
+        let mut mapper = MMC1Mapper::new(0, prg_banks, chr_banks, false, None);
         // Set chr switching to 8k (write 0b00000 to reg0, LSB-first: 0,0,0,0,0)
         for _ in 0..5 {
             mapper._write_bus(0x8000, 0);

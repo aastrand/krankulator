@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::super::memory;
 use super::super::{super::util, memory::mapper};
 use crate::emu::memory::mapper::mmc3::MMC3Mapper;
@@ -71,6 +73,12 @@ const INES_HEADER_SIZE: usize = 16;
 const PRG_BANK_SIZE: usize = 16384;
 pub const CHR_BANK_SIZE: usize = 8192;
 
+pub fn sav_path(rom_path: &str) -> PathBuf {
+    let mut path = PathBuf::from(rom_path);
+    path.set_extension("sav");
+    path
+}
+
 impl Loader for InesLoader {
     fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
         let bytes = util::read_bytes(path)?;
@@ -92,6 +100,7 @@ impl Loader for InesLoader {
         let num_chr_blocks = bytes[5];
         let flags = bytes[6];
         let mapper = flags >> 4;
+        let has_battery = (flags & 0x02) != 0;
         let prg_ram_units = bytes[8];
         let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
         let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
@@ -130,9 +139,23 @@ impl Loader for InesLoader {
             prg_banks.push(code);
         }
 
+        let sram_data = if has_battery {
+            let sav = sav_path(path);
+            match std::fs::read(&sav) {
+                Ok(data) => {
+                    println!("Loaded save data from {}", sav.display());
+                    Some(data)
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         println!(
-            "Loading {} PRG banks, {} CHR banks, with {} PRG RAM units",
-            num_prg_blocks, num_chr_blocks, prg_ram_units
+            "Loading {} PRG banks, {} CHR banks, with {} PRG RAM units{}",
+            num_prg_blocks, num_chr_blocks, prg_ram_units,
+            if has_battery { ", battery-backed" } else { "" }
         );
 
         let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
@@ -164,7 +187,13 @@ impl Loader for InesLoader {
                 prg_banks.pop(),
                 chr_banks.pop(),
             )),
-            1 => Box::new(mapper::mmc1::MMC1Mapper::new(flags, prg_banks, chr_banks)),
+            1 => Box::new(mapper::mmc1::MMC1Mapper::new(
+                flags,
+                prg_banks,
+                chr_banks,
+                has_battery,
+                sram_data.clone(),
+            )),
             2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
             3 => {
                 // CNROM expects 32KB PRG ROM and CHR banks
@@ -182,7 +211,13 @@ impl Loader for InesLoader {
                 }
                 Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
             }
-            4 => Box::new(MMC3Mapper::new(flags, prg_banks, chr_banks)),
+            4 => Box::new(MMC3Mapper::new(
+                flags,
+                prg_banks,
+                chr_banks,
+                has_battery,
+                sram_data.clone(),
+            )),
             7 => {
                 // AxROM expects 32KB PRG banks
                 let mut axrom_banks = Vec::new();

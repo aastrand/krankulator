@@ -12,6 +12,7 @@ pub struct MMC3Mapper {
     chr_mem: Vec<[u8; CHR_BANK_SIZE]>,
     chr_is_ram: bool,
     prg_ram: Box<[u8; 0x2000]>,
+    has_battery: bool,
 
     prg_bank_mode: u8,
     chr_bank_mode: u8,
@@ -43,7 +44,13 @@ pub struct MMC3Mapper {
 }
 
 impl MMC3Mapper {
-    pub fn new(flags: u8, prg_banks: Vec<[u8; 16384]>, chr_banks: Vec<[u8; 8192]>) -> MMC3Mapper {
+    pub fn new(
+        flags: u8,
+        prg_banks: Vec<[u8; 16384]>,
+        chr_banks: Vec<[u8; 8192]>,
+        has_battery: bool,
+        sram_data: Option<Vec<u8>>,
+    ) -> MMC3Mapper {
         // Flatten PRG/CHR banks into 8K/1K chunks
         let mut prg_rom = vec![];
         for (_i, bank) in prg_banks.iter().enumerate() {
@@ -84,7 +91,15 @@ impl MMC3Mapper {
             prg_rom,
             chr_mem,
             chr_is_ram,
-            prg_ram: Box::new([0; 0x2000]),
+            prg_ram: {
+                let mut ram = Box::new([0; 0x2000]);
+                if let Some(data) = sram_data {
+                    let len = data.len().min(0x2000);
+                    ram[..len].copy_from_slice(&data[..len]);
+                }
+                ram
+            },
+            has_battery,
             prg_bank_mode: 0,
             chr_bank_mode: 0,
             bank_select: 0,
@@ -481,6 +496,14 @@ impl MemoryMapper for MMC3Mapper {
         // Rendering drives MMC3 IRQ timing through ppu_fetch(), where A12 edges
         // have real PPU dot timestamps for the low-pass filter.
     }
+
+    fn sram_data(&self) -> Option<&[u8]> {
+        if self.has_battery {
+            Some(&self.prg_ram[..])
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -493,7 +516,7 @@ mod tests {
     use crate::emu::io::loader;
 
     fn test_mapper() -> MMC3Mapper {
-        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1])
+        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None)
     }
 
     #[test]

@@ -57,6 +57,7 @@ pub struct Emulator {
     pub audio: Box<dyn AudioBackend>,
     /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
     ppu_register_warmup_until_cpu_cycle: u64,
+    rom_path: Option<String>,
 }
 
 impl Emulator {
@@ -118,7 +119,12 @@ impl Emulator {
             audio: audio,
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: 29_658,
+            rom_path: None,
         }
+    }
+
+    pub fn set_rom_path(&mut self, path: &str) {
+        self.rom_path = Some(path.to_string());
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -1392,6 +1398,14 @@ impl Emulator {
     }
 
     fn exit(&self) {
+        if let (Some(rom_path), Some(sram)) = (&self.rom_path, self.mem.sram_data()) {
+            let sav = io::loader::sav_path(rom_path);
+            match std::fs::write(&sav, sram) {
+                Ok(_) => println!("Saved battery RAM to {}", sav.display()),
+                Err(e) => eprintln!("Failed to save battery RAM to {}: {}", sav.display(), e),
+            }
+        }
+
         let elapsed_secs = self.start_time.elapsed().as_secs_f64();
         self.iohandler.exit(format!(
             "Exiting after {} instructions, {} cycles ({:.1} MHz) {:.1} avg fps",

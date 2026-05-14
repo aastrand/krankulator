@@ -1258,11 +1258,6 @@ impl PPU {
         self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
     }
 
-    #[cfg(test)]
-    pub fn mask_rendering_enabled(&self) -> bool {
-        (self.ppu_mask & MASK_RENDERING_ENABLE) == MASK_RENDERING_ENABLE
-    }
-
     pub fn mask_sprites_enabled(&self) -> bool {
         self.ppu_mask & MASK_SPRITES_ENABLE == MASK_SPRITES_ENABLE
     }
