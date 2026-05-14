@@ -96,8 +96,8 @@ OPTIONS:
 
 ## Testing
 
-341 tests covering CPU instructions, PPU behavior, APU channels, memory mappers, and
-savestate round-trips. Integration tests run actual NES test ROMs to validate accuracy:
+Tests cover CPU instructions, PPU behavior, APU channels, memory mappers, and savestate
+round-trips. Integration tests run actual NES test ROMs to validate accuracy:
 
 ```bash
 cargo test              # run all tests
