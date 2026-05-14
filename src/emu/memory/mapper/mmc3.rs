@@ -261,22 +261,20 @@ impl MMC3Mapper {
     }
 
     fn check_a12_transition(&mut self, addr: u16, dot: u64) {
-        // A12 is bit 12 of the PPU address (0x1000)
         let current_a12 = (addr & 0x1000) != 0;
 
-        if !current_a12 {
+        if current_a12 {
+            // A12 rising: clock if A12 was low for >= 3 CPU cycles (9 PPU dots).
+            if self.last_a12_low_dot > 0
+                && dot.saturating_sub(self.last_a12_low_dot) >= 9
+            {
+                self.clock_irq_counter();
+            }
+            self.last_a12_low_dot = 0;
+        } else if self.last_a12_low_dot == 0 {
+            // First A12-low after A12 was high — record the timestamp.
             self.last_a12_low_dot = dot;
-            self.a12_state = false;
-            return;
         }
-
-        // Clock IRQ counter on A12 rising edge after A12 has been low long enough.
-        // This filters the short low gaps between adjacent pattern fetches in a scanline.
-        if !self.a12_state && dot.saturating_sub(self.last_a12_low_dot) >= 8 {
-            self.clock_irq_counter();
-        }
-
-        self.a12_state = true;
     }
 
     fn clock_irq_counter(&mut self) {
@@ -493,9 +491,8 @@ impl MemoryMapper for MMC3Mapper {
         // the older one-clock-per-scanline approximation.
     }
 
-    fn ppu_a12_transition(&mut self, _addr: u16) {
-        // Rendering drives MMC3 IRQ timing through ppu_fetch(), where A12 edges
-        // have real PPU dot timestamps for the low-pass filter.
+    fn ppu_a12_transition(&mut self, addr: u16, dot: u64) {
+        self.check_a12_transition(addr, dot);
     }
 
     fn sram_data(&self) -> Option<&[u8]> {
@@ -594,18 +591,21 @@ mod tests {
         mapper.irq_enable = true;
         mapper.irq_reload = true;
 
+        // Gap of 4 dots (< 9 threshold) — filtered, no clock
         mapper.ppu_fetch(0x0000, 10);
         mapper.ppu_fetch(0x1000, 14);
         assert_eq!(mapper.irq_reload, true);
 
+        // Gap of 10 dots (>= 9 threshold) — clocks, reload from latch
         mapper.ppu_fetch(0x0000, 20);
-        mapper.ppu_fetch(0x1000, 28);
+        mapper.ppu_fetch(0x1000, 30);
         assert_eq!(mapper.irq_counter, 1);
         assert_eq!(mapper.irq_reload, false);
         assert_eq!(mapper.poll_irq(), false);
 
+        // Another valid edge — counter decrements to 0, IRQ fires
         mapper.ppu_fetch(0x0000, 40);
-        mapper.ppu_fetch(0x1000, 48);
+        mapper.ppu_fetch(0x1000, 50);
         assert_eq!(mapper.poll_irq(), true);
     }
 
@@ -632,7 +632,7 @@ mod tests {
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 18);
+        mapper.ppu_fetch(0x1000, 20);
 
         assert_eq!(mapper.irq_counter, 0);
         assert_eq!(mapper.irq_reload, false);
@@ -647,7 +647,7 @@ mod tests {
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 18);
+        mapper.ppu_fetch(0x1000, 20);
 
         assert_eq!(mapper.irq_counter, 2);
         assert_eq!(mapper.irq_reload, false);
@@ -655,41 +655,40 @@ mod tests {
     }
 
     #[test]
-    fn test_mmc3_a12_8x16_style_alternating_pattern_tables_clocks_irq() {
+    fn test_mmc3_a12_rising_edge_from_pattern_table_switch_clocks_irq() {
         let mut mapper = test_mapper();
         mapper.irq_latch = 1;
         mapper.irq_enable = true;
         mapper.irq_reload = true;
 
-        // 8×16 sprite fetches often alternate $0xxx / $1xxx tile bytes; same A12 edges as BG.
-        mapper.ppu_fetch(0x2000, 10);
-        mapper.ppu_fetch(0x1010, 18);
-        mapper.ppu_fetch(0x2000, 26);
-        mapper.ppu_fetch(0x1058, 34);
+        // Simulate BG fetches at $0xxx then sprite fetches at $1xxx with big gap
+        mapper.ppu_fetch(0x0000, 10);
+        mapper.ppu_fetch(0x1000, 20);
+        mapper.ppu_fetch(0x0000, 30);
+        mapper.ppu_fetch(0x1000, 40);
 
         assert_eq!(mapper.poll_irq(), true);
     }
 
     #[test]
-    fn test_cpu_a12_transition_does_not_corrupt_fetch_filter() {
+    fn test_cpu_a12_transition_clocks_irq_with_sufficient_gap() {
         let mut mapper = test_mapper();
         mapper.irq_latch = 1;
         mapper.irq_enable = true;
         mapper.irq_reload = true;
 
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_a12_transition(0x1000);
-        mapper.ppu_fetch(0x1000, 20);
+        mapper.ppu_a12_transition(0x1000, 20);
 
         assert_eq!(mapper.irq_counter, 1);
         assert_eq!(mapper.irq_reload, false);
     }
 
-    /*#[test]
-    fn test_mmc3_clocking() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/mappers/mmc3/1-clocking.nes",
-        )));
+    fn run_mmc3_rom(path: &str, name: &str) {
+        use crate::util::get_status_str;
+
+        let mut emu: emu::Emulator =
+            emu::Emulator::new_headless(loader::load_nes(&String::from(path)));
 
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
@@ -701,7 +700,7 @@ mod tests {
 
         emu.run();
 
-        let expected = String::from("\n1-clocking\n\nPassed\n");
+        let expected = format!("\n{}\n\nPassed\n", name);
         let buf = get_status_str(&mut emu, 0x6004, 80);
 
         println!("{}", buf);
@@ -712,28 +711,32 @@ mod tests {
     }
 
     #[test]
-    fn test_mmc3_details() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/mappers/mmc3/2-details.nes",
-        )));
+    fn test_mmc3_1_clocking() {
+        run_mmc3_rom("input/nes/mappers/mmc3/1-clocking.nes", "1-clocking");
+    }
 
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
+    #[test]
+    fn test_mmc3_2_details() {
+        run_mmc3_rom("input/nes/mappers/mmc3/2-details.nes", "2-details");
+    }
 
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
+    #[test]
+    fn test_mmc3_3_a12_clocking() {
+        run_mmc3_rom("input/nes/mappers/mmc3/3-A12_clocking.nes", "3-A12_clocking");
+    }
 
-        emu.run();
+    #[test]
+    fn test_mmc3_4_scanline_timing() {
+        run_mmc3_rom("input/nes/mappers/mmc3/4-scanline_timing.nes", "4-scanline_timing");
+    }
 
-        let expected = String::from("\n2-details\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, 80);
+    #[test]
+    fn test_mmc3_5_mmc3() {
+        run_mmc3_rom("input/nes/mappers/mmc3/5-MMC3.nes", "5-MMC3");
+    }
 
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }*/
+    #[test]
+    fn test_mmc3_6_mmc6() {
+        run_mmc3_rom("input/nes/mappers/mmc3/6-MMC6.nes", "6-MMC6");
+    }
 }
