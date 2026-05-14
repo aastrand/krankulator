@@ -6,6 +6,7 @@ pub mod gfx;
 pub mod io;
 pub mod memory;
 pub mod ppu;
+pub mod savestate;
 
 use cpu::opcodes;
 
@@ -58,6 +59,9 @@ pub struct Emulator {
     /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
     ppu_register_warmup_until_cpu_cycle: u64,
     rom_path: Option<String>,
+    savestate_slot: u8,
+    stats_base_cycles: u64,
+    stats_base_frames: u64,
 }
 
 impl Emulator {
@@ -120,6 +124,9 @@ impl Emulator {
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: 29_658,
             rom_path: None,
+            savestate_slot: 0,
+            stats_base_cycles: 0,
+            stats_base_frames: 0,
         }
     }
 
@@ -161,11 +168,94 @@ impl Emulator {
         self.ppu_register_warmup_until_cpu_cycle = self.cpu.cycle.wrapping_add(29_658);
     }
 
+    pub fn save_state_to_bytes(&self) -> Vec<u8> {
+        let mut w = savestate::SavestateWriter::new();
+        self.cpu.save_state(&mut w);
+        self.ppu.save_state(&mut w);
+        self.apu.save_state(&mut w);
+        w.write_u8(self.mem.mapper_id());
+        self.mem.save_state(&mut w);
+        w.write_u64(self.cycles);
+        w.write_u64(self.master_clock);
+        w.write_u64(self.instruction_start_dot);
+        w.write_u8(self.cpu_bus_cycle_offset);
+        w.write_bool(self.should_trigger_nmi);
+        w.write_i8(self.nmi_triggered_countdown);
+        w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
+        w.write_u64(self.instructions);
+        w.finish()
+    }
+
+    pub fn load_state_from_bytes(&mut self, data: &[u8]) -> std::io::Result<()> {
+        let mut r = savestate::SavestateReader::new(data)?;
+        self.load_state_from_reader(&mut r)?;
+        self.audio.clear();
+        self.start_time = Instant::now();
+        self.stats_base_cycles = self.cycles;
+        self.stats_base_frames = self.ppu.frames;
+        Ok(())
+    }
+
+    pub fn save_state_to_file(&mut self) {
+        let path = self.savestate_path();
+        let data = self.save_state_to_bytes();
+        match std::fs::write(&path, &data) {
+            Ok(()) => println!("State saved to {} ({} bytes)", path, data.len()),
+            Err(e) => println!("Failed to save state: {}", e),
+        }
+    }
+
+    pub fn load_state_from_file(&mut self) {
+        let path = self.savestate_path();
+        let data = match std::fs::read(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("Failed to load state: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = self.load_state_from_bytes(&data) {
+            println!("Failed to load state: {}", e);
+            return;
+        }
+        println!("State loaded from {}", path);
+    }
+
+    fn load_state_from_reader(&mut self, r: &mut savestate::SavestateReader) -> std::io::Result<()> {
+        self.cpu.load_state(r)?;
+        self.ppu.load_state(r)?;
+        self.apu.load_state(r)?;
+        let mapper_id = r.read_u8()?;
+        if mapper_id != self.mem.mapper_id() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                format!("mapper mismatch: save={} current={}", mapper_id, self.mem.mapper_id())));
+        }
+        self.mem.load_state(r)?;
+        self.cycles = r.read_u64()?;
+        self.master_clock = r.read_u64()?;
+        self.instruction_start_dot = r.read_u64()?;
+        self.cpu_bus_cycle_offset = r.read_u8()?;
+        self.should_trigger_nmi = r.read_bool()?;
+        self.nmi_triggered_countdown = r.read_i8()?;
+        self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
+        self.instructions = r.read_u64()?;
+        Ok(())
+    }
+
+    fn savestate_path(&self) -> String {
+        match &self.rom_path {
+            Some(p) => {
+                let base = p.trim_end_matches(".nes").trim_end_matches(".NES");
+                format!("{}.ss{}", base, self.savestate_slot)
+            }
+            None => format!("krankulator.ss{}", self.savestate_slot),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn test_cpu_write(&mut self, addr: u16, value: u8) {
         self.cpu_write(addr, value);
     }
-
 
     pub fn run(&mut self) {
         match self.iohandler.init() {
@@ -240,8 +330,19 @@ impl Emulator {
         }
         // Poll events at regular intervals (much less frequently than before)
         if self.cycles % 50000 == 0 {
-            if self.iohandler.poll(&mut *self.mem, &mut self.apu, &mut self.cpu) {
+            let result = self.iohandler.poll(&mut *self.mem, &mut self.apu, &mut self.cpu);
+            if result.exit {
                 state = CycleState::Exiting;
+            }
+            if result.save_state {
+                self.save_state_to_file();
+            }
+            if result.load_state {
+                self.load_state_from_file();
+            }
+            if result.cycle_slot {
+                self.savestate_slot = (self.savestate_slot + 1) % 4;
+                println!("Savestate slot: {}", self.savestate_slot);
             }
         }
 
@@ -1407,12 +1508,14 @@ impl Emulator {
         }
 
         let elapsed_secs = self.start_time.elapsed().as_secs_f64();
+        let measured_cycles = self.cycles - self.stats_base_cycles;
+        let measured_frames = self.ppu.frames - self.stats_base_frames;
         self.iohandler.exit(format!(
             "Exiting after {} instructions, {} cycles ({:.1} MHz) {:.1} avg fps",
             self.instructions,
             self.cycles,
-            (self.cycles as f64 / elapsed_secs) / 1_000_000.0,
-            self.ppu.frames as f64 / elapsed_secs
+            (measured_cycles as f64 / elapsed_secs) / 1_000_000.0,
+            measured_frames as f64 / elapsed_secs
         ));
     }
 }

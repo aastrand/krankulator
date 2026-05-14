@@ -1,5 +1,6 @@
 use super::gfx::{buf::Buffer, palette};
 use super::memory;
+use super::savestate::{SavestateWriter, SavestateReader};
 
 /*
 Common Name	Address	Bits	Notes
@@ -243,6 +244,117 @@ impl PPU {
 
             nmi_suppress_next_vblank: false,
         }
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u16(self.v);
+        w.write_u16(self.t);
+        w.write_u8(self.x);
+        w.write_bool(self.w);
+        w.write_bytes(&*self.oam_ram);
+        w.write_u8(self.ppu_ctrl);
+        w.write_u8(self.ppu_mask);
+        w.write_u8(self.ppu_status);
+        w.write_u8(self.oam_addr);
+        w.write_u8(self.ppu_addr[0]);
+        w.write_u8(self.ppu_addr[1]);
+        w.write_u8(self.ppu_addr_idx as u8);
+        w.write_bool(self.ppu_data_valid);
+        w.write_u8(self.ppu_data_buf);
+        w.write_u16(self.cycle);
+        w.write_u16(self.scanline);
+        w.write_u64(self.frames);
+        w.write_u64(self.last_synced_dot);
+        w.write_u8(self.scanline_pixels_written as u8);
+        w.write_u16(self.render_line_v);
+        w.write_u16(self.next_render_line_v);
+        w.write_u16(self.bg_pattern_shift_low);
+        w.write_u16(self.bg_pattern_shift_high);
+        w.write_u16(self.bg_attr_shift_low);
+        w.write_u16(self.bg_attr_shift_high);
+        w.write_u8(self.bg_next_tile_id);
+        w.write_u8(self.bg_next_attr);
+        w.write_u8(self.bg_next_pattern_low);
+        w.write_u8(self.bg_next_pattern_high);
+        w.write_bytes(&self.secondary_oam);
+        w.write_u8(self.secondary_oam_count);
+        for entry in &self.sprite_line {
+            w.write_u8(entry.attr);
+            w.write_u8(entry.x);
+            w.write_u8(entry.pattern_lo);
+            w.write_u8(entry.pattern_hi);
+        }
+        for entry in &self.sprite_fetch_line {
+            w.write_u8(entry.attr);
+            w.write_u8(entry.x);
+            w.write_u8(entry.pattern_lo);
+            w.write_u8(entry.pattern_hi);
+        }
+        w.write_u8(self.sprite_line_count);
+        w.write_bool(self.sprite_zero_on_current_line);
+        w.write_bool(self.sprite_zero_pending_next_line);
+        w.write_u8(self.sprite_eval_n);
+        w.write_u8(self.sprite_eval_m);
+        w.write_bool(self.sprite_eval_overflow_phase);
+        w.write_bool(self.bg_shifter_resync_pending);
+        w.write_u8(self.ppu_open_bus);
+        w.write_bool(self.nmi_suppress_next_vblank);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.v = r.read_u16()?;
+        self.t = r.read_u16()?;
+        self.x = r.read_u8()?;
+        self.w = r.read_bool()?;
+        r.read_bytes_into(&mut *self.oam_ram)?;
+        self.ppu_ctrl = r.read_u8()?;
+        self.ppu_mask = r.read_u8()?;
+        self.ppu_status = r.read_u8()?;
+        self.oam_addr = r.read_u8()?;
+        self.ppu_addr[0] = r.read_u8()?;
+        self.ppu_addr[1] = r.read_u8()?;
+        self.ppu_addr_idx = r.read_u8()? as usize;
+        self.ppu_data_valid = r.read_bool()?;
+        self.ppu_data_buf = r.read_u8()?;
+        self.cycle = r.read_u16()?;
+        self.scanline = r.read_u16()?;
+        self.frames = r.read_u64()?;
+        self.last_synced_dot = r.read_u64()?;
+        self.scanline_pixels_written = r.read_u8()? as usize;
+        self.render_line_v = r.read_u16()?;
+        self.next_render_line_v = r.read_u16()?;
+        self.bg_pattern_shift_low = r.read_u16()?;
+        self.bg_pattern_shift_high = r.read_u16()?;
+        self.bg_attr_shift_low = r.read_u16()?;
+        self.bg_attr_shift_high = r.read_u16()?;
+        self.bg_next_tile_id = r.read_u8()?;
+        self.bg_next_attr = r.read_u8()?;
+        self.bg_next_pattern_low = r.read_u8()?;
+        self.bg_next_pattern_high = r.read_u8()?;
+        r.read_bytes_into(&mut self.secondary_oam)?;
+        self.secondary_oam_count = r.read_u8()?;
+        for entry in &mut self.sprite_line {
+            entry.attr = r.read_u8()?;
+            entry.x = r.read_u8()?;
+            entry.pattern_lo = r.read_u8()?;
+            entry.pattern_hi = r.read_u8()?;
+        }
+        for entry in &mut self.sprite_fetch_line {
+            entry.attr = r.read_u8()?;
+            entry.x = r.read_u8()?;
+            entry.pattern_lo = r.read_u8()?;
+            entry.pattern_hi = r.read_u8()?;
+        }
+        self.sprite_line_count = r.read_u8()?;
+        self.sprite_zero_on_current_line = r.read_bool()?;
+        self.sprite_zero_pending_next_line = r.read_bool()?;
+        self.sprite_eval_n = r.read_u8()?;
+        self.sprite_eval_m = r.read_u8()?;
+        self.sprite_eval_overflow_phase = r.read_bool()?;
+        self.bg_shifter_resync_pending = r.read_bool()?;
+        self.ppu_open_bus = r.read_u8()?;
+        self.nmi_suppress_next_vblank = r.read_bool()?;
+        Ok(())
     }
 
     pub fn get_status_reg(&mut self) -> u8 {

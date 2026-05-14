@@ -1,6 +1,7 @@
 use super::super::super::io;
 use super::super::*;
 use super::*;
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
 
 const BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: u16 = 4 * 1024;
@@ -392,6 +393,59 @@ impl MemoryMapper for MMC1Mapper {
         } else {
             None
         }
+    }
+
+    fn mapper_id(&self) -> u8 { 1 }
+
+    fn save_state(&self, w: &mut SavestateWriter) {
+        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        w.write_bytes(cpu_ram);
+        let mmc_ram = unsafe { std::slice::from_raw_parts(self.mmc_ram_ptr, MMC_RAM_SIZE) };
+        w.write_bytes(mmc_ram);
+        w.write_bool(self.mmc_ram_enabled);
+        w.write_u8(self.low_bank_idx as u8);
+        w.write_u8(self.high_bank_idx as u8);
+        w.write_u8(self.low_chr_bank_idx as u8);
+        w.write_u8(self.high_chr_bank_idx as u8);
+        let vram = unsafe { std::slice::from_raw_parts(self.vrm_ptr, VRAM_SIZE as usize) };
+        w.write_bytes(vram);
+        w.write_u8(self.reg_write_shift_register);
+        w.write_u8(self.reg_write_count);
+        w.write_u8(self.reg0);
+        w.write_u8(self.reg1);
+        w.write_u8(self.reg2);
+        w.write_u8(self.reg3);
+        w.write_bytes(&self.palette_ram);
+        for bank in &self.chr_banks {
+            w.write_bytes(bank);
+        }
+        super::save_controllers(w, &self.controllers);
+    }
+
+    fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        let cpu_ram = unsafe { std::slice::from_raw_parts_mut(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        r.read_bytes_into(cpu_ram)?;
+        let mmc_ram = unsafe { std::slice::from_raw_parts_mut(self.mmc_ram_ptr, MMC_RAM_SIZE) };
+        r.read_bytes_into(mmc_ram)?;
+        self.mmc_ram_enabled = r.read_bool()?;
+        self.low_bank_idx = r.read_u8()? as usize;
+        self.high_bank_idx = r.read_u8()? as usize;
+        self.low_chr_bank_idx = r.read_u8()? as usize;
+        self.high_chr_bank_idx = r.read_u8()? as usize;
+        let vram = unsafe { std::slice::from_raw_parts_mut(self.vrm_ptr, VRAM_SIZE as usize) };
+        r.read_bytes_into(vram)?;
+        self.reg_write_shift_register = r.read_u8()?;
+        self.reg_write_count = r.read_u8()?;
+        self.reg0 = r.read_u8()?;
+        self.reg1 = r.read_u8()?;
+        self.reg2 = r.read_u8()?;
+        self.reg3 = r.read_u8()?;
+        r.read_bytes_into(&mut self.palette_ram)?;
+        for bank in &mut self.chr_banks {
+            r.read_bytes_into(bank)?;
+        }
+        super::load_controllers(r, &mut self.controllers)?;
+        Ok(())
     }
 }
 

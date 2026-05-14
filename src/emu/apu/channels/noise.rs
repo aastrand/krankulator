@@ -1,3 +1,5 @@
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
+
 pub struct NoiseChannel {
     control: u8,
     volume: u8,
@@ -64,6 +66,41 @@ impl NoiseChannel {
         self.enabled = false;
         self.shift_register = 1;
         self.output = 0.0;
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u8(self.control);
+        w.write_u8(self.volume);
+        w.write_bool(self.constant_volume);
+        w.write_bool(self.envelope_start);
+        w.write_u8(self.envelope_divider);
+        w.write_u8(self.envelope_decay_level);
+        w.write_u8(self.period);
+        w.write_u16(self.timer);
+        w.write_u16(self.timer_value);
+        w.write_u8(self.length_counter);
+        w.write_bool(self.length_counter_halt);
+        w.write_bool(self.enabled);
+        w.write_u16(self.shift_register);
+        w.write_f32(self.output);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.control = r.read_u8()?;
+        self.volume = r.read_u8()?;
+        self.constant_volume = r.read_bool()?;
+        self.envelope_start = r.read_bool()?;
+        self.envelope_divider = r.read_u8()?;
+        self.envelope_decay_level = r.read_u8()?;
+        self.period = r.read_u8()?;
+        self.timer = r.read_u16()?;
+        self.timer_value = r.read_u16()?;
+        self.length_counter = r.read_u8()?;
+        self.length_counter_halt = r.read_bool()?;
+        self.enabled = r.read_bool()?;
+        self.shift_register = r.read_u16()?;
+        self.output = r.read_f32()?;
+        Ok(())
     }
 
     pub fn set_control(&mut self, value: u8) {

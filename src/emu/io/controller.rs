@@ -35,6 +35,11 @@ impl Controller {
         self.status &= !button;
     }
 
+    pub fn save_status(&self) -> u8 { self.status }
+    pub fn save_polls(&self) -> u64 { self.polls }
+    pub fn load_status(&mut self, s: u8) { self.status = s; }
+    pub fn load_polls(&mut self, p: u64) { self.polls = p; }
+
     #[allow(dead_code)] // only used in tests
     pub fn is_pressed(&self, button: u8) -> u8 {
         if self.status & button == button {

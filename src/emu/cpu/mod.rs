@@ -1,4 +1,5 @@
 use super::memory;
+use super::savestate::{SavestateWriter, SavestateReader};
 
 pub mod opcodes;
 
@@ -40,6 +41,29 @@ impl Cpu {
             last_instruction: 0xffff,
             cycle: 0,
         }
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u16(self.pc);
+        w.write_u8(self.a);
+        w.write_u8(self.x);
+        w.write_u8(self.y);
+        w.write_u8(self.sp);
+        w.write_u8(self.status);
+        w.write_u16(self.last_instruction);
+        w.write_u64(self.cycle);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.pc = r.read_u16()?;
+        self.a = r.read_u8()?;
+        self.x = r.read_u8()?;
+        self.y = r.read_u8()?;
+        self.sp = r.read_u8()?;
+        self.status = r.read_u8()?;
+        self.last_instruction = r.read_u16()?;
+        self.cycle = r.read_u64()?;
+        Ok(())
     }
 
     pub fn and(&mut self, operand: u8) {

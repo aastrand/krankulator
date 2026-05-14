@@ -1,3 +1,5 @@
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
+
 pub struct PulseChannel {
     channel_index: u8, // 0 for pulse 1, 1 for pulse 2
     duty_cycle: u8,
@@ -87,6 +89,55 @@ impl PulseChannel {
         self.sweep_divider = 0;
         self.enabled = false;
         self.output = 0.0;
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u8(self.channel_index);
+        w.write_u8(self.duty_cycle);
+        w.write_u8(self.duty_value);
+        w.write_u8(self.duty_step);
+        w.write_u16(self.timer);
+        w.write_u16(self.timer_value);
+        w.write_u8(self.length_counter);
+        w.write_bool(self.length_counter_halt);
+        w.write_u8(self.volume);
+        w.write_bool(self.constant_volume);
+        w.write_bool(self.envelope_start);
+        w.write_u8(self.envelope_divider);
+        w.write_u8(self.envelope_decay_level);
+        w.write_bool(self.sweep_enabled);
+        w.write_u8(self.sweep_period);
+        w.write_u8(self.sweep_shift);
+        w.write_bool(self.sweep_negate);
+        w.write_bool(self.sweep_reload);
+        w.write_u8(self.sweep_divider);
+        w.write_bool(self.enabled);
+        w.write_f32(self.output);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.channel_index = r.read_u8()?;
+        self.duty_cycle = r.read_u8()?;
+        self.duty_value = r.read_u8()?;
+        self.duty_step = r.read_u8()?;
+        self.timer = r.read_u16()?;
+        self.timer_value = r.read_u16()?;
+        self.length_counter = r.read_u8()?;
+        self.length_counter_halt = r.read_bool()?;
+        self.volume = r.read_u8()?;
+        self.constant_volume = r.read_bool()?;
+        self.envelope_start = r.read_bool()?;
+        self.envelope_divider = r.read_u8()?;
+        self.envelope_decay_level = r.read_u8()?;
+        self.sweep_enabled = r.read_bool()?;
+        self.sweep_period = r.read_u8()?;
+        self.sweep_shift = r.read_u8()?;
+        self.sweep_negate = r.read_bool()?;
+        self.sweep_reload = r.read_bool()?;
+        self.sweep_divider = r.read_u8()?;
+        self.enabled = r.read_bool()?;
+        self.output = r.read_f32()?;
+        Ok(())
     }
 
     pub fn set_control(&mut self, value: u8) {

@@ -1,3 +1,5 @@
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
+
 #[derive(Debug, PartialEq)]
 pub enum FrameStep {
     None,
@@ -103,6 +105,25 @@ impl FrameCounter {
 
     pub fn irq_inhibit(&self) -> bool {
         self.irq_inhibit
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u8(self.mode);
+        w.write_u8(self.step);
+        w.write_u32(self.cycles);
+        w.write_bool(self.irq_inhibit);
+        w.write_u8(self.reset_delay);
+        w.write_u8(self.pending_write);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.mode = r.read_u8()?;
+        self.step = r.read_u8()?;
+        self.cycles = r.read_u32()?;
+        self.irq_inhibit = r.read_bool()?;
+        self.reset_delay = r.read_u8()?;
+        self.pending_write = r.read_u8()?;
+        Ok(())
     }
 }
 

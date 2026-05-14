@@ -8,6 +8,44 @@ pub mod uxrom;
 pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 pub const NAMETABLE_ALIGNMENT_BIT: u8 = 0b0000_0001;
 
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::io::controller::Controller;
+
+fn save_controllers(w: &mut SavestateWriter, controllers: &[Controller; 2]) {
+    w.write_u8(controllers[0].save_status());
+    w.write_u64(controllers[0].save_polls());
+    w.write_u8(controllers[1].save_status());
+    w.write_u64(controllers[1].save_polls());
+}
+
+fn load_controllers(r: &mut SavestateReader, controllers: &mut [Controller; 2]) -> std::io::Result<()> {
+    controllers[0].load_status(r.read_u8()?);
+    controllers[0].load_polls(r.read_u64()?);
+    controllers[1].load_status(r.read_u8()?);
+    controllers[1].load_polls(r.read_u64()?);
+    Ok(())
+}
+
+fn save_mirroring(w: &mut SavestateWriter, m: NametableMirror) {
+    w.write_u8(match m {
+        NametableMirror::Lower => 0,
+        NametableMirror::Higher => 1,
+        NametableMirror::Vertical => 2,
+        NametableMirror::Horizontal => 3,
+    });
+}
+
+fn load_mirroring(r: &mut SavestateReader) -> std::io::Result<NametableMirror> {
+    Ok(match r.read_u8()? {
+        0 => NametableMirror::Lower,
+        1 => NametableMirror::Higher,
+        2 => NametableMirror::Vertical,
+        3 => NametableMirror::Horizontal,
+        v => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+            format!("bad mirroring value: {}", v))),
+    })
+}
+
 pub const MAX_VRAM_ADDR: u16 = 0x4000;
 
 pub fn mirror_addr(addr: u16) -> u16 {

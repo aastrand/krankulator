@@ -1,3 +1,5 @@
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
+
 pub struct TriangleChannel {
     control: u8,
     linear_counter: u8,
@@ -57,6 +59,35 @@ impl TriangleChannel {
 
         // Ensure all output is completely zeroed
         self.output = 0.0;
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u8(self.control);
+        w.write_u8(self.linear_counter);
+        w.write_u8(self.linear_counter_reload);
+        w.write_bool(self.linear_counter_reload_flag);
+        w.write_u16(self.timer);
+        w.write_u16(self.timer_value);
+        w.write_u8(self.length_counter);
+        w.write_bool(self.length_counter_halt);
+        w.write_bool(self.enabled);
+        w.write_u8(self.step);
+        w.write_f32(self.output);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.control = r.read_u8()?;
+        self.linear_counter = r.read_u8()?;
+        self.linear_counter_reload = r.read_u8()?;
+        self.linear_counter_reload_flag = r.read_bool()?;
+        self.timer = r.read_u16()?;
+        self.timer_value = r.read_u16()?;
+        self.length_counter = r.read_u8()?;
+        self.length_counter_halt = r.read_bool()?;
+        self.enabled = r.read_bool()?;
+        self.step = r.read_u8()?;
+        self.output = r.read_f32()?;
+        Ok(())
     }
 
     pub fn set_control(&mut self, value: u8) {

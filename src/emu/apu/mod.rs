@@ -62,9 +62,27 @@ impl AudioFilter {
         self.lp_y = y;
         y
     }
+
+    fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_f32(self.hp1_x1);
+        w.write_f32(self.hp1_y1);
+        w.write_f32(self.hp2_x1);
+        w.write_f32(self.hp2_y1);
+        w.write_f32(self.lp_y);
+    }
+
+    fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.hp1_x1 = r.read_f32()?;
+        self.hp1_y1 = r.read_f32()?;
+        self.hp2_x1 = r.read_f32()?;
+        self.hp2_y1 = r.read_f32()?;
+        self.lp_y = r.read_f32()?;
+        Ok(())
+    }
 }
 
 use crate::emu::apu::frame_counter::FrameStep;
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
 use frame_counter::FrameCounter;
 
@@ -497,6 +515,37 @@ impl APU {
         let samples = &self.sample_buffer[..self.sample_index];
         self.sample_index = 0;
         samples
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        self.pulse1.save_state(w);
+        self.pulse2.save_state(w);
+        self.triangle.save_state(w);
+        self.noise.save_state(w);
+        self.dmc.save_state(w);
+        self.frame_counter.save_state(w);
+        w.write_u8(self.status);
+        w.write_u8(self.enabled_channels);
+        w.write_u8(self.mute_mask);
+        w.write_f64(self.cycles_since_sample);
+        w.write_u32(self.sample_index as u32);
+        self.audio_filter.save_state(w);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.pulse1.load_state(r)?;
+        self.pulse2.load_state(r)?;
+        self.triangle.load_state(r)?;
+        self.noise.load_state(r)?;
+        self.dmc.load_state(r)?;
+        self.frame_counter.load_state(r)?;
+        self.status = r.read_u8()?;
+        self.enabled_channels = r.read_u8()?;
+        self.mute_mask = r.read_u8()?;
+        self.cycles_since_sample = r.read_f64()?;
+        self.sample_index = r.read_u32()? as usize;
+        self.audio_filter.load_state(r)?;
+        Ok(())
     }
 
     #[allow(dead_code)]

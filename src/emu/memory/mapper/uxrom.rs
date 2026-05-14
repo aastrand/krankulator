@@ -1,5 +1,6 @@
 use super::super::*;
 use super::*;
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
 
 /*
 UxROM (Mapper 2)
@@ -209,6 +210,33 @@ impl MemoryMapper for UxROMMapper {
 
     fn poll_irq(&mut self) -> bool {
         false
+    }
+
+    fn mapper_id(&self) -> u8 { 2 }
+
+    fn save_state(&self, w: &mut SavestateWriter) {
+        let ram = unsafe { std::slice::from_raw_parts(self.addr_space_ptr, MAX_RAM_SIZE) };
+        w.write_bytes(ram);
+        let chr = unsafe { std::slice::from_raw_parts(self.chr_ptr, UXROM_CHR_SIZE) };
+        w.write_bytes(chr);
+        let vram = unsafe { std::slice::from_raw_parts(self.vrm_ptr, VRAM_SIZE as usize) };
+        w.write_bytes(vram);
+        w.write_bytes(&self.palette_ram);
+        w.write_u8(self.selected_bank as u8);
+        super::save_controllers(w, &self.controllers);
+    }
+
+    fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        let ram = unsafe { std::slice::from_raw_parts_mut(self.addr_space_ptr, MAX_RAM_SIZE) };
+        r.read_bytes_into(ram)?;
+        let chr = unsafe { std::slice::from_raw_parts_mut(self.chr_ptr, UXROM_CHR_SIZE) };
+        r.read_bytes_into(chr)?;
+        let vram = unsafe { std::slice::from_raw_parts_mut(self.vrm_ptr, VRAM_SIZE as usize) };
+        r.read_bytes_into(vram)?;
+        r.read_bytes_into(&mut self.palette_ram)?;
+        self.selected_bank = r.read_u8()? as usize;
+        super::load_controllers(r, &mut self.controllers)?;
+        Ok(())
     }
 }
 

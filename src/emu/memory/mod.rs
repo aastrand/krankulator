@@ -1,5 +1,6 @@
 pub mod mapper;
 use super::io::controller;
+use super::savestate::{SavestateWriter, SavestateReader};
 
 pub const NMI_TARGET_ADDR: u16 = 0xfffa;
 #[allow(dead_code)] // only used in tests
@@ -39,6 +40,10 @@ pub trait MemoryMapper {
     fn sram_data(&self) -> Option<&[u8]> {
         None
     }
+
+    fn mapper_id(&self) -> u8 { 0xFF }
+    fn save_state(&self, _w: &mut SavestateWriter) {}
+    fn load_state(&mut self, _r: &mut SavestateReader) -> std::io::Result<()> { Ok(()) }
 
     /// When false, CPU accesses to `$2000-$2007` are not mapped to PPU registers (flat RAM for test ROMs).
     fn cpu_maps_ppu_registers(&self) -> bool {
@@ -213,6 +218,21 @@ impl MemoryMapper for IdentityMapper {
 
     fn cpu_maps_ppu_registers(&self) -> bool {
         self.cpu_maps_ppu_registers
+    }
+
+    fn save_state(&self, w: &mut SavestateWriter) {
+        let ram = unsafe { std::slice::from_raw_parts(self.ram_ptr, MAX_RAM_SIZE) };
+        w.write_bytes(ram);
+        let vram = unsafe { std::slice::from_raw_parts(self.vram_ptr, MAX_VRAM_SIZE) };
+        w.write_bytes(vram);
+    }
+
+    fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        let ram = unsafe { std::slice::from_raw_parts_mut(self.ram_ptr, MAX_RAM_SIZE) };
+        r.read_bytes_into(ram)?;
+        let vram = unsafe { std::slice::from_raw_parts_mut(self.vram_ptr, MAX_VRAM_SIZE) };
+        r.read_bytes_into(vram)?;
+        Ok(())
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::emu::memory::MemoryMapper;
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
 
 pub struct DmcChannel {
     control: u8,
@@ -74,6 +75,45 @@ impl DmcChannel {
         self.output = 0.0;
         self.irq_enabled = false;
         self.irq_pending = false;
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_u8(self.control);
+        w.write_u8(self.direct_load);
+        w.write_u8(self.sample_address);
+        w.write_u8(self.sample_length);
+        w.write_u16(self.timer);
+        w.write_u16(self.timer_value);
+        w.write_bool(self.enabled);
+        w.write_u8(self.sample_buffer);
+        w.write_bool(self.sample_buffer_empty);
+        w.write_u8(self.bits_remaining);
+        w.write_u16(self.current_address);
+        w.write_u16(self.bytes_remaining);
+        w.write_u8(self.output_level);
+        w.write_f32(self.output);
+        w.write_bool(self.irq_enabled);
+        w.write_bool(self.irq_pending);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        self.control = r.read_u8()?;
+        self.direct_load = r.read_u8()?;
+        self.sample_address = r.read_u8()?;
+        self.sample_length = r.read_u8()?;
+        self.timer = r.read_u16()?;
+        self.timer_value = r.read_u16()?;
+        self.enabled = r.read_bool()?;
+        self.sample_buffer = r.read_u8()?;
+        self.sample_buffer_empty = r.read_bool()?;
+        self.bits_remaining = r.read_u8()?;
+        self.current_address = r.read_u16()?;
+        self.bytes_remaining = r.read_u16()?;
+        self.output_level = r.read_u8()?;
+        self.output = r.read_f32()?;
+        self.irq_enabled = r.read_bool()?;
+        self.irq_pending = r.read_bool()?;
+        Ok(())
     }
 
     pub fn set_control(&mut self, value: u8) {

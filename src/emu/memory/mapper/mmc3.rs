@@ -1,6 +1,7 @@
 use super::super::super::io;
 use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
 use crate::emu::memory::MemoryMapper;
+use crate::emu::savestate::{SavestateWriter, SavestateReader};
 
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
@@ -503,6 +504,59 @@ impl MemoryMapper for MMC3Mapper {
         } else {
             None
         }
+    }
+
+    fn mapper_id(&self) -> u8 { 4 }
+
+    fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_bytes(&*self.cpu_ram);
+        w.write_bytes(&*self.prg_ram);
+        w.write_bytes(&*self.vram);
+        w.write_bytes(&self.palette_ram);
+        for bank in &self.chr_mem {
+            w.write_bytes(bank);
+        }
+        w.write_u8(self.prg_bank_mode);
+        w.write_u8(self.chr_bank_mode);
+        w.write_u8(self.bank_select);
+        for &reg in &self.bank_regs {
+            w.write_u8(reg);
+        }
+        w.write_u8(self.irq_counter);
+        w.write_u8(self.irq_latch);
+        w.write_bool(self.irq_enable);
+        w.write_bool(self.irq_reload);
+        w.write_bool(self.irq_pending);
+        w.write_bool(self.a12_state);
+        w.write_u64(self.last_a12_low_dot);
+        super::save_mirroring(w, self.mirroring);
+        super::save_controllers(w, &self.controllers);
+    }
+
+    fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        r.read_bytes_into(&mut *self.cpu_ram)?;
+        r.read_bytes_into(&mut *self.prg_ram)?;
+        r.read_bytes_into(&mut *self.vram)?;
+        r.read_bytes_into(&mut self.palette_ram)?;
+        for bank in &mut self.chr_mem {
+            r.read_bytes_into(bank)?;
+        }
+        self.prg_bank_mode = r.read_u8()?;
+        self.chr_bank_mode = r.read_u8()?;
+        self.bank_select = r.read_u8()?;
+        for reg in &mut self.bank_regs {
+            *reg = r.read_u8()?;
+        }
+        self.irq_counter = r.read_u8()?;
+        self.irq_latch = r.read_u8()?;
+        self.irq_enable = r.read_bool()?;
+        self.irq_reload = r.read_bool()?;
+        self.irq_pending = r.read_bool()?;
+        self.a12_state = r.read_bool()?;
+        self.last_a12_low_dot = r.read_u64()?;
+        self.mirroring = super::load_mirroring(r)?;
+        super::load_controllers(r, &mut self.controllers)?;
+        Ok(())
     }
 }
 

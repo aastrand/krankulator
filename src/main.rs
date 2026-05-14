@@ -968,4 +968,155 @@ mod tests {
         assert_eq!(0, emu.mem.cpu_read(0x6000));
         assert_eq!(expected, buf);
     }
+
+    #[test]
+    fn test_savestate_roundtrip_simple() {
+        let mut emu = emu::Emulator::_new();
+        emu.toggle_should_exit_on_infinite_loop(false);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+
+        // Write a small program: LDA #$42, STA $200, BRK
+        emu.mem.cpu_write(0x600, 0xA9); // LDA #$42
+        emu.mem.cpu_write(0x601, 0x42);
+        emu.mem.cpu_write(0x602, 0x85); // STA $10
+        emu.mem.cpu_write(0x603, 0x10);
+        emu.mem.cpu_write(0x604, 0xEA); // NOP (good save point)
+        emu.mem.cpu_write(0x605, 0xEA); // NOP
+        emu.mem.cpu_write(0x606, 0x00); // BRK
+
+        // Run past the STA, up to the first NOP
+        for _ in 0..20 {
+            emu.cycle();
+        }
+        assert_eq!(emu.cpu.a, 0x42);
+        assert_eq!(emu.mem.cpu_read(0x10), 0x42);
+
+        let saved = emu.save_state_to_bytes();
+        let saved_pc = emu.cpu.pc;
+        let saved_a = emu.cpu.a;
+        let saved_cycles = emu.cycles;
+
+        // Mutate state
+        emu.cpu.a = 0x00;
+        emu.cpu.pc = 0x600;
+        emu.mem.cpu_write(0x10, 0x00);
+        emu.cycles = 999999;
+
+        // Verify it's actually changed
+        assert_eq!(emu.cpu.a, 0x00);
+        assert_eq!(emu.mem.cpu_read(0x10), 0x00);
+
+        // Load state
+        emu.load_state_from_bytes(&saved).unwrap();
+
+        // Verify restored
+        assert_eq!(emu.cpu.pc, saved_pc);
+        assert_eq!(emu.cpu.a, saved_a);
+        assert_eq!(emu.cycles, saved_cycles);
+        assert_eq!(emu.mem.cpu_read(0x10), 0x42);
+    }
+
+    #[test]
+    fn test_savestate_roundtrip_nestest() {
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/nestest.nes",
+        )));
+        emu.cpu.pc = 0xc000;
+        emu.cpu.sp = 0xfd;
+        emu.cycles = 7;
+        emu.cpu.cycle = 7;
+        emu.ppu.cycle = 21;
+        emu.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_should_exit_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        // Run for 5000 cycles
+        for _ in 0..5000 {
+            emu.cycle();
+        }
+
+        let saved = emu.save_state_to_bytes();
+        let saved_pc = emu.cpu.pc;
+        let saved_a = emu.cpu.a;
+        let saved_x = emu.cpu.x;
+        let saved_y = emu.cpu.y;
+        let saved_sp = emu.cpu.sp;
+        let saved_status = emu.cpu.status;
+        let saved_ppu_cycle = emu.ppu.cycle;
+        let saved_ppu_scanline = emu.ppu.scanline;
+
+        // Run 5000 more cycles (state diverges)
+        for _ in 0..5000 {
+            emu.cycle();
+        }
+        // State should have diverged
+        assert_ne!(emu.cpu.pc, saved_pc);
+
+        // Restore
+        emu.load_state_from_bytes(&saved).unwrap();
+
+        assert_eq!(emu.cpu.pc, saved_pc);
+        assert_eq!(emu.cpu.a, saved_a);
+        assert_eq!(emu.cpu.x, saved_x);
+        assert_eq!(emu.cpu.y, saved_y);
+        assert_eq!(emu.cpu.sp, saved_sp);
+        assert_eq!(emu.cpu.status, saved_status);
+        assert_eq!(emu.ppu.cycle, saved_ppu_cycle);
+        assert_eq!(emu.ppu.scanline, saved_ppu_scanline);
+
+        // Run the same 5000 cycles again — should produce identical results
+        // (deterministic emulation)
+        for _ in 0..5000 {
+            emu.cycle();
+        }
+
+        // Create a second emulator, run from scratch for 10000 cycles
+        let mut emu2 = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/nestest.nes",
+        )));
+        emu2.cpu.pc = 0xc000;
+        emu2.cpu.sp = 0xfd;
+        emu2.cycles = 7;
+        emu2.cpu.cycle = 7;
+        emu2.ppu.cycle = 21;
+        emu2.cpu.set_status_flag(emu::cpu::INTERRUPT_BIT);
+        emu2.toggle_debug_on_infinite_loop(false);
+        emu2.toggle_should_exit_on_infinite_loop(false);
+        emu2.toggle_quiet_mode(true);
+        emu2.toggle_verbose_mode(false);
+
+        for _ in 0..10000 {
+            emu2.cycle();
+        }
+
+        // Both should be at the same state
+        assert_eq!(emu.cpu.pc, emu2.cpu.pc);
+        assert_eq!(emu.cpu.a, emu2.cpu.a);
+        assert_eq!(emu.cpu.x, emu2.cpu.x);
+        assert_eq!(emu.cpu.y, emu2.cpu.y);
+        assert_eq!(emu.cpu.sp, emu2.cpu.sp);
+        assert_eq!(emu.cpu.status, emu2.cpu.status);
+        assert_eq!(emu.cpu.cycle, emu2.cpu.cycle);
+        assert_eq!(emu.ppu.cycle, emu2.ppu.cycle);
+        assert_eq!(emu.ppu.scanline, emu2.ppu.scanline);
+        assert_eq!(emu.cycles, emu2.cycles);
+    }
+
+    #[test]
+    fn test_savestate_mapper_mismatch() {
+        let mut emu1 = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/nestest.nes",
+        )));
+        emu1.toggle_quiet_mode(true);
+
+        let saved = emu1.save_state_to_bytes();
+
+        // Try to load into an emulator with IdentityMapper (mapper_id 0xFF vs NROM 0)
+        let mut emu2 = emu::Emulator::_new();
+        let result = emu2.load_state_from_bytes(&saved);
+        assert!(result.is_err());
+    }
 }
