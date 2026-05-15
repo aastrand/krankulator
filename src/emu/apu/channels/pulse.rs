@@ -1,4 +1,4 @@
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 pub struct PulseChannel {
     channel_index: u8, // 0 for pulse 1, 1 for pulse 2
@@ -730,8 +730,7 @@ mod tests {
         pulse.envelope_decay_level = 5; // Different from volume
         pulse.generate_output();
         assert_eq!(
-            pulse.output,
-            10.0,
+            pulse.output, 10.0,
             "Should use volume in constant volume mode"
         );
 
@@ -739,8 +738,7 @@ mod tests {
         pulse.constant_volume = false;
         pulse.generate_output();
         assert_eq!(
-            pulse.output,
-            5.0,
+            pulse.output, 5.0,
             "Should use envelope decay level in envelope mode"
         );
     }

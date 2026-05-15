@@ -1,7 +1,7 @@
 use super::super::super::io;
 use super::super::*;
 use super::*;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 const BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: u16 = 4 * 1024;
@@ -395,7 +395,9 @@ impl MemoryMapper for MMC1Mapper {
         }
     }
 
-    fn mapper_id(&self) -> u8 { 1 }
+    fn mapper_id(&self) -> u8 {
+        1
+    }
 
     fn save_state(&self, w: &mut SavestateWriter) {
         let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE) };
@@ -467,7 +469,8 @@ mod tests {
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
         chr_banks.push([0; io::loader::CHR_BANK_SIZE as _]);
 
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(MMC1Mapper::new(0, prg_banks, chr_banks, false, None));
+        let mut mapper: Box<dyn MemoryMapper> =
+            Box::new(MMC1Mapper::new(0, prg_banks, chr_banks, false, None));
 
         assert_eq!(mapper.code_start(), 0x4711);
     }

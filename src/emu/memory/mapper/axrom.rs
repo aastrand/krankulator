@@ -1,6 +1,6 @@
 use super::super::*;
 use super::*;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 /*
 AxROM (Mapper 7)
@@ -234,7 +234,9 @@ impl MemoryMapper for AxROMMapper {
         false
     }
 
-    fn mapper_id(&self) -> u8 { 7 }
+    fn mapper_id(&self) -> u8 {
+        7
+    }
 
     fn save_state(&self, w: &mut SavestateWriter) {
         let ram = unsafe { std::slice::from_raw_parts(self.addr_space_ptr, MAX_RAM_SIZE) };
