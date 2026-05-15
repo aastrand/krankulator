@@ -16,8 +16,6 @@ use std::time::Instant;
 
 use self::audio::{AudioBackend, AudioOutput, SilentAudioOutput};
 
-
-
 #[derive(PartialEq)]
 pub enum CycleState {
     CpuAhead,
@@ -225,14 +223,23 @@ impl Emulator {
         println!("State loaded from {}", path);
     }
 
-    fn load_state_from_reader(&mut self, r: &mut savestate::SavestateReader) -> std::io::Result<()> {
+    fn load_state_from_reader(
+        &mut self,
+        r: &mut savestate::SavestateReader,
+    ) -> std::io::Result<()> {
         self.cpu.load_state(r)?;
         self.ppu.load_state(r)?;
         self.apu.load_state(r)?;
         let mapper_id = r.read_u8()?;
         if mapper_id != self.mem.mapper_id() {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
-                format!("mapper mismatch: save={} current={}", mapper_id, self.mem.mapper_id())));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "mapper mismatch: save={} current={}",
+                    mapper_id,
+                    self.mem.mapper_id()
+                ),
+            ));
         }
         self.mem.load_state(r)?;
         self.cycles = r.read_u64()?;
@@ -315,7 +322,8 @@ impl Emulator {
                 let penultimate = actual_cycles.saturating_sub(2);
                 self.irq_sample_deadline = self.instruction_start_dot + penultimate * 3 + 1;
 
-                if i_flag_before && !self.cpu.interrupt_flag()
+                if i_flag_before
+                    && !self.cpu.interrupt_flag()
                     && (opcode == opcodes::CLI || opcode == opcodes::PLP)
                 {
                     self.irq_inhibit_one = true;
@@ -346,7 +354,9 @@ impl Emulator {
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
         if self.cycles % 1790 == 0 {
-            let result = self.iohandler.poll(&mut *self.mem, &mut self.apu, &mut self.cpu);
+            let result = self
+                .iohandler
+                .poll(&mut *self.mem, &mut self.apu, &mut self.cpu);
             if result.exit {
                 state = CycleState::Exiting;
             }
@@ -483,6 +493,11 @@ impl Emulator {
         }
 
         if self.mem.poll_irq() && self.mem.poll_irq_at_dot(self.irq_sample_deadline) {
+            self.trigger_irq();
+            return true;
+        }
+
+        if self.apu.irq_pending() {
             self.trigger_irq();
             return true;
         }
@@ -1182,7 +1197,8 @@ impl Emulator {
                 } else {
                     self.ppu.get_current_vram_addr()
                 };
-                self.mem.ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
+                self.mem
+                    .ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
             }
         } else if addr == ppu::OAM_DMA {
             if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
@@ -1196,7 +1212,9 @@ impl Emulator {
             }
         } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
             let apu_cycle_tag = if addr == 0x4017 {
-                self.cpu.cycle.wrapping_add(u64::from(self.cpu_bus_cycle_offset))
+                self.cpu
+                    .cycle
+                    .wrapping_add(u64::from(self.cpu_bus_cycle_offset))
             } else {
                 0
             };
