@@ -1,10 +1,12 @@
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 #[derive(Debug, PartialEq)]
 pub enum FrameStep {
     None,
-    Step(u8),
-    /// $4017 reset finished; if `immediate_clock`, clock length/half/quarter once (5-step entry).
+    QuarterFrame,
+    HalfFrame,
+    Irq,
+    IrqHalfFrame,
     Deferred4017Apply { immediate_clock: bool },
 }
 
@@ -13,16 +15,13 @@ pub struct FrameCounter {
     step: u8,
     cycles: u32,
     irq_inhibit: bool,
-    /// CPU cycles remaining until `pending_write` is applied (see nesdev $4017 delay).
     reset_delay: u8,
     pending_write: u8,
+    block_tick: u8,
 }
 
-/// NTSC 4-step sequence: cycles between quarter/half-frame clocks (sum 29829).
-/// Source: nesdev wiki "APU Frame Counter", confirmed against Mesen2 NesApu.cpp.
-const NTSC_4: [u32; 4] = [7457, 7456, 7458, 7458];
-/// NTSC 5-step sequence (sum 37281).
-const NTSC_5: [u32; 5] = [7457, 7456, 7458, 7458, 7452];
+const MODE0_CYCLES: [u32; 6] = [7457, 14913, 22371, 29828, 29829, 29830];
+const MODE1_CYCLES: [u32; 6] = [7457, 14913, 22371, 29829, 37281, 37282];
 
 impl FrameCounter {
     pub fn new() -> Self {
@@ -33,11 +32,10 @@ impl FrameCounter {
             irq_inhibit: false,
             reset_delay: 0,
             pending_write: 0,
+            block_tick: 0,
         }
     }
 
-    /// Call for $4017 writes. `emu_cycle` should match the global 1:1 CPU cycle counter when the
-    /// write is sampled (even CPU cycle → 3 A cycles delay, odd → 4).
     pub fn write(&mut self, value: u8, emu_cycle: u64) {
         self.irq_inhibit = (value >> 6) & 1 != 0;
         self.pending_write = value;
@@ -52,6 +50,7 @@ impl FrameCounter {
                 self.step = 0;
                 self.cycles = 0;
                 if self.mode == 1 {
+                    self.block_tick = 2;
                     return FrameStep::Deferred4017Apply {
                         immediate_clock: true,
                     };
@@ -61,6 +60,12 @@ impl FrameCounter {
             return FrameStep::None;
         }
 
+        if self.block_tick > 0 {
+            self.block_tick -= 1;
+        }
+
+        self.cycles += 1;
+
         match self.mode {
             0 => self.cycle_mode_0(),
             1 => self.cycle_mode_1(),
@@ -69,28 +74,53 @@ impl FrameCounter {
     }
 
     fn cycle_mode_0(&mut self) -> FrameStep {
-        let period = NTSC_4[self.step as usize];
-        self.cycles += 1;
-        if self.cycles < period {
+        if self.step >= 6 {
             return FrameStep::None;
         }
-        self.cycles = 0;
-        self.step = (self.step + 1) % 4;
-        FrameStep::Step(self.step)
+        let target = MODE0_CYCLES[self.step as usize];
+        if self.cycles < target {
+            return FrameStep::None;
+        }
+        let current_step = self.step;
+        self.step += 1;
+        if self.step >= 6 {
+            self.step = 0;
+            self.cycles = 0;
+        }
+        match current_step {
+            0 | 2 => FrameStep::QuarterFrame,
+            1 => FrameStep::HalfFrame,
+            3 => FrameStep::Irq,
+            4 => FrameStep::IrqHalfFrame,
+            5 => FrameStep::Irq,
+            _ => FrameStep::None,
+        }
     }
 
     fn cycle_mode_1(&mut self) -> FrameStep {
-        let period = NTSC_5[self.step as usize];
-        self.cycles += 1;
-        if self.cycles < period {
+        if self.step >= 6 {
             return FrameStep::None;
         }
-        self.cycles = 0;
-        self.step = (self.step + 1) % 5;
-        if self.step == 0 {
-            FrameStep::None
-        } else {
-            FrameStep::Step(self.step)
+        let target = MODE1_CYCLES[self.step as usize];
+        if self.cycles < target {
+            return FrameStep::None;
+        }
+        let current_step = self.step;
+        self.step += 1;
+        if self.step >= 6 {
+            self.step = 0;
+            self.cycles = 0;
+        }
+
+        if self.block_tick > 0 {
+            return FrameStep::None;
+        }
+
+        match current_step {
+            0 | 2 => FrameStep::QuarterFrame,
+            1 => FrameStep::HalfFrame,
+            4 => FrameStep::HalfFrame,
+            _ => FrameStep::None,
         }
     }
 
@@ -99,6 +129,7 @@ impl FrameCounter {
         self.step
     }
 
+    #[cfg(test)]
     pub fn get_mode(&self) -> u8 {
         self.mode
     }
@@ -114,6 +145,7 @@ impl FrameCounter {
         w.write_bool(self.irq_inhibit);
         w.write_u8(self.reset_delay);
         w.write_u8(self.pending_write);
+        w.write_u8(self.block_tick);
     }
 
     pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -123,6 +155,7 @@ impl FrameCounter {
         self.irq_inhibit = r.read_bool()?;
         self.reset_delay = r.read_u8()?;
         self.pending_write = r.read_u8()?;
+        self.block_tick = r.read_u8()?;
         Ok(())
     }
 }
@@ -159,163 +192,164 @@ mod tests {
     }
 
     #[test]
-    fn test_frame_counter_mode_0_cycle() {
+    fn test_mode_0_quarter_frame_at_7457() {
         let mut fc = FrameCounter::new();
         fc.write(0x00, 0);
+        // Consume the 3-cycle reset delay
+        for _ in 0..3 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        // 7456 cycles of nothing
+        for _ in 0..7456 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        // Cycle 7457: quarter frame
+        assert_eq!(fc.cycle(), FrameStep::QuarterFrame);
+    }
+
+    #[test]
+    fn test_mode_0_half_frame_at_14913() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x00, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        for _ in 0..14912 {
+            fc.cycle();
+        }
+        assert_eq!(fc.cycle(), FrameStep::HalfFrame);
+    }
+
+    #[test]
+    fn test_mode_0_irq_window() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x00, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        // Advance to just before the IRQ window
+        for _ in 0..29827 {
+            fc.cycle();
+        }
+        // Cycle 29828: first IRQ
+        assert_eq!(fc.cycle(), FrameStep::Irq);
+        // Cycle 29829: IRQ + half frame
+        assert_eq!(fc.cycle(), FrameStep::IrqHalfFrame);
+        // Cycle 29830: final IRQ, then reset
+        assert_eq!(fc.cycle(), FrameStep::Irq);
+        // Should now be back at start
+        assert_eq!(fc.step, 0);
+        assert_eq!(fc.cycles, 0);
+    }
+
+    #[test]
+    fn test_mode_0_irq_inhibited() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x40, 0); // IRQ inhibit set
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        for _ in 0..29827 {
+            fc.cycle();
+        }
+        // IRQ events still fire (APU decides whether to act on them)
+        assert_eq!(fc.cycle(), FrameStep::Irq);
+        assert_eq!(fc.cycle(), FrameStep::IrqHalfFrame);
+        assert_eq!(fc.cycle(), FrameStep::Irq);
+    }
+
+    #[test]
+    fn test_mode_0_full_cycle() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x00, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        // Full sequence: 29830 cycles
+        let mut events = Vec::new();
+        for _ in 0..29830 {
+            let step = fc.cycle();
+            if step != FrameStep::None {
+                events.push(step);
+            }
+        }
+        assert_eq!(events.len(), 6);
+        assert_eq!(events[0], FrameStep::QuarterFrame); // 7457
+        assert_eq!(events[1], FrameStep::HalfFrame); // 14913
+        assert_eq!(events[2], FrameStep::QuarterFrame); // 22371
+        assert_eq!(events[3], FrameStep::Irq); // 29828
+        assert_eq!(events[4], FrameStep::IrqHalfFrame); // 29829
+        assert_eq!(events[5], FrameStep::Irq); // 29830
+    }
+
+    #[test]
+    fn test_mode_1_immediate_clock() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x80, 0);
         for _ in 0..2 {
             assert_eq!(fc.cycle(), FrameStep::None);
         }
+        assert_eq!(
+            fc.cycle(),
+            FrameStep::Deferred4017Apply {
+                immediate_clock: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_mode_1_full_cycle() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x80, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        let mut events = Vec::new();
+        for _ in 0..37282 {
+            let step = fc.cycle();
+            if step != FrameStep::None {
+                events.push(step);
+            }
+        }
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0], FrameStep::QuarterFrame); // 7457
+        assert_eq!(events[1], FrameStep::HalfFrame); // 14913
+        assert_eq!(events[2], FrameStep::QuarterFrame); // 22371
+        assert_eq!(events[3], FrameStep::HalfFrame); // 37281
+        assert_eq!(fc.step, 0);
+    }
+
+    #[test]
+    fn test_mode_0_wraps_correctly() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x00, 0);
+        for _ in 0..3 {
+            fc.cycle();
+        }
+        // Run through 2 full sequences
+        for _ in 0..29830 * 2 {
+            fc.cycle();
+        }
+        assert_eq!(fc.step, 0);
+        assert_eq!(fc.cycles, 0);
+    }
+
+    #[test]
+    fn test_odd_cycle_write_delay() {
+        let mut fc = FrameCounter::new();
+        fc.write(0x00, 1); // Odd cycle → 4-cycle delay
+        for _ in 0..3 {
+            assert_eq!(fc.cycle(), FrameStep::None);
+        }
+        // 4th cycle: delay expires
         assert_eq!(fc.cycle(), FrameStep::None);
+        // Now counting from 0
         assert_eq!(fc.mode, 0);
-
-        for _ in 0..7456 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(1));
-        assert_eq!(fc.step, 1);
-
-        for _ in 0..7455 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(2));
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(3));
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(0));
         assert_eq!(fc.step, 0);
     }
 
     #[test]
-    fn test_frame_counter_mode_0_irq() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x00, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-
-        for _ in 0..22371 {
-            fc.cycle();
-        }
-        assert_eq!(fc.step, 3);
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(0));
-        assert_eq!(fc.step, 0);
-    }
-
-    #[test]
-    fn test_frame_counter_mode_0_irq_inhibit_still_clocks_step0() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x40, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-
-        for _ in 0..22371 {
-            fc.cycle();
-        }
-        assert_eq!(fc.step, 3);
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(0));
-        assert_eq!(fc.step, 0);
-    }
-
-    #[test]
-    fn test_frame_counter_mode_1_cycle() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x80, 0);
-        for _ in 0..2 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(
-            fc.cycle(),
-            FrameStep::Deferred4017Apply {
-                immediate_clock: true
-            }
-        );
-
-        for _ in 0..7456 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(1));
-
-        for _ in 0..7455 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(2));
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(3));
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(4));
-
-        for _ in 0..7451 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::None);
-        assert_eq!(fc.step, 0);
-    }
-
-    #[test]
-    fn test_frame_counter_mode_1_no_irq() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x80, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        assert_eq!(
-            fc.cycle(),
-            FrameStep::Deferred4017Apply {
-                immediate_clock: true
-            }
-        );
-
-        let mut step_count = 0;
-        for _ in 0..37281 {
-            let result = fc.cycle();
-            if let FrameStep::Step(_) = result {
-                step_count += 1;
-            }
-        }
-        assert_eq!(fc.step, 0);
-        assert_eq!(step_count, 4);
-    }
-
-    #[test]
-    fn test_frame_counter_get_step() {
-        let mut fc = FrameCounter::new();
-
-        fc.write(0x00, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-        for _ in 0..7457 {
-            fc.cycle();
-        }
-        assert_eq!(fc.get_step(), 1);
-    }
-
-    #[test]
-    fn test_frame_counter_get_mode() {
+    fn test_get_mode() {
         let mut fc = FrameCounter::new();
         assert_eq!(fc.get_mode(), 0);
 
@@ -327,56 +361,9 @@ mod tests {
         assert_eq!(fc.get_mode(), 1);
 
         fc.write(0x00, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-        assert_eq!(fc.get_mode(), 0);
-    }
-
-    #[test]
-    fn test_frame_counter_timing_accuracy() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x00, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-
-        for _ in 0..7457 {
-            fc.cycle();
-        }
-        assert_eq!(fc.cycles, 0);
-        assert_eq!(fc.step, 1);
-
-        fc.write(0x00, 0);
-        for _ in 0..2 {
-            fc.cycle();
-        }
-        fc.cycle();
-        for _ in 0..7456 {
-            fc.cycle();
-        }
-        assert_eq!(fc.step, 0);
-    }
-
-    #[test]
-    fn test_frame_counter_mode_1_timing_accuracy() {
-        let mut fc = FrameCounter::new();
-        fc.write(0x80, 0);
         for _ in 0..3 {
             fc.cycle();
         }
-
-        for _ in 0..22371 {
-            fc.cycle();
-        }
-        assert_eq!(fc.step, 3);
-
-        for _ in 0..7457 {
-            assert_eq!(fc.cycle(), FrameStep::None);
-        }
-        assert_eq!(fc.cycle(), FrameStep::Step(4));
-        assert_eq!(fc.cycles, 0);
+        assert_eq!(fc.get_mode(), 0);
     }
 }
