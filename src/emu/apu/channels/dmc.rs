@@ -171,7 +171,7 @@ impl DmcChannel {
         }
         if self.timer_value == 0 {
             self.timer_value = self.timer.wrapping_sub(1);
-            self.clock_output(memory);
+            self.clock_output();
         } else {
             self.timer_value -= 1;
         }
@@ -180,7 +180,7 @@ impl DmcChannel {
         self.generate_output();
     }
 
-    fn clock_output(&mut self, _memory: &mut dyn MemoryMapper) {
+    fn clock_output(&mut self) {
         if self.bits_remaining == 0 {
             self.bits_remaining = 8;
             if self.sample_buffer_empty {
@@ -312,7 +312,7 @@ mod tests {
         // sample buffer loaded for next cycle
         dmc.sample_buffer = 0x01;
         dmc.sample_buffer_empty = false;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         // bit 0 of 0x01 is 1 → +2, then bits_remaining goes to 0, reloads from buffer
         assert_eq!(dmc.output_level, 66);
 
@@ -321,7 +321,7 @@ mod tests {
         dmc.bits_remaining = 1;
         dmc.silence = false;
         dmc.shift_register = 0x80;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         // bit 0 of 0x80 is 0 → -2
         assert_eq!(dmc.output_level, 64);
     }
@@ -453,7 +453,7 @@ mod tests {
         let mut mem = DummyMemory;
 
         // When bits_remaining is 0 and buffer empty → silence, reload to 8, then decrement to 7
-        dmc.clock_output(&mut mem);
+        dmc.clock_output();
         assert!(dmc.silence);
         assert_eq!(dmc.bits_remaining, 7);
 
@@ -463,13 +463,13 @@ mod tests {
         dmc.sample_buffer_empty = true;
         // Drain remaining bits in silence
         for _ in 0..7 {
-            dmc.clock_output(&mut mem);
+            dmc.clock_output();
         }
         // Now the cycle() would have filled the buffer; simulate that
         dmc.sample_buffer = 0xAA;
         dmc.sample_buffer_empty = false;
         // bits_remaining is 0 → new output cycle loads buffer into shift register
-        dmc.clock_output(&mut mem);
+        dmc.clock_output();
         assert!(!dmc.silence);
         assert_eq!(dmc.shift_register, 0xAA >> 1); // shifted once
 
@@ -478,12 +478,12 @@ mod tests {
         dmc.shift_register = 0x01; // bit 0 = 1
         dmc.silence = false;
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut mem);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 66); // +2
 
         dmc.shift_register = 0x02; // bit 0 = 0
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut mem);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 64); // -2
     }
 
@@ -593,14 +593,14 @@ mod tests {
         dmc.shift_register = 0x01;
         dmc.silence = false;
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 126); // 126 > 125, no change
 
         dmc.output_level = 125;
         dmc.shift_register = 0x01;
         dmc.silence = false;
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 127); // 125 + 2 = 127
 
         // Bit 0: should not decrease below 2 → 0
@@ -608,14 +608,14 @@ mod tests {
         dmc.shift_register = 0x00;
         dmc.silence = false;
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 1); // 1 < 2, no change
 
         dmc.output_level = 2;
         dmc.shift_register = 0x00;
         dmc.silence = false;
         dmc.bits_remaining = 2;
-        dmc.clock_output(&mut DummyMemory);
+        dmc.clock_output();
         assert_eq!(dmc.output_level, 0); // 2 - 2 = 0
     }
 
