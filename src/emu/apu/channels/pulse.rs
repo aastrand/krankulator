@@ -134,7 +134,11 @@ impl PulseChannel {
         self.timer_value = r.read_u16()?;
         self.length_counter = r.read_u8()?;
         self.length_counter_halt = r.read_bool()?;
-        self.prev_length_counter_halt = r.read_bool()?;
+        if r.version() >= 3 {
+            self.prev_length_counter_halt = r.read_bool()?;
+        } else {
+            self.prev_length_counter_halt = self.length_counter_halt;
+        }
         self.volume = r.read_u8()?;
         self.constant_volume = r.read_bool()?;
         self.envelope_start = r.read_bool()?;

@@ -560,7 +560,11 @@ impl APU {
         self.cycles_since_sample = r.read_f64()?;
         self.sample_index = r.read_u32()? as usize;
         self.audio_filter.load_state(r)?;
-        self.frame_irq_since_dot = r.read_u64()?;
+        if r.version() >= 3 {
+            self.frame_irq_since_dot = r.read_u64()?;
+        } else {
+            self.frame_irq_since_dot = if self.status & 0x40 != 0 { 0 } else { u64::MAX };
+        }
         Ok(())
     }
 

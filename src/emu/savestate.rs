@@ -55,6 +55,7 @@ impl SavestateWriter {
 pub struct SavestateReader<'a> {
     data: &'a [u8],
     pos: usize,
+    version: u8,
 }
 
 impl<'a> SavestateReader<'a> {
@@ -71,13 +72,25 @@ impl<'a> SavestateReader<'a> {
                 "bad savestate magic",
             ));
         }
-        if data[4] != VERSION {
+        let version = data[4];
+        if version > VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("savestate version {} != expected {}", data[4], VERSION),
+                format!(
+                    "savestate version {} is newer than supported {}",
+                    version, VERSION
+                ),
             ));
         }
-        Ok(Self { data, pos: 5 })
+        Ok(Self {
+            data,
+            pos: 5,
+            version,
+        })
+    }
+
+    pub fn version(&self) -> u8 {
+        self.version
     }
 
     fn need(&self, n: usize) -> io::Result<()> {
@@ -207,11 +220,20 @@ mod tests {
     }
 
     #[test]
-    fn test_bad_version() {
+    fn test_future_version_rejected() {
         let mut data = Vec::new();
         data.extend_from_slice(MAGIC);
         data.push(VERSION + 1);
         assert!(SavestateReader::new(&data).is_err());
+    }
+
+    #[test]
+    fn test_older_version_accepted() {
+        let mut data = Vec::new();
+        data.extend_from_slice(MAGIC);
+        data.push(1);
+        let r = SavestateReader::new(&data).unwrap();
+        assert_eq!(r.version(), 1);
     }
 
     #[test]
