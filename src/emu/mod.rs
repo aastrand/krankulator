@@ -340,7 +340,7 @@ impl Emulator {
         self.master_clock = target_dot;
 
         // Cycle the APU
-        self.apu.cycle(&mut *self.mem);
+        self.apu.cycle(self.master_clock, &mut *self.mem);
         let samples = self.apu.get_audio_samples();
         if !samples.is_empty() {
             self.audio.push_samples(samples);
@@ -497,7 +497,12 @@ impl Emulator {
             return true;
         }
 
-        if self.apu.irq_pending() {
+        if self.apu.frame_irq_at_dot(self.irq_sample_deadline) {
+            self.trigger_irq();
+            return true;
+        }
+
+        if self.apu.dmc_irq_pending() {
             self.trigger_irq();
             return true;
         }

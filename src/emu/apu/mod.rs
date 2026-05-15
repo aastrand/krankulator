@@ -101,6 +101,7 @@ pub struct APU {
 
     // Status
     status: u8,
+    frame_irq_since_dot: u64,
     enabled_channels: u8,
     // Debug override mute independent of $4015 (bit0..bit4: p1,p2,tri,noise,dmc)
     mute_mask: u8,
@@ -123,6 +124,7 @@ impl APU {
             cycles_since_sample: 0.0,
 
             status: 0,
+            frame_irq_since_dot: u64::MAX,
             enabled_channels: 0,
             mute_mask: 0,
             audio_filter: AudioFilter::new(SAMPLE_RATE),
@@ -141,6 +143,7 @@ impl APU {
         self.sample_index = 0;
         self.cycles_since_sample = 0.0;
         self.status = 0;
+        self.frame_irq_since_dot = u64::MAX;
         self.enabled_channels = 0;
         self.mute_mask = 0;
         self.audio_filter.reset();
@@ -391,7 +394,7 @@ impl APU {
         }
     }
 
-    pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
+    pub fn cycle(&mut self, dot: u64, memory: &mut dyn crate::emu::memory::MemoryMapper) {
         let frame_step = self.frame_counter.cycle();
 
         match frame_step {
@@ -409,11 +412,19 @@ impl APU {
             FrameStep::Irq => {
                 if !self.frame_counter.irq_inhibit() {
                     self.status |= 0x40;
+                    // +7 dots: APU cycle runs after master_clock advances, so compensate
+                    // for the delay between assertion and CPU penultimate-cycle sampling.
+                    if self.frame_irq_since_dot == u64::MAX {
+                        self.frame_irq_since_dot = dot + 7;
+                    }
                 }
             }
             FrameStep::IrqHalfFrame => {
                 if !self.frame_counter.irq_inhibit() {
                     self.status |= 0x40;
+                    if self.frame_irq_since_dot == u64::MAX {
+                        self.frame_irq_since_dot = dot + 7;
+                    }
                 }
                 self.clock_half_frame();
             }
@@ -426,6 +437,9 @@ impl APU {
         self.triangle.cycle();
         self.noise.cycle();
         self.dmc.cycle(memory);
+
+        self.pulse1.end_cycle();
+        self.pulse2.end_cycle();
 
         self.cycles_since_sample += 1.0;
         if self.cycles_since_sample >= CYCLES_PER_SAMPLE {
@@ -530,6 +544,7 @@ impl APU {
         w.write_f64(self.cycles_since_sample);
         w.write_u32(self.sample_index as u32);
         self.audio_filter.save_state(w);
+        w.write_u64(self.frame_irq_since_dot);
     }
 
     pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -545,16 +560,22 @@ impl APU {
         self.cycles_since_sample = r.read_f64()?;
         self.sample_index = r.read_u32()? as usize;
         self.audio_filter.load_state(r)?;
+        self.frame_irq_since_dot = r.read_u64()?;
         Ok(())
     }
 
-    pub fn irq_pending(&self) -> bool {
-        (self.status & 0x40 != 0) || self.dmc.get_irq_pending()
+    pub fn frame_irq_at_dot(&self, deadline_dot: u64) -> bool {
+        self.frame_irq_since_dot != u64::MAX && self.frame_irq_since_dot < deadline_dot
+    }
+
+    pub fn dmc_irq_pending(&self) -> bool {
+        self.dmc.get_irq_pending()
     }
 
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
-        self.status &= 0xBF; // Clear frame IRQ bit
+        self.status &= 0xBF;
+        self.frame_irq_since_dot = u64::MAX;
     }
 }
 
@@ -620,7 +641,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should produce some output
@@ -641,7 +662,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should produce some output
@@ -663,7 +684,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should produce some output
@@ -685,7 +706,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should produce some output
@@ -708,7 +729,7 @@ mod tests {
 
         // Cycle to generate output
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should produce some output
@@ -754,20 +775,20 @@ mod tests {
         apu.write(0x4017, 0x00, 0);
         assert_eq!(apu.frame_counter.get_mode(), 0);
         for _ in 0..3 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
         assert_eq!(apu.frame_counter.get_mode(), 0);
 
         apu.write(0x4017, 0x80, 0);
         assert_eq!(apu.frame_counter.get_mode(), 0);
         for _ in 0..3 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
         assert_eq!(apu.frame_counter.get_mode(), 1);
 
         apu.write(0x4017, 0x40, 0);
         for _ in 0..3 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
         assert_eq!(apu.frame_counter.get_mode(), 0);
         assert!(apu.frame_counter.irq_inhibit());
@@ -779,7 +800,7 @@ mod tests {
 
         // Test basic cycling
         for _ in 0..100 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should have advanced cycles_since_sample
@@ -793,7 +814,7 @@ mod tests {
         // Set up frame counter mode 0
         apu.write(0x4017, 0x00, 0);
         for _ in 0..3 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Enable triangle channel
@@ -805,7 +826,7 @@ mod tests {
 
         // Cycle through frame counter steps
         for _ in 0..7457 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Should have advanced frame counter step
@@ -837,7 +858,7 @@ mod tests {
         apu.write(0x4003, 0x00, 0); // Timer high
 
         for _ in 0..CYCLES_PER_SAMPLE as u32 + 1 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         assert_eq!(apu.sample_index, 1);
@@ -848,7 +869,7 @@ mod tests {
         let mut apu = APU::new();
 
         for _ in 0..(CYCLES_PER_SAMPLE * 5.0) as u32 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Get samples
@@ -886,7 +907,7 @@ mod tests {
         // Set up frame counter mode 0
         apu.write(0x4017, 0x00, 0);
         for _ in 0..3 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Enable pulse1 and set envelope
@@ -895,7 +916,7 @@ mod tests {
 
         // Full mode 0 sequence is 29830 cycles
         for _ in 0..29830 {
-            apu.cycle(&mut DummyMemory);
+            apu.cycle(0, &mut DummyMemory);
         }
 
         // Envelope should have been clocked multiple times
@@ -992,5 +1013,77 @@ mod tests {
     #[test]
     fn test_blargg_apu_dmc_rates() {
         run_blargg_apu_rom("input/nes/apu/8-dmc_rates.nes", "8-dmc_rates");
+    }
+
+    fn run_blargg_apu_2005_rom(rom_path: &str) {
+        use crate::emu;
+        use crate::emu::io::loader;
+
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        let result = emu.mem.cpu_read(0x00F0);
+        assert_eq!(1, result, "{} failed with result code {}", rom_path, result);
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_ctr() {
+        run_blargg_apu_2005_rom("input/nes/apu/01.len_ctr.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_table() {
+        run_blargg_apu_2005_rom("input/nes/apu/02.len_table.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_irq_flag() {
+        run_blargg_apu_2005_rom("input/nes/apu/03.irq_flag.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_clock_jitter() {
+        run_blargg_apu_2005_rom("input/nes/apu/04.clock_jitter.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_timing_mode0() {
+        run_blargg_apu_2005_rom("input/nes/apu/05.len_timing_mode0.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_timing_mode1() {
+        run_blargg_apu_2005_rom("input/nes/apu/06.len_timing_mode1.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_irq_flag_timing() {
+        run_blargg_apu_2005_rom("input/nes/apu/07.irq_flag_timing.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_irq_timing() {
+        run_blargg_apu_2005_rom("input/nes/apu/08.irq_timing.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_reset_timing() {
+        run_blargg_apu_2005_rom("input/nes/apu/09.reset_timing.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_halt_timing() {
+        run_blargg_apu_2005_rom("input/nes/apu/10.len_halt_timing.nes");
+    }
+
+    #[test]
+    fn test_blargg_apu_2005_len_reload_timing() {
+        run_blargg_apu_2005_rom("input/nes/apu/11.len_reload_timing.nes");
     }
 }

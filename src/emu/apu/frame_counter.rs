@@ -28,7 +28,7 @@ impl FrameCounter {
         Self {
             mode: 0,
             step: 0,
-            cycles: 0,
+            cycles: 10, // hardware powers on as if $4017=$00 written ~10 clocks before first instruction
             irq_inhibit: false,
             reset_delay: 0,
             pending_write: 0,
@@ -169,7 +169,7 @@ mod tests {
         let fc = FrameCounter::new();
         assert_eq!(fc.mode, 0);
         assert_eq!(fc.step, 0);
-        assert_eq!(fc.cycles, 0);
+        assert_eq!(fc.cycles, 10);
         assert!(!fc.irq_inhibit);
     }
 

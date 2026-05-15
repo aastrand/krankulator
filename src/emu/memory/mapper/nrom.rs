@@ -161,6 +161,7 @@ impl MemoryMapper for NROMMapper {
         }
         let page = addr_to_page(addr);
         match page {
+            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as isize) = value },
             0x20 => {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as isize) = value }

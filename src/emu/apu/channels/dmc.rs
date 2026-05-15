@@ -450,7 +450,6 @@ mod tests {
     #[test]
     fn test_dmc_channel_clock_output() {
         let mut dmc = DmcChannel::new();
-        let mut mem = DummyMemory;
 
         // When bits_remaining is 0 and buffer empty → silence, reload to 8, then decrement to 7
         dmc.clock_output();

@@ -12,6 +12,9 @@ pub struct PulseChannel {
 
     length_counter: u8,
     length_counter_halt: bool,
+    prev_length_counter_halt: bool,
+    length_reload_pending: bool,
+    length_before_reload: u8,
 
     volume: u8,
     constant_volume: bool,
@@ -47,6 +50,9 @@ impl PulseChannel {
 
             length_counter: 0,
             length_counter_halt: false,
+            prev_length_counter_halt: false,
+            length_reload_pending: false,
+            length_before_reload: 0,
 
             volume: 0,
             constant_volume: false,
@@ -76,6 +82,9 @@ impl PulseChannel {
         self.timer_value = 0;
         self.length_counter = 0;
         self.length_counter_halt = false;
+        self.prev_length_counter_halt = false;
+        self.length_reload_pending = false;
+        self.length_before_reload = 0;
         self.volume = 0;
         self.constant_volume = false;
         self.envelope_start = false;
@@ -100,6 +109,7 @@ impl PulseChannel {
         w.write_u16(self.timer_value);
         w.write_u8(self.length_counter);
         w.write_bool(self.length_counter_halt);
+        w.write_bool(self.prev_length_counter_halt);
         w.write_u8(self.volume);
         w.write_bool(self.constant_volume);
         w.write_bool(self.envelope_start);
@@ -124,6 +134,7 @@ impl PulseChannel {
         self.timer_value = r.read_u16()?;
         self.length_counter = r.read_u8()?;
         self.length_counter_halt = r.read_bool()?;
+        self.prev_length_counter_halt = r.read_bool()?;
         self.volume = r.read_u8()?;
         self.constant_volume = r.read_bool()?;
         self.envelope_start = r.read_bool()?;
@@ -160,7 +171,6 @@ impl PulseChannel {
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
-        // Timer uses bits 0-2, length counter uses bits 3-7
         self.timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
         self.timer_value = self.timer;
 
@@ -168,11 +178,12 @@ impl PulseChannel {
         let length_value = LENGTH_COUNTER_TABLE[length_index];
 
         if self.enabled {
+            self.length_before_reload = self.length_counter;
             self.length_counter = length_value;
+            self.length_reload_pending = true;
         }
 
         self.duty_step = 0;
-        // Start envelope when timer high is written
         self.envelope_start = true;
     }
 
@@ -284,14 +295,24 @@ impl PulseChannel {
     }
 
     pub fn clock_length_counter(&mut self) {
-        if !self.length_counter_halt && self.length_counter > 0 {
-            /*println!(
-                "  Pulse1 clock_length_counter: before={}, after={}",
-                self.length_counter,
-                self.length_counter - 1
-            );*/
+        if self.length_reload_pending {
+            self.length_reload_pending = false;
+            if self.length_before_reload > 0 {
+                self.length_counter = self.length_before_reload;
+                if !self.prev_length_counter_halt && self.length_counter > 0 {
+                    self.length_counter -= 1;
+                }
+            }
+            return;
+        }
+        if !self.prev_length_counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
+    }
+
+    pub fn end_cycle(&mut self) {
+        self.prev_length_counter_halt = self.length_counter_halt;
+        self.length_reload_pending = false;
     }
 
     pub fn get_length_counter(&self) -> u8 {
@@ -490,8 +511,8 @@ mod tests {
         pulse.clock_length_counter();
         assert_eq!(pulse.length_counter, 9);
 
-        // Test halt behavior
-        pulse.length_counter_halt = true;
+        // Test halt behavior (uses prev_length_counter_halt for 1-cycle delay)
+        pulse.prev_length_counter_halt = true;
         pulse.clock_length_counter();
         assert_eq!(pulse.length_counter, 9); // Should not decrement
 
