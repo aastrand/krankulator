@@ -2,13 +2,11 @@
 
 A cycle-stepped NES emulator written in Rust.
 
-![emulator screenshot](emulator.png)
+Started as a learning-Rust project — a bare 6502 emulator iterating against the [Klaus2m5](https://github.com/Klaus2m5/6502_65C02_functional_tests) functional test suite. NES support grew from there: naive VBlank rendering and input, validated against Kevin Horton's [nestest](http://www.qmtpro.com/~nes/misc/) log; then mapper support for real cartridges; then APU audio and cycle-accurate PPU rendering in the AI-assisted era.
 
-Started as a learning-Rust project — a bare 6502 emulator iterating against the
-[Klaus2m5](https://github.com/Klaus2m5/6502_65C02_functional_tests) functional test
-suite. NES support grew from there: naive VBlank rendering and input, validated against
-Kevin Horton's [nestest](http://www.qmtpro.com/~nes/misc/) log; then mapper support for
-real cartridges; then APU audio and cycle-accurate PPU rendering in the AI-assisted era.
+![emulator screenshot 1](screenshots/emulator.png)
+![emulator screenshot 2](screenshots/emulator2.png)
+![emulator screenshot 3](screenshots/emulator3.png)
 
 ## Features
 
