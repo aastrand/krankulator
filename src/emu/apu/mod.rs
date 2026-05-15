@@ -82,7 +82,7 @@ impl AudioFilter {
 }
 
 use crate::emu::apu::frame_counter::FrameStep;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
 use frame_counter::FrameCounter;
 
@@ -393,46 +393,29 @@ impl APU {
 
     pub fn cycle(&mut self, memory: &mut dyn crate::emu::memory::MemoryMapper) {
         let frame_step = self.frame_counter.cycle();
-        let mode = self.frame_counter.get_mode();
 
         match frame_step {
             FrameStep::Deferred4017Apply { immediate_clock } => {
                 if immediate_clock {
-                    self.pulse1.clock_length_counter();
-                    self.pulse2.clock_length_counter();
-                    self.triangle.clock_length_counter();
-                    self.noise.clock_length_counter();
-
-                    self.pulse1.clock_envelope();
-                    self.pulse2.clock_envelope();
-                    self.noise.clock_envelope();
-
-                    self.triangle.clock_linear_counter();
+                    self.clock_half_frame();
                 }
             }
-            FrameStep::Step(step) => {
-                // Clock envelopes and linear counter on steps 0, 1, 2, 3 (both modes)
-                if step <= 3 {
-                    self.pulse1.clock_envelope();
-                    self.pulse2.clock_envelope();
-                    self.noise.clock_envelope();
-                    self.triangle.clock_linear_counter();
-                }
-                // Clock length counters and sweep on half-frame edges
-                if (mode == 0 && (step == 0 || step == 2))
-                    || (mode == 1 && (step == 1 || step == 3))
-                {
-                    self.pulse1.clock_length_counter();
-                    self.pulse2.clock_length_counter();
-                    self.triangle.clock_length_counter();
-                    self.noise.clock_length_counter();
-
-                    self.pulse1.clock_sweep();
-                    self.pulse2.clock_sweep();
-                }
-                if mode == 0 && step == 0 && !self.frame_counter.irq_inhibit() {
+            FrameStep::QuarterFrame => {
+                self.clock_quarter_frame();
+            }
+            FrameStep::HalfFrame => {
+                self.clock_half_frame();
+            }
+            FrameStep::Irq => {
+                if !self.frame_counter.irq_inhibit() {
                     self.status |= 0x40;
                 }
+            }
+            FrameStep::IrqHalfFrame => {
+                if !self.frame_counter.irq_inhibit() {
+                    self.status |= 0x40;
+                }
+                self.clock_half_frame();
             }
             FrameStep::None => {}
         }
@@ -449,6 +432,23 @@ impl APU {
             self.cycles_since_sample -= CYCLES_PER_SAMPLE;
             self.generate_sample();
         }
+    }
+
+    fn clock_quarter_frame(&mut self) {
+        self.pulse1.clock_envelope();
+        self.pulse2.clock_envelope();
+        self.noise.clock_envelope();
+        self.triangle.clock_linear_counter();
+    }
+
+    fn clock_half_frame(&mut self) {
+        self.clock_quarter_frame();
+        self.pulse1.clock_length_counter();
+        self.pulse2.clock_length_counter();
+        self.triangle.clock_length_counter();
+        self.noise.clock_length_counter();
+        self.pulse1.clock_sweep();
+        self.pulse2.clock_sweep();
     }
 
     fn generate_sample(&mut self) {
@@ -548,6 +548,10 @@ impl APU {
         Ok(())
     }
 
+    pub fn irq_pending(&self) -> bool {
+        (self.status & 0x40 != 0) || self.dmc.get_irq_pending()
+    }
+
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
         self.status &= 0xBF; // Clear frame IRQ bit
@@ -609,7 +613,7 @@ mod tests {
 
         // Test pulse1 control
         apu.write(0x4000, 0x3F, 0); // Volume 15, constant volume
-                                 // Test by enabling and checking output behavior
+                                    // Test by enabling and checking output behavior
         apu.write(0x4015, 0x01, 0); // Enable pulse1
         apu.write(0x4002, 0x10, 0); // Set timer low
         apu.write(0x4003, 0x00, 0); // Set timer high
@@ -630,7 +634,7 @@ mod tests {
 
         // Test pulse2 control
         apu.write(0x4004, 0x3F, 0); // Volume 15, constant volume
-                                 // Test by enabling and checking output behavior
+                                    // Test by enabling and checking output behavior
         apu.write(0x4015, 0x02, 0); // Enable pulse2
         apu.write(0x4006, 0x10, 0); // Set timer low
         apu.write(0x4007, 0x00, 0); // Set timer high
@@ -889,8 +893,8 @@ mod tests {
         apu.write(0x4015, 0x01, 0);
         apu.write(0x4000, 0x20, 0); // Volume 0, envelope enabled
 
-        // Cycle through frame counter steps 0, 1, 2, 3 (should clock envelope)
-        for _ in 0..29829 {
+        // Full mode 0 sequence is 29830 cycles
+        for _ in 0..29830 {
             apu.cycle(&mut DummyMemory);
         }
 
@@ -927,5 +931,66 @@ mod tests {
         apu.dmc.set_enabled(false);
         let status = apu.read(0x4015);
         assert_eq!(status & 0x1F, 0x00); // All channels inactive
+    }
+
+    fn run_blargg_apu_rom(rom_path: &str, test_name: &str) {
+        use crate::emu;
+        use crate::emu::io::loader;
+        use crate::util::get_status_str;
+
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        let expected = format!("\n{}\n\nPassed\n", test_name);
+        let buf = get_status_str(&mut emu, 0x6004, 200);
+        let status = emu.mem.cpu_read(0x6000);
+        assert_eq!(0, status, "test status 0x{:02X}: {}", status, buf.trim());
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
+    fn test_blargg_apu_len_ctr() {
+        run_blargg_apu_rom("input/nes/apu/1-len_ctr.nes", "1-len_ctr");
+    }
+
+    #[test]
+    fn test_blargg_apu_len_table() {
+        run_blargg_apu_rom("input/nes/apu/2-len_table.nes", "2-len_table");
+    }
+
+    #[test]
+    fn test_blargg_apu_irq_flag() {
+        run_blargg_apu_rom("input/nes/apu/3-irq_flag.nes", "3-irq_flag");
+    }
+
+    #[test]
+    fn test_blargg_apu_jitter() {
+        run_blargg_apu_rom("input/nes/apu/4-jitter.nes", "4-jitter");
+    }
+
+    #[test]
+    fn test_blargg_apu_len_timing() {
+        run_blargg_apu_rom("input/nes/apu/5-len_timing.nes", "5-len_timing");
+    }
+
+    #[test]
+    fn test_blargg_apu_irq_flag_timing() {
+        run_blargg_apu_rom("input/nes/apu/6-irq_flag_timing.nes", "6-irq_flag_timing");
+    }
+
+    #[test]
+    fn test_blargg_apu_dmc_basics() {
+        run_blargg_apu_rom("input/nes/apu/7-dmc_basics.nes", "7-dmc_basics");
+    }
+
+    #[test]
+    fn test_blargg_apu_dmc_rates() {
+        run_blargg_apu_rom("input/nes/apu/8-dmc_rates.nes", "8-dmc_rates");
     }
 }

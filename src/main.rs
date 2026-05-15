@@ -292,6 +292,7 @@ mod tests {
             "input/bin/6502_functional_test.bin",
         )));
         emu.toggle_should_trigger_nmi(false);
+        emu.apu.write(0x4017, 0x40, 0);
         emu.toggle_debug_on_infinite_loop(false);
         emu.toggle_quiet_mode(true);
         emu.toggle_verbose_mode(false);
@@ -760,216 +761,6 @@ mod tests {
     }*/
 
     #[test]
-    fn test_nes_apu_len_ctr() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/1-len_ctr.nes",
-        )));
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n1-len_ctr\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    #[test]
-    fn test_nes_apu_len_table() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/2-len_table.nes",
-        )));
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n2-len_table\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    #[test]
-    fn test_nes_apu_irq_flag() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/3-irq_flag.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n3-irq_flag\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /// Blargg `4-jitter.nes` — ignored: $4017 write-to-frame-alignment still off vs hardware.
-    #[test]
-    #[ignore]
-    fn test_nes_apu_jitter() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/4-jitter.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n4-jitter\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /// Blargg `5-len_timing.nes` — ignored: depends on correct frame half-step clocking.
-    #[test]
-    #[ignore]
-    fn test_nes_apu_len_timing() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/5-len_timing.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n5-len_timing\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /// Blargg `6-irq_flag_timing.nes` — ignored: frame IRQ flag set/clear timing.
-    #[test]
-    #[ignore]
-    fn test_nes_apu_irq_flag_timing() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/6-irq_flag_timing.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n6-irq_flag_timing\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /// Blargg `7-dmc_basics.nes` — ignored: DMC DMA/sample unit timing.
-    #[test]
-    #[ignore]
-    fn test_nes_apu_dmc_basics() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/7-dmc_basics.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n7-dmc_basics\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    /// Blargg `8-dmc_rates.nes` — ignored: DMC rate table / timer edges.
-    #[test]
-    #[ignore]
-    fn test_nes_apu_dmc_rates() {
-        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/apu/8-dmc_rates.nes",
-        )));
-
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
-
-        emu.run();
-
-        let expected = String::from("\n8-dmc_rates\n\nPassed\n");
-        let buf = get_status_str(&mut emu, 0x6004, expected.len());
-
-        println!("{}", buf);
-        println!("status: {:02X}", emu.mem.cpu_read(0x6000));
-
-        assert_eq!(0, emu.mem.cpu_read(0x6000));
-        assert_eq!(expected, buf);
-    }
-
-    #[test]
     fn test_savestate_roundtrip_simple() {
         let mut emu = emu::Emulator::_new();
         emu.toggle_should_exit_on_infinite_loop(false);
@@ -1019,9 +810,8 @@ mod tests {
 
     #[test]
     fn test_savestate_roundtrip_nestest() {
-        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/nestest.nes",
-        )));
+        let mut emu =
+            emu::Emulator::new_headless(loader::load_nes(&String::from("input/nes/nestest.nes")));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
@@ -1074,9 +864,8 @@ mod tests {
         }
 
         // Create a second emulator, run from scratch for 10000 cycles
-        let mut emu2 = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/nestest.nes",
-        )));
+        let mut emu2 =
+            emu::Emulator::new_headless(loader::load_nes(&String::from("input/nes/nestest.nes")));
         emu2.cpu.pc = 0xc000;
         emu2.cpu.sp = 0xfd;
         emu2.cycles = 7;
@@ -1107,9 +896,8 @@ mod tests {
 
     #[test]
     fn test_savestate_mapper_mismatch() {
-        let mut emu1 = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            "input/nes/nestest.nes",
-        )));
+        let mut emu1 =
+            emu::Emulator::new_headless(loader::load_nes(&String::from("input/nes/nestest.nes")));
         emu1.toggle_quiet_mode(true);
 
         let saved = emu1.save_state_to_bytes();
