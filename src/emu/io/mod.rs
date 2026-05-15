@@ -19,7 +19,6 @@ use winit::{
 };
 
 use super::apu;
-use super::cpu;
 use super::gfx;
 use super::memory;
 
@@ -29,17 +28,13 @@ pub struct PollResult {
     pub save_state: bool,
     pub load_state: bool,
     pub cycle_slot: bool,
+    pub reset: bool,
 }
 
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
-    fn poll(
-        &mut self,
-        mem: &mut dyn memory::MemoryMapper,
-        apu: &mut apu::APU,
-        cpu: &mut cpu::Cpu,
-    ) -> PollResult;
+    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult;
     fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
 }
@@ -56,12 +51,7 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     #[allow(unused_variables)]
-    fn poll(
-        &mut self,
-        _mem: &mut dyn memory::MemoryMapper,
-        _apu: &mut apu::APU,
-        _cpu: &mut cpu::Cpu,
-    ) -> PollResult {
+    fn poll(&mut self, _mem: &mut dyn memory::MemoryMapper, _apu: &mut apu::APU) -> PollResult {
         PollResult::default()
     }
 
@@ -145,12 +135,12 @@ struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
     mem: &'a mut dyn memory::MemoryMapper,
     apu: &'a mut apu::APU,
-    cpu: &'a mut cpu::Cpu,
     muted: &'a mut bool,
     exit: bool,
     save_state: bool,
     load_state: bool,
     cycle_slot: bool,
+    reset: bool,
 }
 
 impl ApplicationHandler for PollHandler<'_> {
@@ -186,8 +176,7 @@ impl ApplicationHandler for PollHandler<'_> {
                         }
                         KeyCode::KeyR => {
                             if pressed {
-                                self.cpu.pc = self.mem.get_16b_addr(memory::RESET_TARGET_ADDR);
-                                self.apu.reset();
+                                self.reset = true;
                             }
                         }
                         KeyCode::KeyS => {
@@ -312,24 +301,19 @@ impl IOHandler for WinitPixelsIOHandler {
         }
     }
 
-    fn poll(
-        &mut self,
-        mem: &mut dyn memory::MemoryMapper,
-        apu: &mut apu::APU,
-        cpu: &mut cpu::Cpu,
-    ) -> PollResult {
+    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult {
         let mut event_loop = self.event_loop.take().unwrap();
 
         let mut handler = PollHandler {
             pixels: self.pixels.as_mut().unwrap(),
             mem,
             apu,
-            cpu,
             muted: &mut self.muted,
             exit: false,
             save_state: false,
             load_state: false,
             cycle_slot: false,
+            reset: false,
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
@@ -338,6 +322,7 @@ impl IOHandler for WinitPixelsIOHandler {
             save_state: handler.save_state,
             load_state: handler.load_state,
             cycle_slot: handler.cycle_slot,
+            reset: handler.reset,
         };
 
         self.event_loop = Some(event_loop);

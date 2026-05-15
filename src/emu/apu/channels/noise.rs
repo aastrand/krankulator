@@ -142,15 +142,10 @@ impl NoiseChannel {
         if self.timer_value == 0 {
             self.timer_value = self.timer;
             self.clock_shift_register();
-            // Only generate output when the shift register changes
-            self.generate_output();
         } else {
             self.timer_value -= 1;
         }
-        // Ensure immediate silence when disabled or length counter is zero
-        if !self.enabled || self.length_counter == 0 {
-            self.output = 0.0;
-        }
+        self.generate_output();
     }
 
     fn clock_shift_register(&mut self) {
