@@ -11,9 +11,7 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
     - name: Update dependencies
@@ -24,3 +22,20 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+  mixer-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Update dependencies
+      run: sudo apt-get update
+    - name: Install dependencies
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    - name: Set up Python venv
+      run: cd scripts && uv venv && uv pip install -r requirements.txt
+    - name: Build
+      run: cargo build --release
+    - name: Run mixer tests
+      run: cargo test --release test_apu_mixer -- --ignored --nocapture --test-threads=4
