@@ -50,6 +50,7 @@ pub struct Emulator {
     pub master_clock: u64,
     instruction_start_dot: u64,
     cpu_bus_cycle_offset: u8,
+    cpu_open_bus: u8,
     irq_sample_deadline: u64,
     irq_inhibit_one: bool,
 
@@ -62,6 +63,7 @@ pub struct Emulator {
     savestate_slot: u8,
     stats_base_cycles: u64,
     stats_base_frames: u64,
+    last_rendered_frame: u64,
 }
 
 impl Emulator {
@@ -118,6 +120,7 @@ impl Emulator {
             master_clock: 0,
             instruction_start_dot: 0,
             cpu_bus_cycle_offset: 0,
+            cpu_open_bus: 0,
             irq_sample_deadline: 0,
             irq_inhibit_one: false,
             should_trigger_nmi: false,
@@ -129,6 +132,7 @@ impl Emulator {
             savestate_slot: 0,
             stats_base_cycles: 0,
             stats_base_frames: 0,
+            last_rendered_frame: 0,
         }
     }
 
@@ -349,7 +353,10 @@ impl Emulator {
         if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
+        }
 
+        if self.ppu.frames > self.last_rendered_frame {
+            self.last_rendered_frame = self.ppu.frames;
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
@@ -520,17 +527,18 @@ impl Emulator {
                 self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
             }
             v
-        } else if addr == ppu::OAM_DMA {
-            self.ppu.read(addr, &*self.mem)
         } else if addr == 0x4015 {
             self.apu.read(addr)
         } else if addr == 0x4016 {
-            self.mem.controllers()[0].poll()
+            (self.cpu_open_bus & 0xE0) | (self.mem.controllers()[0].poll() & 0x1F)
         } else if addr == 0x4017 {
-            self.mem.controllers()[1].poll()
+            (self.cpu_open_bus & 0xE0) | (self.mem.controllers()[1].poll() & 0x1F)
+        } else if (0x4000..0x4015).contains(&addr) || (0x4018..0x4100).contains(&addr) {
+            self.cpu_open_bus
         } else {
             self.mem.cpu_read(addr)
         };
+        self.cpu_open_bus = value;
         self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
         value
     }
@@ -1176,6 +1184,7 @@ impl Emulator {
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
+        self.cpu_open_bus = value;
         self.sync_for_cpu_access(addr, true);
 
         let ppu_reg = self.ppu_reg_cpu_addr(addr);
@@ -1391,19 +1400,23 @@ impl Emulator {
     }
 
     fn get_16b_addr(&mut self, offset: u16) -> u16 {
-        memory::to_16b_addr(self.cpu_read(offset.wrapping_add(1)), self.cpu_read(offset))
+        let lb = self.cpu_read(offset);
+        let hb = self.cpu_read(offset.wrapping_add(1));
+        memory::to_16b_addr(hb, lb)
     }
 
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1))
     }
 
-    fn addr_absolute_idx(&mut self, pc: u16, idx: u8) -> (u16, bool) {
+    fn addr_absolute_idx(&mut self, pc: u16, idx: u8) -> (u16, u16, bool) {
         let lb = self.cpu_read(pc.wrapping_add(1));
-        (
-            memory::to_16b_addr(self.cpu_read(pc.wrapping_add(2)), lb).wrapping_add(idx as u16),
-            (lb & 0xff) as u16 + idx as u16 > 0xff,
-        )
+        let hb = self.cpu_read(pc.wrapping_add(2));
+        let base = memory::to_16b_addr(hb, lb);
+        let addr = base.wrapping_add(idx as u16);
+        let crossed = (lb as u16 + idx as u16) > 0xff;
+        let uncorrected = memory::to_16b_addr(hb, lb.wrapping_add(idx));
+        (addr, uncorrected, crossed)
     }
 
     fn addr_idx_indirect(&mut self, pc: u16, idx: u8) -> u16 {
@@ -1412,25 +1425,25 @@ impl Emulator {
             + self.cpu_read(value as u16) as u16
     }
 
-    fn addr_indirect_idx(&mut self, pc: u16, idx: u8) -> (u16, bool) {
+    fn addr_indirect_idx(&mut self, pc: u16, idx: u8) -> (u16, u16, bool) {
         let base = self.cpu_read(pc + 1);
 
         let lb = self.cpu_read(base as _);
+        let hb = self.cpu_read((base as u8).wrapping_add(1) as _);
         let lbidx = lb.wrapping_add(idx);
-        let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
-        let hb = self
-            .cpu_read((base as u8).wrapping_add(1) as _)
-            .wrapping_add(carry);
+        let crossed = (lb as u16 + idx as u16) > 0xff;
+        let addr = memory::to_16b_addr(hb.wrapping_add(if crossed { 1 } else { 0 }), lbidx);
+        let uncorrected = memory::to_16b_addr(hb, lbidx);
 
-        (memory::to_16b_addr(hb, lbidx) as _, carry != 0)
+        (addr, uncorrected, crossed)
     }
 
     fn addr_zeropage(&mut self, pc: u16) -> u16 {
-        self.cpu_read(pc + 1) as _
+        self.cpu_read(pc.wrapping_add(1)) as _
     }
 
     fn addr_zeropage_idx(&mut self, pc: u16, idx: u8) -> u16 {
-        self.cpu_read(pc + 1).wrapping_add(idx) as u16
+        self.cpu_read(pc.wrapping_add(1)).wrapping_add(idx) as u16
     }
 
     fn stack_addr(&self, sp: u8) -> u16 {
@@ -1449,25 +1462,37 @@ impl Emulator {
         match self.lookup.mode(opcode) {
             opcodes::ADDR_MODE_ABS => self.addr_absolute(self.cpu.pc),
             opcodes::ADDR_MODE_ABX => {
-                let (addr, page_boundary_penalty) = self.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                let has_penalty = self.lookup.page_boundary_penalty(opcode);
+                if has_penalty && crossed {
+                    self.cpu_read(uncorrected);
                     self.cpu.cycle += 1;
+                } else if !has_penalty {
+                    self.cpu_read(uncorrected);
                 }
                 addr
             }
             opcodes::ADDR_MODE_ABY => {
-                let (addr, page_boundary_penalty) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
-                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                let has_penalty = self.lookup.page_boundary_penalty(opcode);
+                if has_penalty && crossed {
+                    self.cpu_read(uncorrected);
                     self.cpu.cycle += 1;
+                } else if !has_penalty {
+                    self.cpu_read(uncorrected);
                 }
                 addr
             }
             opcodes::ADDR_MODE_IMM => self.cpu.pc + 1,
             opcodes::ADDR_MODE_INX => self.addr_idx_indirect(self.cpu.pc, self.cpu.x),
             opcodes::ADDR_MODE_INY => {
-                let (addr, page_boundary_penalty) = self.addr_indirect_idx(self.cpu.pc, self.cpu.y);
-                if self.lookup.page_boundary_penalty(opcode) && page_boundary_penalty {
+                let (addr, uncorrected, crossed) = self.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                let has_penalty = self.lookup.page_boundary_penalty(opcode);
+                if has_penalty && crossed {
+                    self.cpu_read(uncorrected);
                     self.cpu.cycle += 1;
+                } else if !has_penalty {
+                    self.cpu_read(uncorrected);
                 }
                 addr
             }
