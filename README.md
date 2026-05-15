@@ -12,11 +12,11 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
-- **APU** — pulse, triangle, noise, and DMC channels with IIR high-pass/low-pass filter chain at 44.1 kHz
+- **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3 cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
-- **Audio output** via [rodio](https://github.com/RustAudio/rodio)
+- **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
 - **Headless mode** for testing and CI
 
@@ -42,7 +42,7 @@ graph TD
     IO --> Winit["WinitPixels<br/>window + input"]
     IO --> Headless["Headless<br/>testing"]
 
-    APU --> Audio["AudioBackend<br/>rodio / silent"]
+    APU --> Audio["AudioBackend<br/>rodio / silent / capture"]
 
     Emu --> SS["Savestate<br/>binary serialize"]
 ```
@@ -67,6 +67,7 @@ cargo run -- [OPTIONS] <INPUT>
 
 OPTIONS:
     --headless           Run without graphics
+    --wav-out <PATH>     Capture headless audio to a WAV file
     --debug              Enable debugger
     --verbose / --quiet  Control log output
     -b, --breakpoint     Add CPU breakpoint (e.g. 0xC000)
@@ -102,6 +103,23 @@ cargo test              # run all tests
 cargo test -- --ignored # run slow tests too
 ```
 
+### APU mixer reference tests
+
+The mixer tests compare captured emulator WAV output against hardware reference MP3
+recordings for square, triangle, noise, and DMC channel ROMs. They are ignored for
+normal local runs, but CI runs them in a separate release-mode job.
+
+```bash
+cd scripts
+uv venv
+uv pip install -r requirements.txt
+cd ..
+cargo test --release test_apu_mixer -- --ignored --nocapture --test-threads=4
+```
+
+The comparison script emits JSON diagnostics and PNG reports for spectrogram,
+waveform, spectrum, and envelope comparisons.
+
 ### Test ROM suites
 
 | Suite | Tests | Status |
@@ -112,6 +130,7 @@ cargo test -- --ignored # run slow tests too
 | Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | ✅ |
 | Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
 | Blargg APU 2005 | Length counter, length table, IRQ flag/timing, clock jitter, len timing mode 0/1, reset timing, len halt timing, len reload timing | ✅ |
+| APU mixer references | Square, triangle, noise, and DMC output compared against hardware recordings | ✅ |
 | APU reset | $4015 cleared, $4017 timing/written, IRQ flag cleared, len ctrs enabled, works immediately | ✅ |
 | cpu_exec_space | APU register space execution | ✅ |
 | Blargg instruction timing | Cycle-accurate instruction timing | ✅ |

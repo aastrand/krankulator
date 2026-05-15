@@ -182,7 +182,7 @@ Currently: native desktop only (macOS), CI builds on Linux.
 
 ## CI/CD & Releases
 
-Currently: GitHub Actions runs `cargo build` and `cargo test` on push to master. No releases.
+Currently: GitHub Actions runs `cargo build`, `cargo test`, and a separate release-mode APU mixer reference job on push to master. No releases.
 
 - [ ] Automated releases on master push (or on git tags) [L]
   - Build matrix: macOS (x86_64 + aarch64), Windows (x86_64), Linux (x86_64)
@@ -229,7 +229,6 @@ These suites exist in nes-test-roms but aren't currently wired up as tests:
 - [ ] scanline / scanline-a1
 - [ ] nmi_sync
 - [ ] stress
-- [ ] volume_tests (APU mixer accuracy)
 - [ ] pal_apu_tests (needs PAL mode)
 - [ ] read_joy3 (controller read timing)
 - [ ] scrolltest
@@ -240,6 +239,9 @@ These suites exist in nes-test-roms but aren't currently wired up as tests:
 
 ## Quality / Accuracy
 
+- [x] APU mixer capture/reference workflow for square, triangle, noise, and DMC channels
+  - Headless `CapturingAudioOutput`, WAV export, hardware reference MP3 fixtures, JSON/PNG analysis reports
+  - CI runs `cargo test --release test_apu_mixer -- --ignored --nocapture --test-threads=4`
 - [ ] Sprite 0 hit: upgrade from position-based to pixel-overlap accuracy [M]
 - [ ] PPU open bus behavior [M]
 - [ ] CPU unofficial/illegal opcodes (for some unlicensed games and demos) [L]

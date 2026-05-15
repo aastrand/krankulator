@@ -19,6 +19,9 @@ cargo run -- input/nes/nestest.nes
 # Run in headless mode (no graphics)
 cargo run -- --headless input/nes/nestest.nes
 
+# Capture headless audio to a WAV file
+cargo run -- --wav-out /tmp/krankulator.wav input/nes/apu/square.nes
+
 # Run with debugging enabled
 cargo run -- --debug --verbose input/nes/nestest.nes
 
@@ -42,6 +45,10 @@ cargo test test_nestest
 
 # Run tests with output
 cargo test -- --nocapture
+
+# Run APU mixer reference tests (requires scripts/.venv)
+cd scripts && uv venv && uv pip install -r requirements.txt
+cd .. && cargo test --release test_apu_mixer -- --ignored --nocapture --test-threads=4
 ```
 
 ### Development
@@ -114,6 +121,7 @@ cargo clippy
   - Requires Python venv: `cd scripts && uv venv && uv pip install -r requirements.txt`
   - Tests skip gracefully if Python venv or reference files are missing
   - Reference recordings are in `input/nes/apu/mixer_reference/`
+  - CI runs the 4 ignored mixer tests separately in release mode
 
 ## File Structure
 
@@ -139,6 +147,7 @@ The project uses both unit tests and integration tests:
 - Run complete NES test ROMs (nestest, blargg test suite)
 - Verify cycle-accurate behavior against known-good logs
 - Test various cartridge mappers with real games
+- Compare APU mixer output against square, triangle, noise, and DMC hardware recordings
 
 ## Important Implementation Details
 
