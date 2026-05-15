@@ -157,5 +157,5 @@ The project uses both unit tests and integration tests:
 - Proper frame counter timing
 - DMC channel with sample playback
 
-The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/timing, CPU interrupts, PPU OAM, VRAM access).
+The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/APU 2005/timing, CPU interrupts, PPU OAM, VRAM access).
 

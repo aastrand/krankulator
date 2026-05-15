@@ -106,16 +106,17 @@ cargo test -- --ignored # run slow tests too
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| [Klaus2m5 6502 functional](https://github.com/Klaus2m5/6502_65C02_functional_tests) | Full instruction + addressing mode coverage | Pass |
-| [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | Pass |
-| [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` — all official opcodes | Pass |
-| Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | Pass |
-| Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | Pass |
-| Blargg instruction timing | Cycle-accurate instruction timing | Pass |
-| CPU interrupts | NMI and BRK interaction | Pass |
-| PPU OAM | OAM read, OAM stress | Pass |
-| CPU registers/RAM | Registers after reset, RAM after reset | Pass |
-| VRAM access | VRAM read/write validation | Pass |
+| [Klaus2m5 6502 functional](https://github.com/Klaus2m5/6502_65C02_functional_tests) | Full instruction + addressing mode coverage | ✅ |
+| [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | ✅ |
+| [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` — all official opcodes | ✅ |
+| Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | ✅ |
+| Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
+| Blargg APU 2005 | Length counter, length table, IRQ flag/timing, clock jitter, len timing mode 0/1, reset timing, len halt timing, len reload timing | ✅ |
+| Blargg instruction timing | Cycle-accurate instruction timing | ✅ |
+| CPU interrupts | NMI and BRK interaction | ✅ |
+| PPU OAM | OAM read, OAM stress | ✅ |
+| CPU registers/RAM | Registers after reset, RAM after reset | ✅ |
+| VRAM access | VRAM read/write validation | ✅ |
 
 ## Platform support
 
