@@ -14,7 +14,7 @@ extern crate shrust;
 use std::collections::HashSet;
 use std::time::Instant;
 
-use self::audio::{AudioBackend, AudioOutput, SilentAudioOutput};
+use self::audio::{AudioBackend, AudioOutput, CapturingAudioOutput, SilentAudioOutput};
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -79,6 +79,16 @@ impl Emulator {
         let iohandler = Box::new(io::HeadlessIOHandler {});
 
         Emulator::new_base(iohandler, mapper, audio)
+    }
+
+    pub fn new_capturing(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
+        let audio = Box::new(CapturingAudioOutput::new()) as Box<dyn AudioBackend>;
+        let iohandler = Box::new(io::HeadlessIOHandler {});
+        Emulator::new_base(iohandler, mapper, audio)
+    }
+
+    pub fn drain_captured_audio(&mut self) -> Vec<f32> {
+        self.audio.drain_captured()
     }
 
     pub fn _new() -> Emulator {
@@ -196,6 +206,7 @@ impl Emulator {
         let mut r = savestate::SavestateReader::new(data)?;
         self.load_state_from_reader(&mut r)?;
         self.audio.clear();
+        self.last_rendered_frame = self.ppu.frames.saturating_sub(1);
         self.start_time = Instant::now();
         self.stats_base_cycles = self.cycles;
         self.stats_base_frames = self.ppu.frames;
@@ -270,6 +281,23 @@ impl Emulator {
     #[cfg(test)]
     pub(crate) fn test_cpu_write(&mut self, addr: u16, value: u8) {
         self.cpu_write(addr, value);
+    }
+
+    #[cfg(test)]
+    pub fn run_for_cycles(&mut self, max_cycles: u64) {
+        match self.iohandler.init() {
+            Err(msg) => self.iohandler.log(msg),
+            _ => {}
+        }
+        let start = self.cycles;
+        loop {
+            if self.cycles - start >= max_cycles {
+                break;
+            }
+            if self.cycle() == CycleState::Exiting {
+                break;
+            }
+        }
     }
 
     pub fn run(&mut self) {
@@ -361,11 +389,12 @@ impl Emulator {
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
         if self.cycles % 1790 == 0 {
-            let result = self
-                .iohandler
-                .poll(&mut *self.mem, &mut self.apu, &mut self.cpu);
+            let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
             if result.exit {
                 state = CycleState::Exiting;
+            }
+            if result.reset {
+                self.reset();
             }
             if result.save_state {
                 self.save_state_to_file();

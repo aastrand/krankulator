@@ -91,8 +91,10 @@ cargo clippy
 - Frame buffer (`buf.rs`) and palette lookup table (`palette.rs`)
 - `mod.rs` contains the full-frame renderer
 
-**Audio (src/emu/audio.rs)**
+**Audio (src/emu/audio/)**
 - Audio output handling using rodio crate
+- WAV writer (`wav.rs`) for capturing test output
+- `CapturingAudioOutput` backend for headless audio capture in tests
 
 ### Key Design Patterns
 
@@ -108,6 +110,10 @@ cargo clippy
 **Test-Driven Development**
 - Extensive test suite using actual NES test ROMs
 - Tests cover CPU instructions, PPU behavior, APU functionality, and timing
+- APU mixer integration tests compare captured audio against hardware reference recordings
+  - Requires Python venv: `cd scripts && uv venv && uv pip install -r requirements.txt`
+  - Tests skip gracefully if Python venv or reference files are missing
+  - Reference recordings are in `input/nes/apu/mixer_reference/`
 
 ## File Structure
 
@@ -157,6 +163,9 @@ The project uses both unit tests and integration tests:
 - Proper frame counter timing
 - DMC channel with sample playback
 - APU soft reset preserves channel registers and replays last $4017 write
+- Pulse and noise timers tick at half CPU rate; triangle ticks every CPU cycle
+- Per-cycle mixer accumulation for proper anti-aliasing of high-frequency noise
+- Mixer tests compare emulator WAV output against hardware reference MP3 recordings
 
 **CPU Bus**
 - Open bus emulation: write-only registers return last value on data bus

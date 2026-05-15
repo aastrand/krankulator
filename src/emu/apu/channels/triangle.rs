@@ -101,18 +101,8 @@ impl TriangleChannel {
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
-        // Timer is 11 bits: (high & 0x07) << 8 | low
         let new_timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
-
-        // Allow timer to be 0 (silent) or >= 2 (valid frequency)
-        if new_timer == 1 {
-            // Timer value 1 is invalid in real NES, set to 0 (silent)
-            self.timer = 0;
-        } else {
-            self.timer = new_timer;
-        }
-
-        self.timer_value = self.timer;
+        self.timer = new_timer;
 
         if self.enabled {
             self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
@@ -125,36 +115,22 @@ impl TriangleChannel {
         self.enabled = enabled;
         if !enabled {
             self.length_counter = 0;
-            self.linear_counter = 0;
-            self.linear_counter_reload = 0;
-            self.linear_counter_reload_flag = false;
-            self.step = 0;
-            self.output = 0.0;
-            self.timer_value = 0;
         } else {
-            // When enabled, reload linear counter
             self.linear_counter_reload_flag = true;
         }
     }
 
     pub fn cycle(&mut self) {
-        // Only process if channel is active
-        if !self.enabled || self.length_counter == 0 || self.linear_counter == 0 {
-            // Ensure output is zero when inactive
-            self.output = 0.0;
-            return;
-        }
-
-        // Prevent infinite loop if timer is 0
         if self.timer == 0 {
-            self.output = 0.0;
             return;
         }
 
         if self.timer_value == 0 {
             self.timer_value = self.timer;
-            self.step = (self.step + 1) % 32;
-            self.generate_output();
+            if self.enabled && self.length_counter > 0 && self.linear_counter > 0 {
+                self.step = (self.step + 1) % 32;
+                self.generate_output();
+            }
         } else {
             self.timer_value -= 1;
         }
@@ -166,13 +142,8 @@ impl TriangleChannel {
         self.output = triangle_value as f32;
     }
 
-    // Ensure output is zero when channel is inactive
     pub fn get_sample(&self) -> f32 {
-        if !self.enabled || self.length_counter == 0 || self.linear_counter == 0 {
-            0.0
-        } else {
-            self.output
-        }
+        self.output
     }
 
     pub fn get_length_counter(&self) -> u8 {
@@ -180,11 +151,6 @@ impl TriangleChannel {
     }
 
     pub fn clock_linear_counter(&mut self) {
-        // Don't update linear counter if channel is disabled
-        if !self.enabled {
-            return;
-        }
-
         if self.linear_counter_reload_flag {
             self.linear_counter = self.linear_counter_reload;
         } else if self.linear_counter > 0 {
@@ -197,11 +163,6 @@ impl TriangleChannel {
     }
 
     pub fn clock_length_counter(&mut self) {
-        // Don't update length counter if channel is disabled
-        if !self.enabled {
-            return;
-        }
-
         if !self.length_counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
@@ -314,19 +275,21 @@ mod tests {
     fn test_triangle_channel_generate_output() {
         let mut triangle = TriangleChannel::new();
 
-        // Test disabled channel - get_sample should return 0.0
+        // After power-on, output is 0
         assert_eq!(triangle.get_sample(), 0.0);
 
-        // Test enabled channel with valid conditions
         triangle.enabled = true;
         triangle.length_counter = 10;
         triangle.linear_counter = 5;
         triangle.step = 0;
 
-        // generate_output is internal and should always work
         triangle.generate_output();
         // Step 0 → DAC 15 (raw, for nonlinear mixer)
         assert_eq!(triangle.output, 15.0);
+
+        // DAC holds last value when silenced
+        triangle.set_enabled(false);
+        assert_eq!(triangle.get_sample(), 15.0);
 
         // Step 15 which should be 0
         triangle.step = 15;

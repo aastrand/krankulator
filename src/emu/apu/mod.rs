@@ -98,6 +98,8 @@ pub struct APU {
     sample_buffer: Vec<f32>,
     sample_index: usize,
     cycles_since_sample: f64,
+    sample_accumulator: f64,
+    sample_accumulator_count: u32,
 
     // Status
     status: u8,
@@ -108,6 +110,8 @@ pub struct APU {
     last_4017_write: Option<u8>,
 
     audio_filter: AudioFilter,
+    // Pulse and noise timers tick every 2 CPU cycles (half-rate)
+    half_clock: bool,
 }
 
 impl APU {
@@ -123,6 +127,8 @@ impl APU {
             sample_buffer: vec![0.0; 4096],
             sample_index: 0,
             cycles_since_sample: 0.0,
+            sample_accumulator: 0.0,
+            sample_accumulator_count: 0,
 
             status: 0,
             frame_irq_since_dot: u64::MAX,
@@ -130,6 +136,7 @@ impl APU {
             mute_mask: 0,
             last_4017_write: None,
             audio_filter: AudioFilter::new(SAMPLE_RATE),
+            half_clock: false,
         };
         apu.hard_reset();
         apu
@@ -164,10 +171,13 @@ impl APU {
     fn reset_common(&mut self) {
         self.sample_index = 0;
         self.cycles_since_sample = 0.0;
+        self.sample_accumulator = 0.0;
+        self.sample_accumulator_count = 0;
         self.status = 0;
         self.frame_irq_since_dot = u64::MAX;
         self.enabled_channels = 0;
         self.mute_mask = 0;
+        self.half_clock = false;
         self.audio_filter.reset();
         for s in &mut self.sample_buffer {
             *s = 0.0;
@@ -454,20 +464,26 @@ impl APU {
             FrameStep::None => {}
         }
 
-        // Cycle channels
-        self.pulse1.cycle();
-        self.pulse2.cycle();
+        // Cycle channels — pulse and noise timers tick every 2 CPU cycles
+        self.half_clock = !self.half_clock;
+        if self.half_clock {
+            self.pulse1.cycle();
+            self.pulse2.cycle();
+            self.noise.cycle();
+        }
         self.triangle.cycle();
-        self.noise.cycle();
         self.dmc.cycle(memory);
 
         self.pulse1.end_cycle();
         self.pulse2.end_cycle();
 
+        self.sample_accumulator += self.mix_current() as f64;
+        self.sample_accumulator_count += 1;
+
         self.cycles_since_sample += 1.0;
         if self.cycles_since_sample >= CYCLES_PER_SAMPLE {
             self.cycles_since_sample -= CYCLES_PER_SAMPLE;
-            self.generate_sample();
+            self.emit_sample();
         }
     }
 
@@ -488,14 +504,13 @@ impl APU {
         self.pulse2.clock_sweep();
     }
 
-    fn generate_sample(&mut self) {
+    fn mix_current(&self) -> f32 {
         let mut pulse1_sample = self.pulse1.get_sample();
         let mut pulse2_sample = self.pulse2.get_sample();
         let mut triangle_sample = self.triangle.get_sample();
         let mut noise_sample = self.noise.get_sample();
         let mut dmc_sample = self.dmc.get_sample();
 
-        // Apply debug mute overrides
         if self.mute_mask & 0x01 != 0 {
             pulse1_sample = 0.0;
         }
@@ -512,17 +527,25 @@ impl APU {
             dmc_sample = 0.0;
         }
 
-        // Mix all channels
-        let mixed_sample = self.mix_channels(
+        self.mix_channels(
             pulse1_sample,
             pulse2_sample,
             triangle_sample,
             noise_sample,
             dmc_sample,
-        );
-        let filtered = self.audio_filter.process(mixed_sample);
+        )
+    }
 
-        // Store in buffer
+    fn emit_sample(&mut self) {
+        let avg = if self.sample_accumulator_count > 0 {
+            (self.sample_accumulator / self.sample_accumulator_count as f64) as f32
+        } else {
+            0.0
+        };
+        self.sample_accumulator = 0.0;
+        self.sample_accumulator_count = 0;
+
+        let filtered = self.audio_filter.process(avg);
         if self.sample_index < self.sample_buffer.len() {
             self.sample_buffer[self.sample_index] = filtered;
             self.sample_index += 1;
@@ -570,6 +593,7 @@ impl APU {
         w.write_u64(self.frame_irq_since_dot);
         w.write_u8(self.last_4017_write.unwrap_or(0));
         w.write_bool(self.last_4017_write.is_some());
+        w.write_bool(self.half_clock);
     }
 
     pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -594,6 +618,9 @@ impl APU {
             let val = r.read_u8()?;
             let written = r.read_bool()?;
             self.last_4017_write = if written { Some(val) } else { None };
+        }
+        if r.version() >= 5 {
+            self.half_clock = r.read_bool()?;
         }
         Ok(())
     }
@@ -1327,6 +1354,139 @@ mod tests {
         run_pal_apu_rom(
             "input/nes/pal_apu/11.len_reload_timing.nes",
             "11.len_reload_timing",
+        );
+    }
+
+    // --- APU mixer audio comparison tests ---
+
+    const CPU_CYCLES_PER_SECOND: u64 = 1_789_773;
+
+    fn run_mixer_test(rom_path: &str, test_name: &str, reference_mp3: &str, run_seconds: u64) {
+        use crate::emu;
+        use crate::emu::io::loader;
+
+        if !std::path::Path::new(rom_path).exists() {
+            eprintln!("SKIP {}: ROM not found at {}", test_name, rom_path);
+            return;
+        }
+        if !std::path::Path::new(reference_mp3).exists() {
+            eprintln!(
+                "SKIP {}: reference not found at {}",
+                test_name, reference_mp3
+            );
+            return;
+        }
+        let venv_python = "scripts/.venv/bin/python3";
+        if !std::path::Path::new(venv_python).exists() {
+            eprintln!(
+                "SKIP {}: python venv not found. Run: cd scripts && uv venv && uv pip install -r requirements.txt",
+                test_name
+            );
+            return;
+        }
+
+        let mut emu = emu::Emulator::new_capturing(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_should_exit_on_infinite_loop(false);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+
+        emu.run_for_cycles(run_seconds * CPU_CYCLES_PER_SECOND);
+
+        let samples = emu.drain_captured_audio();
+        let wav_path = format!("/tmp/krankulator_mixer_{}.wav", test_name);
+        let report_dir = "/tmp/krankulator_reports";
+        std::fs::create_dir_all(report_dir).unwrap();
+
+        emu::audio::wav::write_wav(&wav_path, &samples, 44100).unwrap();
+        eprintln!(
+            "Captured {} samples ({:.1}s) -> {}",
+            samples.len(),
+            samples.len() as f64 / 44100.0,
+            wav_path
+        );
+
+        let output = std::process::Command::new(venv_python)
+            .args([
+                "scripts/analyze_audio.py",
+                &wav_path,
+                "--reference",
+                reference_mp3,
+                "--report-dir",
+                report_dir,
+            ])
+            .output()
+            .expect("failed to run analysis script");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        for line in stderr.lines() {
+            if line.starts_with("IMAGE:") {
+                eprintln!("{}", line);
+            }
+        }
+
+        eprintln!("\n=== {} ===", test_name);
+        eprintln!("{}", stdout);
+
+        if !output.status.success() {
+            eprintln!("stderr: {}", stderr);
+        }
+
+        assert!(
+            output.status.success(),
+            "{}: audio comparison failed (exit code {})\n{}",
+            test_name,
+            output.status.code().unwrap_or(-1),
+            stdout
+        );
+    }
+
+    #[test]
+    #[ignore] // slow (~18s); run in CI with: cargo test -- --ignored
+    fn test_apu_mixer_square() {
+        run_mixer_test(
+            "input/nes/apu/square.nes",
+            "square",
+            "input/nes/apu/mixer_reference/square.mp3",
+            18,
+        );
+    }
+
+    #[test]
+    #[ignore] // slow (~12s); run in CI with: cargo test -- --ignored
+    fn test_apu_mixer_triangle() {
+        run_mixer_test(
+            "input/nes/apu/triangle.nes",
+            "triangle",
+            "input/nes/apu/mixer_reference/triangle.mp3",
+            12,
+        );
+    }
+
+    #[test]
+    #[ignore] // slow (~20s); run in CI with: cargo test -- --ignored
+    fn test_apu_mixer_noise() {
+        run_mixer_test(
+            "input/nes/apu/noise.nes",
+            "noise",
+            "input/nes/apu/mixer_reference/noise.mp3",
+            20,
+        );
+    }
+
+    #[test]
+    #[ignore] // slow (~14s); run in CI with: cargo test -- --ignored
+    fn test_apu_mixer_dmc() {
+        run_mixer_test(
+            "input/nes/apu/dmc.nes",
+            "dmc",
+            "input/nes/apu/mixer_reference/dmc.mp3",
+            14,
         );
     }
 }

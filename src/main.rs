@@ -38,6 +38,10 @@ struct Args {
     #[clap(short, long)]
     codeaddr: Option<String>,
 
+    /// Write captured audio to WAV file (implies headless)
+    #[clap(long)]
+    wav_out: Option<String>,
+
     /// Input file to use
     #[clap()]
     input: String,
@@ -68,7 +72,9 @@ fn main() -> Result<(), String> {
             let file = &args.input;
             match loader.load(file) {
                 Ok(mapper) => {
-                    let mut emu: emu::Emulator = if !args.headless {
+                    let mut emu: emu::Emulator = if args.wav_out.is_some() {
+                        emu::Emulator::new_capturing(mapper)
+                    } else if !args.headless {
                         emu::Emulator::new(mapper)
                     } else {
                         emu::Emulator::new_headless(mapper)
@@ -112,6 +118,18 @@ fn main() -> Result<(), String> {
     emu.toggle_debug_on_infinite_loop(args.debug);
 
     emu.run();
+
+    if let Some(wav_path) = &args.wav_out {
+        let samples = emu.drain_captured_audio();
+        emu::audio::wav::write_wav(wav_path, &samples, 44100)
+            .map_err(|e| format!("Failed to write WAV: {}", e))?;
+        println!(
+            "Wrote {} samples ({:.1}s) to {}",
+            samples.len(),
+            samples.len() as f64 / 44100.0,
+            wav_path
+        );
+    }
 
     Ok(())
 }

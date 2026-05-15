@@ -1,3 +1,8 @@
+pub mod wav;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use ringbuf::{
     traits::{Consumer, Producer, Split},
     HeapCons, HeapProd, HeapRb,
@@ -7,10 +12,14 @@ use rodio::{OutputStream, Sink, Source};
 pub trait AudioBackend {
     fn push_samples(&mut self, samples: &[f32]);
     fn clear(&mut self);
+    fn drain_captured(&mut self) -> Vec<f32> {
+        Vec::new()
+    }
 }
 
 pub struct AudioOutput {
     producer: HeapProd<f32>,
+    mute: Arc<AtomicBool>,
     _stream: OutputStream,
     #[allow(dead_code)]
     sink: Sink,
@@ -20,16 +29,18 @@ impl AudioOutput {
     pub fn new(sample_rate: u32) -> Self {
         let rb = HeapRb::<f32>::new(8192);
         let (producer, consumer) = rb.split();
+        let mute = Arc::new(AtomicBool::new(false));
 
         let (stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
 
-        let source = AudioBufferSource::new(consumer, sample_rate);
+        let source = AudioBufferSource::new(consumer, sample_rate, Arc::clone(&mute));
         sink.append(source);
         sink.play();
 
         Self {
             producer,
+            mute,
             _stream: stream,
             sink,
         }
@@ -42,7 +53,7 @@ impl AudioBackend for AudioOutput {
     }
 
     fn clear(&mut self) {
-        // Consumer drains residual samples naturally (~186ms worst case).
+        self.mute.store(true, Ordering::Relaxed);
     }
 }
 
@@ -59,15 +70,43 @@ impl AudioBackend for SilentAudioOutput {
     fn clear(&mut self) {}
 }
 
+pub struct CapturingAudioOutput {
+    buf: Vec<f32>,
+}
+
+impl CapturingAudioOutput {
+    pub fn new() -> Self {
+        Self {
+            buf: Vec::with_capacity(44100 * 30),
+        }
+    }
+}
+
+impl AudioBackend for CapturingAudioOutput {
+    fn push_samples(&mut self, samples: &[f32]) {
+        self.buf.extend_from_slice(samples);
+    }
+
+    fn clear(&mut self) {
+        self.buf.clear();
+    }
+
+    fn drain_captured(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.buf)
+    }
+}
+
 struct AudioBufferSource {
     consumer: HeapCons<f32>,
+    mute: Arc<AtomicBool>,
     sample_rate: u32,
 }
 
 impl AudioBufferSource {
-    fn new(consumer: HeapCons<f32>, sample_rate: u32) -> Self {
+    fn new(consumer: HeapCons<f32>, sample_rate: u32, mute: Arc<AtomicBool>) -> Self {
         Self {
             consumer,
+            mute,
             sample_rate,
         }
     }
@@ -76,6 +115,11 @@ impl AudioBufferSource {
 impl Iterator for AudioBufferSource {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
+        if self.mute.load(Ordering::Relaxed) {
+            while self.consumer.try_pop().is_some() {}
+            self.mute.store(false, Ordering::Relaxed);
+            return Some(0.0);
+        }
         Some(self.consumer.try_pop().unwrap_or(0.0))
     }
 }
