@@ -11,7 +11,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 ## Features
 
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
-- **PPU** — per-dot cycle-accurate rendering (active migration from VBlank-based), sprite evaluation, sprite 0 hit, even/odd frame timing
+- **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
 - **APU** — pulse, triangle, noise, and DMC channels with IIR high-pass/low-pass filter chain at 44.1 kHz
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3 cartridges
@@ -99,7 +99,7 @@ round-trips. Integration tests run actual NES test ROMs to validate accuracy:
 
 ```bash
 cargo test              # run all tests
-cargo test -- --ignored # run slow/WIP tests too
+cargo test -- --ignored # run slow tests too
 ```
 
 ### Test ROM suites
@@ -110,8 +110,7 @@ cargo test -- --ignored # run slow/WIP tests too
 | [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | Pass |
 | [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` — all official opcodes | Pass |
 | Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | Pass |
-| Blargg APU | Length counters, length table, IRQ flag | Pass |
-| Blargg APU (strict) | Jitter, len timing, IRQ flag timing, DMC basics, DMC rates | WIP |
+| Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | Pass |
 | Blargg instruction timing | Cycle-accurate instruction timing | Pass |
 | CPU interrupts | NMI and BRK interaction | Pass |
 | PPU OAM | OAM read, OAM stress | Pass |

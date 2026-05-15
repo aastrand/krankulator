@@ -74,8 +74,7 @@ cargo clippy
 - Picture Processing Unit for graphics rendering
 - Implements proper VRAM addressing with internal registers (v, t, x, w)
 - Handles NMI (Non-Maskable Interrupt) generation for VBlank
-- Currently renders the full frame once per VBlank via `gfx::render()` — being migrated
-  to cycle-accurate per-dot rendering
+- Per-dot cycle-accurate rendering
 
 **Memory System (src/emu/memory/)**
 - Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM)
@@ -90,8 +89,7 @@ cargo clippy
 
 **Graphics (src/emu/gfx/)**
 - Frame buffer (`buf.rs`) and palette lookup table (`palette.rs`)
-- `mod.rs` contains the legacy full-frame renderer — will be removed as rendering moves
-  into the PPU
+- `mod.rs` contains the full-frame renderer
 
 **Audio (src/emu/audio.rs)**
 - Audio output handling using rodio crate
@@ -101,8 +99,7 @@ cargo clippy
 **CPU-PPU Synchronization**
 - The emulator runs in discrete cycles, with proper timing between CPU, PPU, and APU
 - PPU runs at 3x CPU speed (3 PPU cycles per CPU cycle)
-- Currently: interleaved per-cycle (CPU instruction, then 3 PPU dots, repeat)
-- Target: catch-up model where PPU syncs lazily on register access
+- Interleaved per-cycle (CPU instruction, then 3 PPU dots, repeat)
 
 **Memory Mapping**
 - Uses trait objects for different mapper implementations
@@ -148,9 +145,8 @@ The project uses both unit tests and integration tests:
 - Proper VRAM address handling with internal registers (v, t, x, w)
 - VBlank timing and NMI generation
 - Scroll register updates at correct cycle points during rendering
-- Current limitation: full-frame rendering at VBlank (no mid-frame raster effects)
+- Per-dot cycle-accurate rendering
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
-- Active migration to per-dot cycle-accurate rendering
 
 **Memory Mappers**
 - NROM, MMC1, MMC3, UxROM, AxROM, CNROM
@@ -161,12 +157,5 @@ The project uses both unit tests and integration tests:
 - Proper frame counter timing
 - DMC channel with sample playback
 
-The emulator is designed to be highly accurate and passes most standard NES test ROMs, making it suitable for both educational purposes and actual game compatibility testing.
+The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/timing, CPU interrupts, PPU OAM, VRAM access).
 
-## Active Work
-
-Migrating PPU from full-frame-at-VBlank rendering to per-dot, catch-up-synchronized
-pipeline. This will enable mid-frame raster effects (split-screen scrolling, scanline
-IRQ-driven effects, sprite 0 hit polling). The migration is incremental across 5 phases
-— each phase produces a working emulator. The old `gfx::render()` path will be removed
-once rendering is fully integrated into the PPU.
