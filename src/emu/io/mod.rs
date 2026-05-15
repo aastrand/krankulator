@@ -217,8 +217,7 @@ impl ApplicationHandler for PollHandler<'_> {
                         }
                         KeyCode::Digit3 => {
                             if pressed {
-                                self.apu
-                                    .toggle_mute_bit(0x04, "Triangle");
+                                self.apu.toggle_mute_bit(0x04, "Triangle");
                             }
                         }
                         KeyCode::Digit4 => {

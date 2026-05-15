@@ -1,4 +1,4 @@
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 pub struct NoiseChannel {
     control: u8,
@@ -165,7 +165,6 @@ impl NoiseChannel {
         // Shift right by 1 and insert feedback at bit 14
         self.shift_register >>= 1;
         self.shift_register |= feedback << 14;
-
     }
 
     fn generate_output(&mut self) {

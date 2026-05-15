@@ -1,6 +1,6 @@
 use super::super::*;
 use super::*;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 /*
 CNROM (Mapper 3)
@@ -208,7 +208,9 @@ impl MemoryMapper for CNROMMapper {
         false
     }
 
-    fn mapper_id(&self) -> u8 { 3 }
+    fn mapper_id(&self) -> u8 {
+        3
+    }
 
     fn save_state(&self, w: &mut SavestateWriter) {
         let ram = unsafe { std::slice::from_raw_parts(self.addr_space_ptr, MAX_RAM_SIZE) };

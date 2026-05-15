@@ -9,27 +9,47 @@ pub struct SavestateWriter {
 
 impl SavestateWriter {
     pub fn new() -> Self {
-        let mut w = Self { buf: Vec::with_capacity(64 * 1024) };
+        let mut w = Self {
+            buf: Vec::with_capacity(64 * 1024),
+        };
         w.buf.extend_from_slice(MAGIC);
         w.buf.push(VERSION);
         w
     }
 
-    pub fn write_u8(&mut self, v: u8) { self.buf.push(v); }
-    pub fn write_u16(&mut self, v: u16) { self.buf.extend_from_slice(&v.to_le_bytes()); }
-    pub fn write_u32(&mut self, v: u32) { self.buf.extend_from_slice(&v.to_le_bytes()); }
-    pub fn write_u64(&mut self, v: u64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
-    pub fn write_i8(&mut self, v: i8) { self.buf.push(v as u8); }
-    pub fn write_f32(&mut self, v: f32) { self.buf.extend_from_slice(&v.to_le_bytes()); }
-    pub fn write_f64(&mut self, v: f64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
-    pub fn write_bool(&mut self, v: bool) { self.buf.push(v as u8); }
+    pub fn write_u8(&mut self, v: u8) {
+        self.buf.push(v);
+    }
+    pub fn write_u16(&mut self, v: u16) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn write_u32(&mut self, v: u32) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn write_u64(&mut self, v: u64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn write_i8(&mut self, v: i8) {
+        self.buf.push(v as u8);
+    }
+    pub fn write_f32(&mut self, v: f32) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn write_f64(&mut self, v: f64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn write_bool(&mut self, v: bool) {
+        self.buf.push(v as u8);
+    }
 
     pub fn write_bytes(&mut self, data: &[u8]) {
         self.write_u32(data.len() as u32);
         self.buf.extend_from_slice(data);
     }
 
-    pub fn finish(self) -> Vec<u8> { self.buf }
+    pub fn finish(self) -> Vec<u8> {
+        self.buf
+    }
 }
 
 pub struct SavestateReader<'a> {
@@ -40,21 +60,32 @@ pub struct SavestateReader<'a> {
 impl<'a> SavestateReader<'a> {
     pub fn new(data: &'a [u8]) -> io::Result<Self> {
         if data.len() < 5 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "savestate too short"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "savestate too short",
+            ));
         }
         if &data[0..4] != MAGIC {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "bad savestate magic"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "bad savestate magic",
+            ));
         }
         if data[4] != VERSION {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("savestate version {} != expected {}", data[4], VERSION)));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("savestate version {} != expected {}", data[4], VERSION),
+            ));
         }
         Ok(Self { data, pos: 5 })
     }
 
     fn need(&self, n: usize) -> io::Result<()> {
         if self.pos + n > self.data.len() {
-            Err(io::Error::new(io::ErrorKind::UnexpectedEof, "savestate truncated"))
+            Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "savestate truncated",
+            ))
         } else {
             Ok(())
         }
@@ -69,21 +100,21 @@ impl<'a> SavestateReader<'a> {
 
     pub fn read_u16(&mut self) -> io::Result<u16> {
         self.need(2)?;
-        let v = u16::from_le_bytes(self.data[self.pos..self.pos+2].try_into().unwrap());
+        let v = u16::from_le_bytes(self.data[self.pos..self.pos + 2].try_into().unwrap());
         self.pos += 2;
         Ok(v)
     }
 
     pub fn read_u32(&mut self) -> io::Result<u32> {
         self.need(4)?;
-        let v = u32::from_le_bytes(self.data[self.pos..self.pos+4].try_into().unwrap());
+        let v = u32::from_le_bytes(self.data[self.pos..self.pos + 4].try_into().unwrap());
         self.pos += 4;
         Ok(v)
     }
 
     pub fn read_u64(&mut self) -> io::Result<u64> {
         self.need(8)?;
-        let v = u64::from_le_bytes(self.data[self.pos..self.pos+8].try_into().unwrap());
+        let v = u64::from_le_bytes(self.data[self.pos..self.pos + 8].try_into().unwrap());
         self.pos += 8;
         Ok(v)
     }
@@ -94,14 +125,14 @@ impl<'a> SavestateReader<'a> {
 
     pub fn read_f32(&mut self) -> io::Result<f32> {
         self.need(4)?;
-        let v = f32::from_le_bytes(self.data[self.pos..self.pos+4].try_into().unwrap());
+        let v = f32::from_le_bytes(self.data[self.pos..self.pos + 4].try_into().unwrap());
         self.pos += 4;
         Ok(v)
     }
 
     pub fn read_f64(&mut self) -> io::Result<f64> {
         self.need(8)?;
-        let v = f64::from_le_bytes(self.data[self.pos..self.pos+8].try_into().unwrap());
+        let v = f64::from_le_bytes(self.data[self.pos..self.pos + 8].try_into().unwrap());
         self.pos += 8;
         Ok(v)
     }
@@ -114,7 +145,7 @@ impl<'a> SavestateReader<'a> {
     pub fn read_bytes(&mut self) -> io::Result<Vec<u8>> {
         let len = self.read_u32()? as usize;
         self.need(len)?;
-        let v = self.data[self.pos..self.pos+len].to_vec();
+        let v = self.data[self.pos..self.pos + len].to_vec();
         self.pos += len;
         Ok(v)
     }
@@ -122,11 +153,13 @@ impl<'a> SavestateReader<'a> {
     pub fn read_bytes_into(&mut self, dest: &mut [u8]) -> io::Result<()> {
         let len = self.read_u32()? as usize;
         if len != dest.len() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("expected {} bytes, got {}", dest.len(), len)));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("expected {} bytes, got {}", dest.len(), len),
+            ));
         }
         self.need(len)?;
-        dest.copy_from_slice(&self.data[self.pos..self.pos+len]);
+        dest.copy_from_slice(&self.data[self.pos..self.pos + len]);
         self.pos += len;
         Ok(())
     }

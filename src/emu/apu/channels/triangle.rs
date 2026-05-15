@@ -1,4 +1,4 @@
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 pub struct TriangleChannel {
     control: u8,

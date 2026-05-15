@@ -1,5 +1,5 @@
 use super::memory;
-use super::savestate::{SavestateWriter, SavestateReader};
+use super::savestate::{SavestateReader, SavestateWriter};
 
 pub mod opcodes;
 
