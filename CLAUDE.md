@@ -156,6 +156,12 @@ The project uses both unit tests and integration tests:
 - Length counters for all channels
 - Proper frame counter timing
 - DMC channel with sample playback
+- APU soft reset preserves channel registers and replays last $4017 write
 
-The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/APU 2005/timing, CPU interrupts, PPU OAM, VRAM access).
+**CPU Bus**
+- Open bus emulation: write-only registers return last value on data bus
+- Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
+- RMW instructions always perform the dummy read regardless of page crossing
+
+The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/APU 2005/timing, APU reset, cpu_exec_space, CPU interrupts, PPU OAM, VRAM access).
 

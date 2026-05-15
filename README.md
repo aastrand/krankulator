@@ -112,6 +112,8 @@ cargo test -- --ignored # run slow tests too
 | Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | ✅ |
 | Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
 | Blargg APU 2005 | Length counter, length table, IRQ flag/timing, clock jitter, len timing mode 0/1, reset timing, len halt timing, len reload timing | ✅ |
+| APU reset | $4015 cleared, $4017 timing/written, IRQ flag cleared, len ctrs enabled, works immediately | ✅ |
+| cpu_exec_space | APU register space execution | ✅ |
 | Blargg instruction timing | Cycle-accurate instruction timing | ✅ |
 | CPU interrupts | NMI and BRK interaction | ✅ |
 | PPU OAM | OAM read, OAM stress | ✅ |
