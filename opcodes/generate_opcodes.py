@@ -45,6 +45,14 @@ PAGE_BOUNDARY_PENALTY_MODES = set([
     "INY"]
 )
 
+# RMW instructions always do the dummy read at the uncorrected address,
+# regardless of page crossing. They use penalty=false so the dummy read
+# always fires, with the extra cycle baked into the base cycle count.
+RMW_BASENAMES = set([
+    "ASL", "LSR", "ROL", "ROR", "DEC", "INC",
+    "DCP", "ISB", "SLO", "SRE", "RLA", "RRA",
+])
+
 def main():
     opcodes = {}
 
@@ -284,12 +292,21 @@ impl Lookup {
     for key, (opcode, size, time, comment) in opcodes.items():
         mode = "ADDR_MODE_" + key[4:] if len(key) > 3 and key[4:] in ADDRESSING_MODES else "ADDR_MODE_NA"
         basename = key[:3]
+        suffix = mode[-3:]
+        is_indexed = suffix in PAGE_BOUNDARY_PENALTY_MODES
+        is_rmw = basename in RMW_BASENAMES
+        is_store = basename in ("STA", "SAX")
+        penalty = is_indexed and not is_store and not is_rmw
+        cycles = int(time)
+        is_unofficial_rmw = is_rmw and basename in ("DCP", "ISB", "SLO", "SRE", "RLA", "RRA")
+        if is_unofficial_rmw and is_indexed:
+            cycles += 1
         print("        lookup[" + key  + " as usize] = &Opcode { " + "// " + comment)
         print("            name: \"" + key + "\",")
         print("            size: " + str(size) + ",")
-        print("            cycles: " + str(time) + ",")
+        print("            cycles: " + str(cycles) + ",")
         print("            mode: " + mode + ",")
-        print("            page_boundary_penalty: " + str(mode[-3:] in PAGE_BOUNDARY_PENALTY_MODES and basename != "STA").lower() + ",")
+        print("            page_boundary_penalty: " + str(penalty).lower() + ",")
         print("        };")
 
     print("""        Lookup { opcodes: lookup }

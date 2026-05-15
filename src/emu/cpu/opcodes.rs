@@ -418,7 +418,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[BIT_ZP as usize] = &Opcode {
             // (test BITs)
@@ -650,7 +650,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[EOR_IMM as usize] = &Opcode {
             // (bitwise Exclusive OR)
@@ -802,7 +802,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[JMP_ABS as usize] = &Opcode {
             // (JuMP)
@@ -1010,7 +1010,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[NOP as usize] = &Opcode {
             // (No OPeration)
@@ -1186,7 +1186,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[ROR as usize] = &Opcode {
             // (ROtate Right)
@@ -1226,7 +1226,7 @@ impl Lookup {
             size: 3,
             cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RTI as usize] = &Opcode {
             // (ReTurn from Interrupt)
@@ -1576,9 +1576,9 @@ impl Lookup {
             // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[DCP_ZPX as usize] = &Opcode {
             // DCP = DEC + CMP (Unofficial opcode)
@@ -1592,17 +1592,17 @@ impl Lookup {
             // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[DCP_ABX as usize] = &Opcode {
             // DCP = DEC + CMP (Unofficial opcode)
             name: "DCP_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[ISB_INX as usize] = &Opcode {
             // ISB = INC + SBC (Unofficial opcode)
@@ -1632,9 +1632,9 @@ impl Lookup {
             // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[ISB_ZPX as usize] = &Opcode {
             // ISB = INC + SBC (Unofficial opcode)
@@ -1648,17 +1648,17 @@ impl Lookup {
             // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[ISB_ABX as usize] = &Opcode {
             // ISB = INC + SBC (Unofficial opcode)
             name: "ISB_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SLO_INX as usize] = &Opcode {
             // SLO = ASL + ORA (Unofficial opcode)
@@ -1688,9 +1688,9 @@ impl Lookup {
             // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SLO_ZPX as usize] = &Opcode {
             // SLO = ASL + ORA (Unofficial opcode)
@@ -1704,17 +1704,17 @@ impl Lookup {
             // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SLO_ABX as usize] = &Opcode {
             // SLO = ASL + ORA (Unofficial opcode)
             name: "SLO_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RLA_INX as usize] = &Opcode {
             // RLA = ROL + AND (Unofficial opcode)
@@ -1744,9 +1744,9 @@ impl Lookup {
             // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RLA_ZPX as usize] = &Opcode {
             // RLA = ROL + AND (Unofficial opcode)
@@ -1760,17 +1760,17 @@ impl Lookup {
             // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RLA_ABX as usize] = &Opcode {
             // RLA = ROL + AND (Unofficial opcode)
             name: "RLA_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SRE_INX as usize] = &Opcode {
             // SRE = LSR + EOR (Unofficial opcode)
@@ -1800,9 +1800,9 @@ impl Lookup {
             // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SRE_ZPX as usize] = &Opcode {
             // SRE = LSR + EOR (Unofficial opcode)
@@ -1816,17 +1816,17 @@ impl Lookup {
             // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[SRE_ABX as usize] = &Opcode {
             // SRE = LSR + EOR (Unofficial opcode)
             name: "SRE_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RRA_INX as usize] = &Opcode {
             // RRA = ROR + ADC (Unofficial opcode)
@@ -1856,9 +1856,9 @@ impl Lookup {
             // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_INY",
             size: 2,
-            cycles: 7,
+            cycles: 8,
             mode: ADDR_MODE_INY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RRA_ZPX as usize] = &Opcode {
             // RRA = ROR + ADC (Unofficial opcode)
@@ -1872,17 +1872,17 @@ impl Lookup {
             // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABY",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABY,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[RRA_ABX as usize] = &Opcode {
             // RRA = ROR + ADC (Unofficial opcode)
             name: "RRA_ABX",
             size: 3,
-            cycles: 6,
+            cycles: 7,
             mode: ADDR_MODE_ABX,
-            page_boundary_penalty: true,
+            page_boundary_penalty: false,
         };
         lookup[N1C_ABX as usize] = &Opcode {
             // NOP (Unofficial opcode)
