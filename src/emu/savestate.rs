@@ -73,6 +73,15 @@ impl<'a> SavestateReader<'a> {
             ));
         }
         let version = data[4];
+        if version < 3 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "savestate version {} is too old (minimum supported: 3)",
+                    version
+                ),
+            ));
+        }
         if version > VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -231,9 +240,17 @@ mod tests {
     fn test_older_version_accepted() {
         let mut data = Vec::new();
         data.extend_from_slice(MAGIC);
-        data.push(1);
+        data.push(3);
         let r = SavestateReader::new(&data).unwrap();
-        assert_eq!(r.version(), 1);
+        assert_eq!(r.version(), 3);
+    }
+
+    #[test]
+    fn test_too_old_version_rejected() {
+        let mut data = Vec::new();
+        data.extend_from_slice(MAGIC);
+        data.push(2);
+        assert!(SavestateReader::new(&data).is_err());
     }
 
     #[test]
