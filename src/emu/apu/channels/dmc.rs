@@ -1,5 +1,5 @@
 use crate::emu::memory::MemoryMapper;
-use crate::emu::savestate::{SavestateWriter, SavestateReader};
+use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 pub struct DmcChannel {
     control: u8,
@@ -15,7 +15,11 @@ pub struct DmcChannel {
     // Sample buffer
     sample_buffer: u8,
     sample_buffer_empty: bool,
+
+    // Output unit
+    shift_register: u8,
     bits_remaining: u8,
+    silence: bool,
 
     // Address and length
     current_address: u16,
@@ -38,14 +42,17 @@ impl DmcChannel {
             sample_address: 0,
             sample_length: 0,
 
-            timer: 0,
-            timer_value: 0,
+            timer: DMC_PERIODS[0],
+            timer_value: DMC_PERIODS[0],
 
             enabled: false,
 
             sample_buffer: 0,
             sample_buffer_empty: true,
+
+            shift_register: 0,
             bits_remaining: 0,
+            silence: true,
 
             current_address: 0,
             bytes_remaining: 0,
@@ -63,12 +70,14 @@ impl DmcChannel {
         self.direct_load = 0;
         self.sample_address = 0;
         self.sample_length = 0;
-        self.timer = 0;
-        self.timer_value = 0;
+        self.timer = DMC_PERIODS[0];
+        self.timer_value = DMC_PERIODS[0];
         self.enabled = false;
         self.sample_buffer = 0;
         self.sample_buffer_empty = true;
+        self.shift_register = 0;
         self.bits_remaining = 0;
+        self.silence = true;
         self.current_address = 0;
         self.bytes_remaining = 0;
         self.output_level = 0;
@@ -87,7 +96,9 @@ impl DmcChannel {
         w.write_bool(self.enabled);
         w.write_u8(self.sample_buffer);
         w.write_bool(self.sample_buffer_empty);
+        w.write_u8(self.shift_register);
         w.write_u8(self.bits_remaining);
+        w.write_bool(self.silence);
         w.write_u16(self.current_address);
         w.write_u16(self.bytes_remaining);
         w.write_u8(self.output_level);
@@ -106,7 +117,9 @@ impl DmcChannel {
         self.enabled = r.read_bool()?;
         self.sample_buffer = r.read_u8()?;
         self.sample_buffer_empty = r.read_bool()?;
+        self.shift_register = r.read_u8()?;
         self.bits_remaining = r.read_u8()?;
+        self.silence = r.read_bool()?;
         self.current_address = r.read_u16()?;
         self.bytes_remaining = r.read_u16()?;
         self.output_level = r.read_u8()?;
@@ -121,9 +134,8 @@ impl DmcChannel {
         let irq_enable = (value >> 7) & 1 != 0;
         self.irq_enabled = irq_enable;
         self.timer = DMC_PERIODS[(value & 0x0F) as usize];
-        self.timer_value = self.timer;
         if !irq_enable {
-            self.irq_pending = false; // Clear IRQ flag when disabling IRQ
+            self.irq_pending = false;
         }
     }
 
@@ -158,7 +170,7 @@ impl DmcChannel {
             self.load_sample(memory);
         }
         if self.timer_value == 0 {
-            self.timer_value = self.timer;
+            self.timer_value = self.timer.wrapping_sub(1);
             self.clock_output(memory);
         } else {
             self.timer_value -= 1;
@@ -168,44 +180,32 @@ impl DmcChannel {
         self.generate_output();
     }
 
-    fn clock_output(&mut self, memory: &mut dyn MemoryMapper) {
-        if !self.enabled || self.bytes_remaining == 0 {
-            return;
-        }
-
+    fn clock_output(&mut self, _memory: &mut dyn MemoryMapper) {
         if self.bits_remaining == 0 {
+            self.bits_remaining = 8;
             if self.sample_buffer_empty {
-                self.load_sample(memory);
-            }
-
-            if !self.sample_buffer_empty {
-                self.bits_remaining = 8;
-            }
-        }
-
-        if self.bits_remaining > 0 {
-            let bit = self.sample_buffer & 1;
-            self.sample_buffer >>= 1;
-            self.bits_remaining -= 1;
-
-            if bit == 1 {
-                if self.output_level <= 124 {
-                    self.output_level += 2;
-                } else {
-                    self.output_level = 126;
-                }
+                self.silence = true;
             } else {
-                if self.output_level >= 3 {
-                    self.output_level -= 2;
-                } else {
-                    self.output_level = 1;
-                }
-            }
-
-            if self.bits_remaining == 0 {
+                self.silence = false;
+                self.shift_register = self.sample_buffer;
                 self.sample_buffer_empty = true;
             }
         }
+
+        if !self.silence {
+            if self.shift_register & 1 == 1 {
+                if self.output_level <= 125 {
+                    self.output_level += 2;
+                }
+            } else {
+                if self.output_level >= 2 {
+                    self.output_level -= 2;
+                }
+            }
+            self.shift_register >>= 1;
+        }
+
+        self.bits_remaining -= 1;
     }
 
     fn load_sample(&mut self, memory: &mut dyn MemoryMapper) {
@@ -241,11 +241,6 @@ impl DmcChannel {
     }
 
     fn generate_output(&mut self) {
-        if !self.enabled {
-            self.output = 0.0;
-            return;
-        }
-
         self.output = self.output_level as f32;
     }
 
@@ -310,14 +305,24 @@ mod tests {
         let mut dmc = DmcChannel::new();
         dmc.enabled = true;
         dmc.bytes_remaining = 10;
-        dmc.bits_remaining = 8;
+        dmc.bits_remaining = 1;
+        dmc.silence = false;
+        dmc.shift_register = 0x01;
         dmc.output_level = 64;
+        // sample buffer loaded for next cycle
         dmc.sample_buffer = 0x01;
+        dmc.sample_buffer_empty = false;
         dmc.clock_output(&mut DummyMemory);
+        // bit 0 of 0x01 is 1 → +2, then bits_remaining goes to 0, reloads from buffer
         assert_eq!(dmc.output_level, 66);
+
         dmc.sample_buffer = 0x80;
-        dmc.bits_remaining = 8;
+        dmc.sample_buffer_empty = false;
+        dmc.bits_remaining = 1;
+        dmc.silence = false;
+        dmc.shift_register = 0x80;
         dmc.clock_output(&mut DummyMemory);
+        // bit 0 of 0x80 is 0 → -2
         assert_eq!(dmc.output_level, 64);
     }
 
@@ -328,8 +333,8 @@ mod tests {
         assert_eq!(dmc.direct_load, 0);
         assert_eq!(dmc.sample_address, 0);
         assert_eq!(dmc.sample_length, 0);
-        assert_eq!(dmc.timer, 0);
-        assert_eq!(dmc.timer_value, 0);
+        assert_eq!(dmc.timer, DMC_PERIODS[0]);
+        assert_eq!(dmc.timer_value, DMC_PERIODS[0]);
         assert!(!dmc.enabled);
         assert_eq!(dmc.sample_buffer, 0);
         assert!(dmc.sample_buffer_empty);
@@ -353,9 +358,8 @@ mod tests {
         // Test period setting
         dmc.set_control(0b00001111); // Period 15
         assert_eq!(dmc.timer, DMC_PERIODS[15]);
-
-        // Test that timer value is also set
-        assert_eq!(dmc.timer_value, DMC_PERIODS[15]);
+        // timer_value is NOT reset by set_control (hardware behavior)
+        assert_eq!(dmc.timer_value, DMC_PERIODS[0]);
     }
 
     #[test]
@@ -427,21 +431,20 @@ mod tests {
         let mut dmc = DmcChannel::new();
         let mut mem = DummyMemory;
 
-        // Set up a basic timer
-        dmc.set_control(0x01); // Period 1
+        dmc.set_control(0x01); // Period = DMC_PERIODS[1] = 380
         dmc.enabled = true;
         dmc.bytes_remaining = 10;
+        dmc.timer_value = 0; // Force timer to expire on next cycle
 
-        // Cycle should advance timer
-        let initial_timer = dmc.timer_value;
+        // First cycle: timer_value == 0 → reloads to timer-1=379, calls clock_output
         dmc.cycle(&mut mem);
-        assert_eq!(dmc.timer_value, initial_timer - 1);
+        assert_eq!(dmc.timer_value, dmc.timer - 1);
 
-        // Cycle until timer reaches 0
-        for _ in 0..initial_timer {
+        // Full period = timer cycles: 379 decrements + 1 reload
+        for _ in 0..dmc.timer {
             dmc.cycle(&mut mem);
         }
-        assert_eq!(dmc.timer_value, dmc.timer); // Should reset to timer
+        assert_eq!(dmc.timer_value, dmc.timer - 1);
     }
 
     #[test]
@@ -449,38 +452,39 @@ mod tests {
         let mut dmc = DmcChannel::new();
         let mut mem = DummyMemory;
 
-        // Test when disabled
+        // When bits_remaining is 0 and buffer empty → silence, reload to 8, then decrement to 7
         dmc.clock_output(&mut mem);
-        assert_eq!(dmc.bits_remaining, 0); // Should not change
-
-        // Test when no bytes remaining
-        dmc.enabled = true;
-        dmc.bytes_remaining = 0;
-        dmc.clock_output(&mut mem);
-        assert_eq!(dmc.bits_remaining, 0); // Should not change
-
-        // Test when bits remaining is 0 but sample buffer is empty
-        dmc.bytes_remaining = 10;
-        dmc.bits_remaining = 0;
-        dmc.sample_buffer_empty = true;
-        dmc.current_address = 0xC001; // Set to odd address to get 0xFF sample
-        dmc.clock_output(&mut mem);
-        // Should try to load sample and set bits_remaining to 8, then process a bit (so 7 left)
+        assert!(dmc.silence);
         assert_eq!(dmc.bits_remaining, 7);
-        assert!(!dmc.sample_buffer_empty);
 
-        // Test bit processing (LSB-first: use odd byte so first bit is 1)
-        dmc.sample_buffer = 0x01;
-        dmc.output_level = 64; // Middle level
+        // Load a sample into the buffer, then clock when bits_remaining hits 0
+        dmc.bytes_remaining = 10;
+        dmc.current_address = 0xC001;
+        dmc.sample_buffer_empty = true;
+        // Drain remaining bits in silence
+        for _ in 0..7 {
+            dmc.clock_output(&mut mem);
+        }
+        // Now the cycle() would have filled the buffer; simulate that
+        dmc.sample_buffer = 0xAA;
+        dmc.sample_buffer_empty = false;
+        // bits_remaining is 0 → new output cycle loads buffer into shift register
         dmc.clock_output(&mut mem);
-        assert_eq!(dmc.output_level, 66); // Should increase by 2
-        assert_eq!(dmc.bits_remaining, 6); // Should be 6 after processing one bit
+        assert!(!dmc.silence);
+        assert_eq!(dmc.shift_register, 0xAA >> 1); // shifted once
 
-        // Test bit processing with 0 bit (LSB of 0x02 is 0)
-        dmc.sample_buffer = 0x02;
+        // Test bit processing with known shift register
+        dmc.output_level = 64;
+        dmc.shift_register = 0x01; // bit 0 = 1
+        dmc.silence = false;
+        dmc.bits_remaining = 2;
         dmc.clock_output(&mut mem);
-        assert_eq!(dmc.output_level, 64); // Should decrease by 2
-        assert_eq!(dmc.bits_remaining, 5); // Should be 5 after processing another bit
+        assert_eq!(dmc.output_level, 66); // +2
+
+        dmc.shift_register = 0x02; // bit 0 = 0
+        dmc.bits_remaining = 2;
+        dmc.clock_output(&mut mem);
+        assert_eq!(dmc.output_level, 64); // -2
     }
 
     #[test]
@@ -533,12 +537,10 @@ mod tests {
     fn test_dmc_channel_generate_output() {
         let mut dmc = DmcChannel::new();
 
-        // Test disabled channel
+        // Output always reflects output_level regardless of enabled state
         dmc.generate_output();
         assert_eq!(dmc.output, 0.0);
 
-        // Test enabled channel
-        dmc.enabled = true;
         // Raw 7-bit DAC output to mixer (0–127)
         dmc.output_level = 64;
         dmc.generate_output();
@@ -585,21 +587,36 @@ mod tests {
     #[test]
     fn test_dmc_channel_output_level_bounds() {
         let mut dmc = DmcChannel::new();
-        dmc.enabled = true;
-        dmc.bytes_remaining = 10;
-        dmc.bits_remaining = 8;
 
-        // LSB-first: bit 1 increases toward cap
+        // Bit 1: should not increase past 125 → 127
         dmc.output_level = 126;
-        dmc.sample_buffer = 0x01;
+        dmc.shift_register = 0x01;
+        dmc.silence = false;
+        dmc.bits_remaining = 2;
         dmc.clock_output(&mut DummyMemory);
-        assert_eq!(dmc.output_level, 126); // Should not exceed 126
+        assert_eq!(dmc.output_level, 126); // 126 > 125, no change
 
-        // LSB 0: decrease but clamp at 1
-        dmc.output_level = 1;
-        dmc.sample_buffer = 0x00;
+        dmc.output_level = 125;
+        dmc.shift_register = 0x01;
+        dmc.silence = false;
+        dmc.bits_remaining = 2;
         dmc.clock_output(&mut DummyMemory);
-        assert_eq!(dmc.output_level, 1); // Should not go below 1
+        assert_eq!(dmc.output_level, 127); // 125 + 2 = 127
+
+        // Bit 0: should not decrease below 2 → 0
+        dmc.output_level = 1;
+        dmc.shift_register = 0x00;
+        dmc.silence = false;
+        dmc.bits_remaining = 2;
+        dmc.clock_output(&mut DummyMemory);
+        assert_eq!(dmc.output_level, 1); // 1 < 2, no change
+
+        dmc.output_level = 2;
+        dmc.shift_register = 0x00;
+        dmc.silence = false;
+        dmc.bits_remaining = 2;
+        dmc.clock_output(&mut DummyMemory);
+        assert_eq!(dmc.output_level, 0); // 2 - 2 = 0
     }
 
     #[test]
