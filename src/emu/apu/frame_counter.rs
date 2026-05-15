@@ -36,6 +36,16 @@ impl FrameCounter {
         }
     }
 
+    pub fn reset_with_value(&mut self, value: u8) {
+        self.mode = (value >> 7) & 1;
+        self.irq_inhibit = (value >> 6) & 1 != 0;
+        self.step = 0;
+        self.cycles = 10;
+        self.reset_delay = 0;
+        self.pending_write = 0;
+        self.block_tick = 0;
+    }
+
     pub fn write(&mut self, value: u8, emu_cycle: u64) {
         self.irq_inhibit = (value >> 6) & 1 != 0;
         self.pending_write = value;

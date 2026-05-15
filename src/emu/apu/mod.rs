@@ -105,6 +105,7 @@ pub struct APU {
     enabled_channels: u8,
     // Debug override mute independent of $4015 (bit0..bit4: p1,p2,tri,noise,dmc)
     mute_mask: u8,
+    last_4017_write: Option<u8>,
 
     audio_filter: AudioFilter,
 }
@@ -127,19 +128,40 @@ impl APU {
             frame_irq_since_dot: u64::MAX,
             enabled_channels: 0,
             mute_mask: 0,
+            last_4017_write: None,
             audio_filter: AudioFilter::new(SAMPLE_RATE),
         };
-        apu.reset();
+        apu.hard_reset();
         apu
     }
 
-    pub fn reset(&mut self) {
+    pub fn hard_reset(&mut self) {
         self.pulse1.hard_reset();
         self.pulse2.hard_reset();
         self.triangle.hard_reset();
         self.noise.hard_reset();
         self.dmc.hard_reset();
         self.frame_counter = FrameCounter::new();
+        self.last_4017_write = None;
+        self.reset_common();
+    }
+
+    pub fn reset(&mut self) {
+        self.pulse1.set_enabled(false);
+        self.pulse2.set_enabled(false);
+        self.triangle.set_enabled(false);
+        self.noise.set_enabled(false);
+        self.dmc.set_enabled(false);
+        if let Some(val) = self.last_4017_write {
+            self.frame_counter = FrameCounter::new();
+            self.frame_counter.reset_with_value(val);
+        } else {
+            self.frame_counter = FrameCounter::new();
+        }
+        self.reset_common();
+    }
+
+    fn reset_common(&mut self) {
         self.sample_index = 0;
         self.cycles_since_sample = 0.0;
         self.status = 0;
@@ -387,6 +409,7 @@ impl APU {
                 if value & 0x40 != 0 {
                     self.clear_irq();
                 }
+                self.last_4017_write = Some(value);
                 self.frame_counter.write(value, emu_cycle);
             }
 
@@ -545,6 +568,8 @@ impl APU {
         w.write_u32(self.sample_index as u32);
         self.audio_filter.save_state(w);
         w.write_u64(self.frame_irq_since_dot);
+        w.write_u8(self.last_4017_write.unwrap_or(0));
+        w.write_bool(self.last_4017_write.is_some());
     }
 
     pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -564,6 +589,11 @@ impl APU {
             self.frame_irq_since_dot = r.read_u64()?;
         } else {
             self.frame_irq_since_dot = if self.status & 0x40 != 0 { 0 } else { u64::MAX };
+        }
+        if r.version() >= 4 {
+            let val = r.read_u8()?;
+            let written = r.read_bool()?;
+            self.last_4017_write = if written { Some(val) } else { None };
         }
         Ok(())
     }
@@ -1089,5 +1119,214 @@ mod tests {
     #[test]
     fn test_blargg_apu_2005_len_reload_timing() {
         run_blargg_apu_2005_rom("input/nes/apu/11.len_reload_timing.nes");
+    }
+
+    // --- apu_reset tests ---
+    // These tests require the $81 reset protocol: run until infinite loop,
+    // check $6000 for $81 meaning "press reset", trigger reset, run again.
+
+    fn run_apu_reset_rom(rom_path: &str, test_name: &str) {
+        use crate::emu;
+        use crate::emu::io::loader;
+        use crate::util::get_status_str;
+
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        for _ in 0..5 {
+            let status = emu.mem.cpu_read(0x6000);
+            if status != 0x81 {
+                break;
+            }
+            emu.reset();
+            emu.run();
+        }
+
+        let buf = get_status_str(&mut emu, 0x6004, 200);
+        let status = emu.mem.cpu_read(0x6000);
+        assert_eq!(
+            0,
+            status,
+            "{}: test status 0x{:02X}: {}",
+            test_name,
+            status,
+            buf.trim()
+        );
+    }
+
+    #[test]
+    fn test_apu_reset_4015_cleared() {
+        run_apu_reset_rom("input/nes/apu_reset/4015_cleared.nes", "4015_cleared");
+    }
+
+    #[test]
+    fn test_apu_reset_4017_timing() {
+        run_apu_reset_rom("input/nes/apu_reset/4017_timing.nes", "4017_timing");
+    }
+
+    #[test]
+    fn test_apu_reset_4017_written() {
+        run_apu_reset_rom("input/nes/apu_reset/4017_written.nes", "4017_written");
+    }
+
+    #[test]
+    fn test_apu_reset_irq_flag_cleared() {
+        run_apu_reset_rom(
+            "input/nes/apu_reset/irq_flag_cleared.nes",
+            "irq_flag_cleared",
+        );
+    }
+
+    #[test]
+    fn test_apu_reset_len_ctrs_enabled() {
+        run_apu_reset_rom(
+            "input/nes/apu_reset/len_ctrs_enabled.nes",
+            "len_ctrs_enabled",
+        );
+    }
+
+    #[test]
+    fn test_apu_reset_works_immediately() {
+        run_apu_reset_rom(
+            "input/nes/apu_reset/works_immediately.nes",
+            "works_immediately",
+        );
+    }
+
+    // --- cpu_exec_space and instr_misc APU tests ---
+
+    #[test]
+    fn test_cpu_exec_space_apu() {
+        use crate::emu;
+        use crate::emu::io::loader;
+
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            "input/nes/apu/test_cpu_exec_space_apu.nes",
+        )));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        let status = emu.mem.cpu_read(0x6000);
+        assert_eq!(0, status, "test status 0x{:02X}", status);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_instr_misc_dummy_reads_apu() {
+        run_blargg_apu_rom("input/nes/apu/04-dummy_reads_apu.nes", "04-dummy_reads_apu");
+    }
+
+    // --- PAL APU tests (ignored until PAL support is added) ---
+
+    fn run_pal_apu_rom(rom_path: &str, test_name: &str) {
+        use crate::emu;
+        use crate::emu::io::loader;
+        use crate::util::get_status_str;
+
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        let buf = get_status_str(&mut emu, 0x6004, 200);
+        let status = emu.mem.cpu_read(0x6000);
+        assert_eq!(
+            0,
+            status,
+            "{}: test status 0x{:02X}: {}",
+            test_name,
+            status,
+            buf.trim()
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_ctr() {
+        run_pal_apu_rom("input/nes/pal_apu/01.len_ctr.nes", "01.len_ctr");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_table() {
+        run_pal_apu_rom("input/nes/pal_apu/02.len_table.nes", "02.len_table");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_irq_flag() {
+        run_pal_apu_rom("input/nes/pal_apu/03.irq_flag.nes", "03.irq_flag");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_clock_jitter() {
+        run_pal_apu_rom("input/nes/pal_apu/04.clock_jitter.nes", "04.clock_jitter");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_timing_mode0() {
+        run_pal_apu_rom(
+            "input/nes/pal_apu/05.len_timing_mode0.nes",
+            "05.len_timing_mode0",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_timing_mode1() {
+        run_pal_apu_rom(
+            "input/nes/pal_apu/06.len_timing_mode1.nes",
+            "06.len_timing_mode1",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_irq_flag_timing() {
+        run_pal_apu_rom(
+            "input/nes/pal_apu/07.irq_flag_timing.nes",
+            "07.irq_flag_timing",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_irq_timing() {
+        run_pal_apu_rom("input/nes/pal_apu/08.irq_timing.nes", "08.irq_timing");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_halt_timing() {
+        run_pal_apu_rom(
+            "input/nes/pal_apu/10.len_halt_timing.nes",
+            "10.len_halt_timing",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_pal_apu_len_reload_timing() {
+        run_pal_apu_rom(
+            "input/nes/pal_apu/11.len_reload_timing.nes",
+            "11.len_reload_timing",
+        );
     }
 }
