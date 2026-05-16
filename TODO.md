@@ -118,7 +118,7 @@ Currently: bare winit window, no menu, CLI-only file selection.
   - Filter for .nes files
   - Remember last opened directory
 - [ ] Fullscreen toggle (F11 or Cmd+F) [S]
-- [ ] Window title shows loaded ROM name [XS]
+- [x] Window title shows loaded ROM name [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
 - [ ] Recent ROMs list (persist across sessions) [M]
 
@@ -176,7 +176,7 @@ Currently: native desktop only (macOS), CI builds on Linux.
   - Portrait "rotate device" prompt with animated sprite
   - Mobile Safari audio workaround (AudioContext resume on gesture + MediaStreamDestination)
 - [x] Local storage for save RAM and save states
-- [ ] Host on GitHub Pages (krankulator.github.io or similar)
+- [x] Host on GitHub Pages (krankulator.github.io or similar)
 
 ### Cross-platform desktop builds [M]
 - [ ] macOS: .app bundle with icon, code signing
