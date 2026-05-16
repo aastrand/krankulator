@@ -12,7 +12,7 @@ The project is a Cargo workspace with three crates:
 
 - **`core/`** (`krankulator-core`) — Platform-independent emulation library. Compiles to native and wasm32 with zero cfg gates. Only dependency: `hex`.
 - **`desktop/`** (`krankulator-desktop`) — Native frontend using winit, pixels, rodio. Produces the `krankulator` binary.
-- **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet. Built with `trunk`.
+- **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet, touch controls. Built with `trunk`.
 
 Key traits defined in core that frontends implement:
 - `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`
@@ -144,9 +144,11 @@ cargo clippy --workspace
 
 ### Web Frontend (`web/`)
 
-- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, AudioWorklet audio
-- `index.html` — HTML shell with canvas + file input + lucky button
+- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, touch controls, AudioWorklet audio
+- `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor
+- `assets/mario-walking.png` — Sprite sheet for rotate-prompt animation
+- `assets/PressStart2P.woff2` — Pixel font (OFL licensed)
 - `Trunk.toml` — trunk build config (release mode, COOP/COEP headers)
 
 ### Test paths
@@ -167,6 +169,7 @@ Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path v
 - APU accumulates samples per cycle, outputs batches via `push_samples()`
 - `flush()` called once per frame — desktop is no-op (ring buffer), web sends to AudioWorklet via postMessage
 - Web AudioWorklet uses fixed-size ring buffer (8192 samples) to absorb timing jitter
+- Mobile Safari workaround: AudioContext resumed on user gesture, routed through MediaStreamDestination → HTMLAudioElement
 
 **Frame pacing (web)**
 - `requestAnimationFrame` loop with `performance.now()` time accumulator
@@ -185,9 +188,9 @@ desktop/            — Native frontend binary
   src/io.rs         — winit + pixels IOHandler
   src/audio.rs      — rodio AudioBackend
 web/                — WebAssembly frontend
-  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend
-  index.html        — HTML shell
-  assets/           — Static assets (audio_processor.js, background.jpg)
+  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend + touch controls
+  index.html        — HTML shell (desktop + touch layout + rotate prompt)
+  assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
   Trunk.toml        — Build config
 input/              — Test ROMs and data files
   nes/              — NES ROM files for testing

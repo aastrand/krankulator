@@ -74,7 +74,8 @@ Coverage: ~677/695 licensed NTSC US games (97.4%)
 
 ## Input / Controllers
 
-Currently: keyboard-only via winit (arrows, Z/X/A/B, C/V start/select).
+Desktop: keyboard via winit (arrows, Z/X/A/B, C/V start/select).
+Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select buttons).
 
 - [ ] Gamepad support via gilrs or SDL2 gamepad API [M]
   - Auto-detect connected controllers
@@ -162,15 +163,18 @@ Currently: native desktop only (macOS), CI builds on Linux.
 - Gives access to RetroArch's ecosystem: shaders, netplay, achievements, controller support, recording
 
 ### Web (WASM + WebGL) [XL]
-- [ ] Compile core emulation to wasm32-unknown-unknown
+- [x] Compile core emulation to wasm32-unknown-unknown
   - Factor out platform-specific code (audio, windowing) behind a trait/abstraction
   - Audio via Web Audio API (wasm-bindgen + web-sys)
-  - Rendering via WebGL or canvas 2D (via web-sys or wgpu)
-  - File loading via drag-and-drop or file picker in browser
+  - Rendering via canvas 2D (via web-sys)
+  - File loading via file picker in browser
   - Touch controls for mobile (on-screen D-pad and buttons)
-  - Local storage for save RAM and save states
+- [x] Mobile-friendly responsive layout
+  - Landscape touch layout with virtual d-pad (analog-style with deadzone), A/B/Start/Select buttons
+  - Portrait "rotate device" prompt with animated sprite
+  - Mobile Safari audio workaround (AudioContext resume on gesture + MediaStreamDestination)
+- [ ] Local storage for save RAM and save states
 - [ ] Host on GitHub Pages (krankulator.github.io or similar)
-- [ ] Mobile-friendly responsive layout
 
 ### Cross-platform desktop builds [M]
 - [ ] macOS: .app bundle with icon, code signing

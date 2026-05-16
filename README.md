@@ -18,7 +18,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
-- **WebAssembly frontend** — runs in the browser with Canvas 2D rendering and AudioWorklet audio
+- **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **Headless mode** for testing and CI
 
 ## Architecture
@@ -41,7 +41,7 @@ graph TD
 
     Emu --> IO["IOHandler<br/>trait object"]
     IO --> Winit["WinitPixels<br/>window + input"]
-    IO --> WebIO["WebIO<br/>Canvas 2D + keyboard"]
+    IO --> WebIO["WebIO<br/>Canvas 2D + keyboard + touch"]
     IO --> Headless["Headless<br/>testing"]
 
     APU --> Audio["AudioBackend<br/>trait object"]
@@ -165,7 +165,8 @@ waveform, spectrum, and envelope comparisons.
 Windows. Tested primarily on macOS.
 
 **Web:** Runs in any modern browser (Firefox, Chrome, Safari) via WebAssembly. Requires
-AudioWorklet support for sound.
+AudioWorklet support for sound. Mobile devices get a dedicated landscape touch layout with
+virtual d-pad and action buttons.
 
 ## Resources
 
