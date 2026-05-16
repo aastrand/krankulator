@@ -326,6 +326,9 @@ impl Emulator {
 
             if self.stepping {
                 self.debug();
+                if self.stepping {
+                    state = CycleState::Exiting;
+                }
             }
 
             if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
