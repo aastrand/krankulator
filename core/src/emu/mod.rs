@@ -1592,6 +1592,17 @@ impl Emulator {
 
         let logline = self.log_str();
         self.iohandler.log(logline);
+
+        let mut ctx = io::DebugContext {
+            cpu: &mut self.cpu,
+            mem: &mut *self.mem,
+            breakpoints: &mut self.breakpoints,
+            stepping: &mut self.stepping,
+            should_log: &mut self.should_log,
+            verbose: &mut self.verbose,
+            lookup: &self.lookup,
+        };
+        self.iohandler.on_debug(&mut ctx);
     }
 
     fn exit(&self) {

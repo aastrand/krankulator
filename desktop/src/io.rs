@@ -16,8 +16,10 @@ use winit::{
 use krankulator_core::emu::apu;
 use krankulator_core::emu::gfx;
 use krankulator_core::emu::io::controller;
-use krankulator_core::emu::io::{IOHandler, PollResult};
+use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
+use krankulator_core::emu::dbg;
+use krankulator_core::util;
 
 pub struct WinitPixelsIOHandler {
     pixels: Option<Pixels<'static>>,
@@ -318,5 +320,90 @@ impl IOHandler for WinitPixelsIOHandler {
 
     fn exit(&self, s: String) {
         self.log(s);
+    }
+
+    #[allow(unused_must_use)]
+    fn on_debug(&mut self, ctx: &mut DebugContext) {
+        use shrust::{ExecError, Shell, ShellIO};
+        use std::io::prelude::*;
+
+        let mut shell = Shell::new(ctx);
+
+        shell.new_command("m", "mem read/write: m <addr> [value]", 1, |io, ctx, w| {
+            match util::hex_str_to_u16(w[0]) {
+                Ok(addr) => {
+                    writeln!(io, "mem[0x{:x}] == 0x{:x}", addr, ctx.mem.cpu_read(addr as _))?;
+                    if w.len() > 1 {
+                        match util::hex_str_to_u8(w[1]) {
+                            Ok(v) => {
+                                ctx.mem.cpu_write(addr as _, v);
+                                writeln!(io, "mem[0x{:x}] = 0x{:x}", addr, v)?;
+                            }
+                            _ => { writeln!(io, "invalid value: {}", w[1])?; }
+                        }
+                    }
+                }
+                _ => { writeln!(io, "invalid address: {}", w[0])?; }
+            }
+            Ok(())
+        });
+
+        shell.new_command("o", "opcode lookup", 1, |io, ctx, w| {
+            match util::hex_str_to_u8(w[0]) {
+                Ok(o) => { writeln!(io, "0x{:x} => {}", o, ctx.lookup.name(o))?; }
+                _ => { writeln!(io, "invalid opcode: {}", w[0])?; }
+            };
+            Ok(())
+        });
+
+        shell.new_command("cpu", "edit cpu register: cpu <reg> <value>", 2, |io, ctx, w| {
+            match util::hex_str_to_u16(w[1]) {
+                Ok(v) => match w[0] {
+                    "a" => { ctx.cpu.a = (v & 0xff) as u8; writeln!(io, "cpu.a = 0x{:x}", ctx.cpu.a)?; }
+                    "x" => { ctx.cpu.x = (v & 0xff) as u8; writeln!(io, "cpu.x = 0x{:x}", ctx.cpu.x)?; }
+                    "y" => { ctx.cpu.y = (v & 0xff) as u8; writeln!(io, "cpu.y = 0x{:x}", ctx.cpu.y)?; }
+                    "sp" => { ctx.cpu.sp = (v & 0xff) as u8; writeln!(io, "cpu.sp = 0x{:x}", ctx.cpu.sp)?; }
+                    "status" => { ctx.cpu.status = (v & 0xff) as u8; writeln!(io, "cpu.status = 0x{:x}", ctx.cpu.status)?; }
+                    "pc" => { ctx.cpu.pc = v; writeln!(io, "cpu.pc = 0x{:x}", v)?; }
+                    _ => { writeln!(io, "invalid register: {}", w[0])?; }
+                },
+                _ => { writeln!(io, "invalid value: {}", w[1])?; }
+            };
+            Ok(())
+        });
+
+        shell.new_command("b", "add/remove breakpoint", 0, |io, ctx, w| {
+            if !w.is_empty() {
+                writeln!(io, "{}", dbg::toggle_breakpoint(w[0], ctx.breakpoints));
+            }
+            writeln!(io, "breakpoints:")?;
+            for b in ctx.breakpoints.iter() {
+                writeln!(io, "  0x{:x}: {}", b, ctx.lookup.name(ctx.mem.cpu_read(*b as _)))?;
+            }
+            Ok(())
+        });
+
+        shell.new_command_noargs("s", "toggle stepping", |io, ctx| {
+            *ctx.stepping = !*ctx.stepping;
+            writeln!(io, "stepping: {}", *ctx.stepping)?;
+            Ok(())
+        });
+
+        shell.new_command_noargs("l", "toggle log output", |io, ctx| {
+            *ctx.should_log = !*ctx.should_log;
+            writeln!(io, "logging: {}", *ctx.should_log)?;
+            Ok(())
+        });
+
+        shell.new_command_noargs("v", "toggle verbose mode", |io, ctx| {
+            *ctx.verbose = !*ctx.verbose;
+            writeln!(io, "verbose: {}", *ctx.verbose)?;
+            Ok(())
+        });
+
+        shell.new_command_noargs("c", "continue", |_, _| Err(ExecError::Quit));
+        shell.new_command_noargs("q", "quit", |_, _| { std::process::exit(0); });
+
+        shell.run_loop(&mut ShellIO::default());
     }
 }
