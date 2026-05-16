@@ -320,11 +320,12 @@ impl Emulator {
         if self.cpu.cycle == self.cycles {
             state = CycleState::CpuExecuted;
 
-            if self.stepping
-                || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
-            {
+            if !self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc) {
+                self.stepping = true;
+            }
+
+            if self.stepping {
                 self.debug();
-                state = CycleState::Exiting;
             }
 
             if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
