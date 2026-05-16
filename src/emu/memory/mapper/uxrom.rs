@@ -2,51 +2,20 @@ use super::super::*;
 use super::*;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
-/*
-UxROM (Mapper 2)
-
-CPU $8000-$BFFF: 16 KB switchable PRG ROM bank
-CPU $C000-$FFFF: 16 KB PRG ROM bank, fixed to the last bank
-
-Bank switching:
-- Write to $8000-$FFFF selects 16 KB PRG ROM bank for $8000-$BFFF
-- Bank number is in bits 3-0 for UOROM (up to 4MB), bits 2-0 for UNROM (up to 256KB)
-
-CHR:
-- No CHR ROM banking (8 KB CHR-RAM is typical)
-
-Mirroring:
-- Fixed horizontal or vertical mirroring set by hardwired solder pads
-*/
-
 const UXROM_PRG_BANK_SIZE: usize = 16 * 1024;
-const UXROM_CHR_SIZE: usize = 8 * 1024;
-const VRAM_SIZE: u16 = 2 * 1024;
-
+const CHR_SIZE: usize = 8 * 1024;
 const BANK_SWITCHABLE_ADDR: usize = 0x8000;
 const BANK_FIXED_ADDR: usize = 0xC000;
 
 pub struct UxROMMapper {
-    _flags: u8,
-
     _addr_space: Box<[u8; MAX_RAM_SIZE]>,
     addr_space_ptr: *mut u8,
 
-    // PRG ROM banks
     _prg_rom: Vec<[u8; UXROM_PRG_BANK_SIZE]>,
     selected_bank: usize,
 
-    // CHR RAM (no CHR ROM banking)
-    _chr_ram: Box<[u8; UXROM_CHR_SIZE]>,
-    chr_ptr: *mut u8,
-
-    _vram: Box<[u8; VRAM_SIZE as usize]>,
-    vrm_ptr: *mut u8,
-
-    nametable_alignment: NametableMirror,
-
+    ppu: PpuBus,
     pub controllers: [controller::Controller; 2],
-    palette_ram: [u8; 32],
 }
 
 impl UxROMMapper {
@@ -57,7 +26,6 @@ impl UxROMMapper {
 
         let mut mem: Box<[u8; MAX_RAM_SIZE]> = Box::new([0; MAX_RAM_SIZE]);
 
-        // Initialize with first bank switchable, last bank fixed
         let last_bank = prg_banks.len() - 1;
         mem[BANK_SWITCHABLE_ADDR..BANK_SWITCHABLE_ADDR + UXROM_PRG_BANK_SIZE]
             .clone_from_slice(&prg_banks[0]);
@@ -66,46 +34,19 @@ impl UxROMMapper {
 
         let addr_space_ptr = mem.as_mut_ptr();
 
-        // CHR RAM (writable)
-        let mut chr_ram = Box::new([0; UXROM_CHR_SIZE]);
-        let chr_ptr = chr_ram.as_mut_ptr();
-
-        let mut vram = Box::new([0; VRAM_SIZE as usize]);
-        let vrm_ptr = vram.as_mut_ptr();
-
-        let nametable_alignment = if flags & super::NAMETABLE_ALIGNMENT_BIT == 1 {
-            NametableMirror::Vertical
-        } else {
-            NametableMirror::Horizontal
-        };
-
         UxROMMapper {
-            _flags: flags,
-
             _addr_space: mem,
             addr_space_ptr,
-
             _prg_rom: prg_banks,
             selected_bank: 0,
-
-            _chr_ram: chr_ram,
-            chr_ptr,
-
-            _vram: vram,
-            vrm_ptr,
-
-            nametable_alignment,
-
+            ppu: PpuBus::new_ram(CHR_SIZE, mirroring_from_flags(flags)),
             controllers: [controller::Controller::new(), controller::Controller::new()],
-            palette_ram: [0x0F; 32],
         }
     }
 
     fn switch_prg_bank(&mut self, bank: u8) {
         let bank_index = (bank as usize) % self._prg_rom.len();
         self.selected_bank = bank_index;
-
-        // Update the switchable bank in memory
         unsafe {
             std::ptr::copy_nonoverlapping(
                 self._prg_rom[bank_index].as_ptr(),
@@ -128,75 +69,23 @@ impl MemoryMapper for UxROMMapper {
 
         match page {
             0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
-            // Bank switching register at $8000-$FFFF
             0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
-                // Use bits 3-0 for bank selection (supports up to 16 banks)
-                // Some variants use only bits 2-0 (UNROM) for 8 banks
                 self.switch_prg_bank(value & 0x0F);
             }
-            _ => { /* Ignore writes to unmapped areas */ }
+            _ => {}
         }
     }
 
     fn ppu_read(&self, addr: u16) -> u8 {
-        let mut addr = addr;
-        let page = addr_to_page(addr);
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut palette_addr = (addr as usize - 0x3F00) % 32;
-            if palette_addr & 0x13 == 0x10 {
-                palette_addr &= !0x10;
-            }
-            return self.palette_ram[palette_addr];
-        }
-        match page {
-            // CHR RAM (writable)
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) },
-            0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { *self.vrm_ptr.offset(addr as _) }
-            }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) },
-            _ => panic!("Addr {:X} not mapped for ppu_read!", addr),
-        }
+        self.ppu.read(addr)
     }
 
     fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
-        let mut addr = addr % MAX_VRAM_ADDR;
-        let page = addr_to_page(addr);
-        match page {
-            0x0 | 0x10 => unsafe { std::ptr::copy(self.chr_ptr.offset(addr as _), dest, size) },
-            0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { std::ptr::copy(self.vrm_ptr.offset(addr as _), dest, size) }
-            }
-            0x30 => unsafe {
-                std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as _), dest, size)
-            },
-            _ => panic!("Addr not mapped for ppu_copy: {:X}", addr),
-        }
+        self.ppu.copy(addr, dest, size);
     }
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
-        let mut addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut palette_addr = (addr as usize - 0x3F00) % 32;
-            if palette_addr & 0x13 == 0x10 {
-                palette_addr &= !0x10;
-            }
-            self.palette_ram[palette_addr] = value;
-            return;
-        }
-        let page = addr_to_page(addr);
-        match page {
-            // CHR RAM is writable
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as _) = value },
-            0x20 => {
-                addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
-                unsafe { *self.vrm_ptr.offset(addr as _) = value }
-            }
-            0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as _) = value },
-            _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
-        }
+        self.ppu.write(addr, value);
     }
 
     fn code_start(&mut self) -> u16 {
@@ -219,11 +108,7 @@ impl MemoryMapper for UxROMMapper {
     fn save_state(&self, w: &mut SavestateWriter) {
         let ram = unsafe { std::slice::from_raw_parts(self.addr_space_ptr, MAX_RAM_SIZE) };
         w.write_bytes(ram);
-        let chr = unsafe { std::slice::from_raw_parts(self.chr_ptr, UXROM_CHR_SIZE) };
-        w.write_bytes(chr);
-        let vram = unsafe { std::slice::from_raw_parts(self.vrm_ptr, VRAM_SIZE as usize) };
-        w.write_bytes(vram);
-        w.write_bytes(&self.palette_ram);
+        self.ppu.save_state(w);
         w.write_u8(self.selected_bank as u8);
         super::save_controllers(w, &self.controllers);
     }
@@ -231,11 +116,7 @@ impl MemoryMapper for UxROMMapper {
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
         let ram = unsafe { std::slice::from_raw_parts_mut(self.addr_space_ptr, MAX_RAM_SIZE) };
         r.read_bytes_into(ram)?;
-        let chr = unsafe { std::slice::from_raw_parts_mut(self.chr_ptr, UXROM_CHR_SIZE) };
-        r.read_bytes_into(chr)?;
-        let vram = unsafe { std::slice::from_raw_parts_mut(self.vrm_ptr, VRAM_SIZE as usize) };
-        r.read_bytes_into(vram)?;
-        r.read_bytes_into(&mut self.palette_ram)?;
+        self.ppu.load_state(r)?;
         self.selected_bank = r.read_u8()? as usize;
         super::load_controllers(r, &mut self.controllers)?;
         Ok(())
@@ -281,11 +162,9 @@ mod tests {
         let bank1 = [0; UXROM_PRG_BANK_SIZE];
         let mut mapper: Box<dyn MemoryMapper> = Box::new(UxROMMapper::new(0, vec![bank1]));
 
-        // CHR RAM should be writable
         mapper.ppu_write(0x0100, 0x42);
         assert_eq!(mapper.ppu_read(0x0100), 0x42);
 
-        // Test another address
         mapper.ppu_write(0x1FFF, 0x84);
         assert_eq!(mapper.ppu_read(0x1FFF), 0x84);
     }
@@ -294,19 +173,16 @@ mod tests {
     fn test_uxrom_mirroring() {
         let bank1 = [0; UXROM_PRG_BANK_SIZE];
 
-        // Test vertical mirroring (flags = 0)
-        let mut mapper_v: Box<dyn MemoryMapper> = Box::new(UxROMMapper::new(0, vec![bank1]));
+        let mut mapper_h: Box<dyn MemoryMapper> = Box::new(UxROMMapper::new(0, vec![bank1]));
+        let mut mapper_v: Box<dyn MemoryMapper> = Box::new(UxROMMapper::new(1, vec![bank1]));
 
-        // Test horizontal mirroring (flags = 1)
-        let mut mapper_h: Box<dyn MemoryMapper> = Box::new(UxROMMapper::new(1, vec![bank1]));
+        mapper_h.ppu_write(0x2000, 0x10);
+        mapper_v.ppu_write(0x2000, 0x20);
 
-        // Write to nametable and verify mirroring behavior
-        mapper_v.ppu_write(0x2000, 0x10);
-        mapper_h.ppu_write(0x2000, 0x20);
+        // Horizontal: $2000 = $2400
+        assert_eq!(mapper_h.ppu_read(0x2400), 0x10);
 
-        // The specific mirroring behavior is handled by the mirror_nametable_addr function
-        // This test just ensures the mappers can be created with different mirroring flags
-        assert_eq!(mapper_v.ppu_read(0x2000), 0x10);
-        assert_eq!(mapper_h.ppu_read(0x2000), 0x20);
+        // Vertical: $2000 = $2800
+        assert_eq!(mapper_v.ppu_read(0x2800), 0x20);
     }
 }

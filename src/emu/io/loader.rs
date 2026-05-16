@@ -73,6 +73,24 @@ const INES_HEADER_SIZE: usize = 16;
 const PRG_BANK_SIZE: usize = 16384;
 pub const CHR_BANK_SIZE: usize = 8192;
 
+fn combine_prg_banks_32k(prg_banks: &[[u8; PRG_BANK_SIZE]]) -> Vec<[u8; 32 * 1024]> {
+    let mut banks = Vec::new();
+
+    for i in (0..prg_banks.len()).step_by(2) {
+        let mut bank_32k = [0; 32 * 1024];
+        if i + 1 < prg_banks.len() {
+            bank_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[i]);
+            bank_32k[PRG_BANK_SIZE..32 * 1024].copy_from_slice(&prg_banks[i + 1]);
+        } else {
+            bank_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[i]);
+            bank_32k[PRG_BANK_SIZE..32 * 1024].copy_from_slice(&prg_banks[i]);
+        }
+        banks.push(bank_32k);
+    }
+
+    banks
+}
+
 pub fn sav_path(rom_path: &str) -> PathBuf {
     let mut path = PathBuf::from(rom_path);
     path.set_extension("sav");
@@ -99,7 +117,14 @@ impl Loader for InesLoader {
         let num_prg_blocks = bytes[4];
         let num_chr_blocks = bytes[5];
         let flags = bytes[6];
-        let mapper = flags >> 4;
+        let mapper = {
+            let ines_mapper = ((bytes[7] as u16) & 0xF0) | ((flags as u16) >> 4);
+            if is_nes2_header {
+                ines_mapper | (((bytes[8] as u16) & 0x0F) << 8)
+            } else {
+                ines_mapper
+            }
+        };
         let has_battery = (flags & 0x02) != 0;
         let prg_ram_units = bytes[8];
         let submapper = if is_nes2_header {
@@ -226,24 +251,27 @@ impl Loader for InesLoader {
                 sram_data.clone(),
                 submapper,
             )),
-            7 => {
-                // AxROM expects 32KB PRG banks
-                let mut axrom_banks = Vec::new();
-                for i in (0..prg_banks.len()).step_by(2) {
-                    let mut bank_32k = [0; 32 * 1024];
-                    if i + 1 < prg_banks.len() {
-                        // Combine two 16KB banks into 32KB
-                        bank_32k[0..16384].copy_from_slice(&prg_banks[i]);
-                        bank_32k[16384..32768].copy_from_slice(&prg_banks[i + 1]);
-                    } else {
-                        // Mirror single 16KB bank
-                        bank_32k[0..16384].copy_from_slice(&prg_banks[i]);
-                        bank_32k[16384..32768].copy_from_slice(&prg_banks[i]);
-                    }
-                    axrom_banks.push(bank_32k);
+            7 => Box::new(mapper::axrom::AxROMMapper::new(
+                flags,
+                combine_prg_banks_32k(&prg_banks),
+            )),
+            34 => {
+                if is_nes2_header && submapper != 0 && submapper != 2 {
+                    panic!(
+                        "Mapper 34 submapper {} is not implemented; only BNROM is supported",
+                        submapper
+                    );
                 }
-                Box::new(mapper::axrom::AxROMMapper::new(flags, axrom_banks))
+                Box::new(mapper::bnrom::BNROMMapper::new(
+                    flags,
+                    combine_prg_banks_32k(&prg_banks),
+                ))
             }
+            66 => Box::new(mapper::gxrom::GxROMMapper::new(
+                flags,
+                combine_prg_banks_32k(&prg_banks),
+                chr_banks,
+            )),
             _ => panic!("Mapper {:X} not implemented!", mapper),
         };
 
@@ -274,6 +302,28 @@ pub fn load_nes(path: &str) -> Box<dyn memory::MemoryMapper> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn write_test_rom(mapper_id: u8, prg_blocks: u8, chr_blocks: u8) -> PathBuf {
+        let mut bytes = vec![0; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[4] = prg_blocks;
+        bytes[5] = chr_blocks;
+        bytes[6] = (mapper_id & 0x0F) << 4;
+        bytes[7] = mapper_id & 0xF0;
+
+        bytes.extend(std::iter::repeat(0).take(prg_blocks as usize * PRG_BANK_SIZE));
+        bytes.extend(std::iter::repeat(0).take(chr_blocks as usize * CHR_BANK_SIZE));
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("krankulator-test-{}-{}.nes", mapper_id, nonce));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
 
     #[test]
     fn test_load_ines() {
@@ -303,5 +353,20 @@ mod tests {
             result.err(),
             Some(format!("ERROR: Missing iNES header magic numbers"))
         );
+    }
+
+    #[test]
+    fn test_load_ines_mapper_uses_flags7_upper_nibble() {
+        let l: Box<dyn Loader> = InesLoader::new();
+
+        let gxrom_path = write_test_rom(66, 2, 1);
+        let gxrom_result = l.load(gxrom_path.to_str().unwrap());
+        std::fs::remove_file(&gxrom_path).unwrap();
+        assert_eq!(gxrom_result.unwrap().mapper_id(), 66);
+
+        let bnrom_path = write_test_rom(34, 2, 0);
+        let bnrom_result = l.load(bnrom_path.to_str().unwrap());
+        std::fs::remove_file(&bnrom_path).unwrap();
+        assert_eq!(bnrom_result.unwrap().mapper_id(), 34);
     }
 }

@@ -13,7 +13,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)
+- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), BNROM (34), GxROM (66)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3 cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -34,9 +34,8 @@ graph TD
     Mem --> NROM
     Mem --> MMC1
     Mem --> MMC3
-    Mem --> UxROM
-    Mem --> CNROM
-    Mem --> AxROM
+    Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM"]
+    Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
     Emu --> IO["IOHandler<br/>trait object"]
     IO --> Winit["WinitPixels<br/>window + input"]
@@ -50,8 +49,10 @@ graph TD
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
 the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU. Memory mappers are trait
 objects — each cartridge type implements its own bank switching, mirroring, and IRQ logic
-(e.g. MMC3 scanline counter). The IO layer is also a trait, allowing windowed or headless
-operation with the same emulation core.
+(e.g. MMC3 scanline counter). Simple discrete-logic mappers (UxROM, CNROM, AxROM, BNROM,
+GxROM) share PPU bus logic via `PpuBus`; BNROM and GxROM emulate AND-type bus conflicts.
+The IO layer is also a trait, allowing windowed or headless operation with the same
+emulation core.
 
 ## Building and running
 

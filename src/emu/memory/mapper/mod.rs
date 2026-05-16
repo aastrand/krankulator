@@ -1,5 +1,7 @@
 pub mod axrom;
+pub mod bnrom;
 pub mod cnrom;
+pub mod gxrom;
 pub mod mmc1;
 pub mod mmc3;
 pub mod nrom;
@@ -56,8 +58,6 @@ fn load_mirroring(r: &mut SavestateReader) -> std::io::Result<NametableMirror> {
 pub const MAX_VRAM_ADDR: u16 = 0x4000;
 
 pub fn mirror_addr(addr: u16) -> u16 {
-    // System memory at $0000-$07FF is mirrored at $0800-$0FFF, $1000-$17FF, and $1800-$1FFF
-    // - attempting to access memory at, for example, $0173 is the same as accessing memory at $0973, $1173, or $1973.
     if addr < 0x2000 {
         addr % 0x800
     } else if addr < 0x4000 {
@@ -76,20 +76,137 @@ pub enum NametableMirror {
 }
 
 fn mirror_nametable_addr(addr: u16, mirroring: NametableMirror) -> u16 {
-    // NESDev-correct mirroring logic
-    let vram_index = match mirroring {
-        NametableMirror::Vertical => {
-            // $2000-$27FF -> 0x000-0x7FF, $2800-$2FFF -> 0x000-0x7FF
-            addr & 0x07FF
-        }
-        NametableMirror::Horizontal => {
-            // $2000=$2400 -> 0x000-0x3FF, $2800=$2C00 -> 0x400-0x7FF
-            ((addr >> 1) & 0x0400) | (addr & 0x03FF)
-        }
+    match mirroring {
+        NametableMirror::Vertical => addr & 0x07FF,
+        NametableMirror::Horizontal => ((addr >> 1) & 0x0400) | (addr & 0x03FF),
         NametableMirror::Lower => addr & 0x03FF,
         NametableMirror::Higher => 0x0400 | (addr & 0x03FF),
-    };
-    vram_index
+    }
+}
+
+const VRAM_SIZE: u16 = 2 * 1024;
+
+pub struct PpuBus {
+    chr: Vec<u8>,
+    chr_writable: bool,
+    vram: Box<[u8; VRAM_SIZE as usize]>,
+    pub mirroring: NametableMirror,
+    palette_ram: [u8; 32],
+}
+
+impl PpuBus {
+    pub fn new_ram(chr_size: usize, mirroring: NametableMirror) -> Self {
+        PpuBus {
+            chr: vec![0; chr_size],
+            chr_writable: true,
+            vram: Box::new([0; VRAM_SIZE as usize]),
+            mirroring,
+            palette_ram: [0x0F; 32],
+        }
+    }
+
+    pub fn new_rom(chr_data: &[u8], mirroring: NametableMirror) -> Self {
+        PpuBus {
+            chr: chr_data.to_vec(),
+            chr_writable: false,
+            vram: Box::new([0; VRAM_SIZE as usize]),
+            mirroring,
+            palette_ram: [0x0F; 32],
+        }
+    }
+
+    pub fn switch_chr_bank(&mut self, banks: &[[u8; 8192]], bank_index: usize) {
+        let src = &banks[bank_index];
+        self.chr[..8192].copy_from_slice(src);
+    }
+
+    fn resolve_nametable_addr(&self, addr: u16) -> u16 {
+        mirror_nametable_addr(addr, self.mirroring) % VRAM_SIZE
+    }
+
+    pub fn read(&self, addr: u16) -> u8 {
+        let addr = addr % MAX_VRAM_ADDR;
+        if addr >= 0x3F00 && addr < 0x4000 {
+            let mut idx = (addr as usize - 0x3F00) % 32;
+            if idx & 0x13 == 0x10 {
+                idx &= !0x10;
+            }
+            return self.palette_ram[idx];
+        }
+        let page = super::addr_to_page(addr);
+        match page {
+            0x0 | 0x10 => self.chr[addr as usize],
+            // $3000-$3EFF mirrors $2000-$2EFF
+            0x20 | 0x30 => {
+                let a = self.resolve_nametable_addr(addr);
+                self.vram[a as usize]
+            }
+            _ => 0,
+        }
+    }
+
+    pub fn write(&mut self, addr: u16, value: u8) {
+        let addr = addr % MAX_VRAM_ADDR;
+        if addr >= 0x3F00 && addr < 0x4000 {
+            let mut idx = (addr as usize - 0x3F00) % 32;
+            if idx & 0x13 == 0x10 {
+                idx &= !0x10;
+            }
+            self.palette_ram[idx] = value;
+            return;
+        }
+        let page = super::addr_to_page(addr);
+        match page {
+            0x0 | 0x10 => {
+                if self.chr_writable {
+                    self.chr[addr as usize] = value;
+                }
+            }
+            // $3000-$3EFF mirrors $2000-$2EFF
+            0x20 | 0x30 => {
+                let a = self.resolve_nametable_addr(addr);
+                self.vram[a as usize] = value;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn copy(&self, addr: u16, dest: *mut u8, size: usize) {
+        let addr = addr % MAX_VRAM_ADDR;
+        let page = super::addr_to_page(addr);
+        match page {
+            0x0 | 0x10 => unsafe {
+                std::ptr::copy(self.chr.as_ptr().offset(addr as _), dest, size)
+            },
+            // $3000-$3EFF mirrors $2000-$2EFF
+            0x20 | 0x30 => {
+                let a = self.resolve_nametable_addr(addr);
+                unsafe { std::ptr::copy(self.vram.as_ptr().offset(a as _), dest, size) }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn save_state(&self, w: &mut SavestateWriter) {
+        w.write_bytes(&self.chr);
+        w.write_bytes(&*self.vram);
+        w.write_bytes(&self.palette_ram);
+    }
+
+    pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
+        r.read_bytes_into(&mut self.chr)?;
+        r.read_bytes_into(&mut *self.vram)?;
+        r.read_bytes_into(&mut self.palette_ram)?;
+        Ok(())
+    }
+}
+
+pub fn mirroring_from_flags(flags: u8) -> NametableMirror {
+    if flags & NAMETABLE_ALIGNMENT_BIT == 1 {
+        NametableMirror::Vertical
+    } else {
+        NametableMirror::Horizontal
+    }
 }
 
 #[cfg(test)]
@@ -209,5 +326,27 @@ mod tests {
             mirror_nametable_addr(0x2D23, NametableMirror::Higher),
             0x0523
         );
+    }
+
+    #[test]
+    fn test_ppubus_3000_mirrors_2000() {
+        let mut ppu = PpuBus::new_ram(8192, NametableMirror::Horizontal);
+
+        // Write via $2000, read back via $3000 mirror
+        ppu.write(0x2042, 0xAB);
+        assert_eq!(ppu.read(0x3042), 0xAB);
+
+        // Write via $3000 mirror, read back via $2000
+        ppu.write(0x3100, 0xCD);
+        assert_eq!(ppu.read(0x2100), 0xCD);
+    }
+
+    #[test]
+    fn test_ppubus_read_wraps_above_4000() {
+        let mut ppu = PpuBus::new_ram(8192, NametableMirror::Horizontal);
+
+        ppu.write(0x0010, 0x77);
+        // $4010 should wrap to $0010
+        assert_eq!(ppu.read(0x4010), 0x77);
     }
 }

@@ -84,10 +84,12 @@ cargo clippy
 - Per-dot cycle-accurate rendering
 
 **Memory System (src/emu/memory/)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3)
+- `PpuBus` shared struct handles CHR read/write, nametable mirroring, palette RAM, and VRAM for simple mappers
+- AND-type bus conflict emulation for discrete logic mappers (BNROM, GxROM)
 
 **APU (src/emu/apu/)**
 - Audio Processing Unit with pulse, triangle, noise, and DMC channels
@@ -164,8 +166,11 @@ The project uses both unit tests and integration tests:
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC3, UxROM, AxROM, CNROM
+- NROM, MMC1, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM
 - Proper mirroring for nametables and palettes
+- BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
+- BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo
+- Simple mappers (BNROM, GxROM, CNROM, UxROM, AxROM) share PPU logic via `PpuBus`
 
 **Audio System**
 - Length counters for all channels

@@ -2,18 +2,18 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)**
-Coverage: ~670/695 licensed NTSC US games (96.4%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), BNROM (34), GxROM (66)**
+Coverage: ~677/695 licensed NTSC US games (97.4%)
 
-### Priority 1: Quick wins (simple mappers, immediate coverage)
+### Completed: Priority 1 quick wins
 
-**Mapper 66 — GxROM** [XS]
+**Mapper 66 — GxROM** [done]
 - Games (~5): Super Mario Bros./Duck Hunt combo cart, Dragon Power, Gumshoe, Thunder & Lightning
-- Single register at $8000-FFFF selects both PRG and CHR bank. Two bits each. Simpler than CNROM.
+- Single register at $8000-FFFF selects both PRG and CHR bank. Two bits each. AND-type bus conflicts.
 
-**Mapper 34 — BNROM** [XS]
+**Mapper 34 — BNROM** [done]
 - Games (~2): Deadly Towers, Impossible Mission II
-- Single PRG bank switch register, 32KB granularity. No CHR banking (uses CHR RAM).
+- Full 8-bit PRG bank register (wraps via modulo), 32KB granularity. CHR RAM. AND-type bus conflicts.
 
 ### Priority 2: High-impact licensed game coverage
 
@@ -64,8 +64,7 @@ Coverage: ~670/695 licensed NTSC US games (96.4%)
 
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
-| Done | 0,1,2,3,4,7 | 670 | 670/695 (96.4%) |
-| Priority 1 | 66, 34 | ~7 | 677 (97.4%) |
+| Done | 0,1,2,3,4,7,34,66 | 677 | 677/695 (97.4%) |
 | Priority 2 | 206, 9, 5 | ~20 | 697 (99.3%) |
 | Priority 3 | 118, 119 | 5 | 697 (99.6%) |
 | Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
