@@ -30,20 +30,37 @@ fn set_status(msg: &str) {
 
 // --- Web Audio Backend ---
 
+const AUDIO_TARGET_LEVEL: u32 = 2048;
+const AUDIO_HIGH_WATER: u32 = 4096;
+
 struct WebAudioBackend {
     port: Rc<RefCell<Option<web_sys::MessagePort>>>,
     buffer: Vec<f32>,
+    worklet_level: Rc<Cell<u32>>,
 }
 
 impl WebAudioBackend {
-    fn new(port: Rc<RefCell<Option<web_sys::MessagePort>>>) -> Self {
+    fn new(
+        port: Rc<RefCell<Option<web_sys::MessagePort>>>,
+        worklet_level: Rc<Cell<u32>>,
+    ) -> Self {
         Self {
             port,
             buffer: Vec::with_capacity(1024),
+            worklet_level,
         }
     }
 
     fn send_to_worklet(&mut self) {
+        if self.buffer.is_empty() {
+            return;
+        }
+        let level = self.worklet_level.get();
+        if level > AUDIO_HIGH_WATER {
+            let excess = (level - AUDIO_TARGET_LEVEL) as usize;
+            let drop = excess.min(self.buffer.len());
+            self.buffer.drain(..drop);
+        }
         if self.buffer.is_empty() {
             return;
         }
@@ -161,10 +178,16 @@ impl IOHandler for WebIOHandler {
 
 // --- Main entry ---
 
+thread_local! {
+    static KEYS: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
+    static GENERATION: Cell<u32> = Cell::new(0);
+}
+
 #[wasm_bindgen(start)]
 pub fn main() {
     console_error_panic_hook::set_once();
     set_status("Load a .nes ROM to start");
+    KEYS.with(|keys| setup_keyboard(keys.clone()));
     setup_file_input();
     setup_lucky_button();
 }
@@ -248,10 +271,6 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     Ok(data)
 }
 
-thread_local! {
-    static GENERATION: Cell<u32> = Cell::new(0);
-}
-
 fn start_emulator(rom_data: Vec<u8>) {
     use krankulator_core::emu::io::loader;
 
@@ -267,12 +286,11 @@ fn start_emulator(rom_data: Vec<u8>) {
 
     set_status("Starting...");
 
-    let keys: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
-    setup_keyboard(keys.clone());
-
+    let keys = KEYS.with(|k| k.clone());
     let audio_port: Rc<RefCell<Option<web_sys::MessagePort>>> = Rc::new(RefCell::new(None));
+    let worklet_level: Rc<Cell<u32>> = Rc::new(Cell::new(0));
     let io_handler = Box::new(WebIOHandler::new(keys));
-    let audio = Box::new(WebAudioBackend::new(audio_port.clone()));
+    let audio = Box::new(WebAudioBackend::new(audio_port.clone(), worklet_level.clone()));
 
     let mut emu = emu::Emulator::new_with(io_handler, mapper, audio);
     emu.cpu.status = 0x34;
@@ -292,7 +310,7 @@ fn start_emulator(rom_data: Vec<u8>) {
 
     let gen = GENERATION.with(|g| g.get());
     wasm_bindgen_futures::spawn_local(async move {
-        connect_audio_worklet(audio_ctx, audio_port).await;
+        connect_audio_worklet(audio_ctx, audio_port, worklet_level).await;
         run_loop(emu, gen);
     });
 }
@@ -312,6 +330,7 @@ fn create_audio_context() -> Option<AudioContext> {
 async fn connect_audio_worklet(
     ctx: Option<AudioContext>,
     audio_port: Rc<RefCell<Option<web_sys::MessagePort>>>,
+    worklet_level: Rc<Cell<u32>>,
 ) {
     let Some(ctx) = ctx else { return };
 
@@ -345,6 +364,14 @@ async fn connect_audio_worklet(
     let _ = node.connect_with_audio_node(&ctx.destination());
 
     if let Ok(port) = node.port() {
+        let level = worklet_level;
+        let onmessage = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
+            if let Some(val) = e.data().as_f64() {
+                level.set(val as u32);
+            }
+        }) as Box<dyn FnMut(_)>);
+        port.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+        onmessage.forget();
         *audio_port.borrow_mut() = Some(port);
         web_sys::console::log_1(&"Audio worklet connected".into());
     }
@@ -400,11 +427,19 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .unwrap();
 }
 
+const MAPPED_KEYS: &[&str] = &[
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "KeyZ", "KeyX", "KeyC", "KeyV",
+];
+
 fn setup_keyboard(keys: Rc<RefCell<HashSet<String>>>) {
     let keys_down = keys.clone();
     let keydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
-        e.prevent_default();
-        keys_down.borrow_mut().insert(e.code());
+        let code = e.code();
+        if MAPPED_KEYS.contains(&code.as_str()) {
+            e.prevent_default();
+        }
+        keys_down.borrow_mut().insert(code);
     }) as Box<dyn FnMut(_)>);
 
     let keys_up = keys;
