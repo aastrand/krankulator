@@ -17,7 +17,7 @@ jobs:
     - name: Update dependencies
       run: sudo apt-get update
     - name: Install dependencies
-      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev libudev-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -42,7 +42,7 @@ jobs:
     - name: Update dependencies
       run: sudo apt-get update
     - name: Install dependencies
-      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev
+      run: sudo apt-get install libncurses-dev libncursesw5-dev curl unzip tar libasound2-dev libudev-dev
     - name: Install uv
       uses: astral-sh/setup-uv@v4
     - name: Set up Python venv
