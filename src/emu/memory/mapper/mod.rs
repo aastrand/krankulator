@@ -67,7 +67,7 @@ pub fn mirror_addr(addr: u16) -> u16 {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NametableMirror {
     Lower,
     Higher,

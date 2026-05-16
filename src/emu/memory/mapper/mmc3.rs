@@ -117,11 +117,7 @@ impl MMC3Mapper {
             irq_pending: false,
             irq_pending_since_dot: 0,
             last_a12_low_dot: 0,
-            mirroring: if flags & 1 == 0 {
-                NametableMirror::Vertical
-            } else {
-                NametableMirror::Horizontal
-            },
+            mirroring: super::mirroring_from_flags(flags),
             vram: Box::new([0; 0x800]),
             cpu_ram: Box::new([0; 0x800]),
             palette_ram: [0x0F; 32],
@@ -770,5 +766,69 @@ mod tests {
     #[test]
     fn test_mmc3_6_mmc6() {
         run_mmc3_rom_with_submapper("input/nes/mappers/mmc3/6-MMC6.nes", "6-MMC6", Some(1));
+    }
+
+    #[test]
+    fn test_mmc3_chr_ram_writable() {
+        let mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+        assert!(mapper.chr_is_ram);
+    }
+
+    #[test]
+    fn test_mmc3_chr_rom_not_writable() {
+        let mapper = MMC3Mapper::new(
+            0,
+            vec![[0; 16384]; 2],
+            vec![[0xAB; 8192]; 1],
+            false,
+            None,
+            0,
+        );
+        assert!(!mapper.chr_is_ram);
+    }
+
+    #[test]
+    fn test_mmc3_chr_ram_ppu_write_read_roundtrip() {
+        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+
+        mapper.ppu_write(0x0000, 0x42);
+        mapper.ppu_write(0x0100, 0xAB);
+        mapper.ppu_write(0x1FFF, 0xCD);
+
+        assert_eq!(mapper.ppu_read(0x0000), 0x42);
+        assert_eq!(mapper.ppu_read(0x0100), 0xAB);
+        assert_eq!(mapper.ppu_read(0x1FFF), 0xCD);
+    }
+
+    #[test]
+    fn test_mmc3_chr_rom_ppu_write_ignored() {
+        let mut mapper =
+            MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0);
+
+        mapper.ppu_write(0x0000, 0x42);
+        assert_eq!(mapper.ppu_read(0x0000), 0x00);
+    }
+
+    #[test]
+    fn test_mmc3_initial_mirroring_horizontal() {
+        let mapper = MMC3Mapper::new(0b0000_0000, vec![[0; 16384]; 2], vec![], false, None, 0);
+        assert_eq!(mapper.mirroring, NametableMirror::Horizontal);
+    }
+
+    #[test]
+    fn test_mmc3_initial_mirroring_vertical() {
+        let mapper = MMC3Mapper::new(0b0000_0001, vec![[0; 16384]; 2], vec![], false, None, 0);
+        assert_eq!(mapper.mirroring, NametableMirror::Vertical);
+    }
+
+    #[test]
+    fn test_mmc3_mirroring_register_write() {
+        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+
+        mapper.cpu_write(0xA000, 0x01);
+        assert_eq!(mapper.mirroring, NametableMirror::Horizontal);
+
+        mapper.cpu_write(0xA000, 0x00);
+        assert_eq!(mapper.mirroring, NametableMirror::Vertical);
     }
 }

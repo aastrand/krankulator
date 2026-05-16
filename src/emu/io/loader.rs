@@ -243,14 +243,21 @@ impl Loader for InesLoader {
                 }
                 Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
             }
-            4 => Box::new(MMC3Mapper::new(
-                flags,
-                prg_banks,
-                chr_banks,
-                has_battery,
-                sram_data.clone(),
-                submapper,
-            )),
+            4 => {
+                let mmc3_chr = if num_chr_blocks > 0 {
+                    chr_banks
+                } else {
+                    vec![]
+                };
+                Box::new(MMC3Mapper::new(
+                    flags,
+                    prg_banks,
+                    mmc3_chr,
+                    has_battery,
+                    sram_data.clone(),
+                    submapper,
+                ))
+            }
             7 => Box::new(mapper::axrom::AxROMMapper::new(
                 flags,
                 combine_prg_banks_32k(&prg_banks),
