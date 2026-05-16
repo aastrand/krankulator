@@ -575,6 +575,7 @@ impl MemoryMapper for MMC3Mapper {
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_input;
     #[allow(unused_imports)]
     use crate::emu;
     #[allow(unused_imports)]
@@ -734,18 +735,18 @@ mod tests {
 
     #[test]
     fn test_mmc3_1_clocking() {
-        run_mmc3_rom("input/nes/mappers/mmc3/1-clocking.nes", "1-clocking");
+        run_mmc3_rom(test_input!("nes/mappers/mmc3/1-clocking.nes"), "1-clocking");
     }
 
     #[test]
     fn test_mmc3_2_details() {
-        run_mmc3_rom("input/nes/mappers/mmc3/2-details.nes", "2-details");
+        run_mmc3_rom(test_input!("nes/mappers/mmc3/2-details.nes"), "2-details");
     }
 
     #[test]
     fn test_mmc3_3_a12_clocking() {
         run_mmc3_rom(
-            "input/nes/mappers/mmc3/3-A12_clocking.nes",
+            test_input!("nes/mappers/mmc3/3-A12_clocking.nes"),
             "3-A12_clocking",
         );
     }
@@ -753,19 +754,19 @@ mod tests {
     #[test]
     fn test_mmc3_4_scanline_timing() {
         run_mmc3_rom(
-            "input/nes/mappers/mmc3/4-scanline_timing.nes",
+            test_input!("nes/mappers/mmc3/4-scanline_timing.nes"),
             "4-scanline_timing",
         );
     }
 
     #[test]
     fn test_mmc3_5_mmc3() {
-        run_mmc3_rom("input/nes/mappers/mmc3/5-MMC3.nes", "5-MMC3");
+        run_mmc3_rom(test_input!("nes/mappers/mmc3/5-MMC3.nes"), "5-MMC3");
     }
 
     #[test]
     fn test_mmc3_6_mmc6() {
-        run_mmc3_rom_with_submapper("input/nes/mappers/mmc3/6-MMC6.nes", "6-MMC6", Some(1));
+        run_mmc3_rom_with_submapper(test_input!("nes/mappers/mmc3/6-MMC6.nes"), "6-MMC6", Some(1));
     }
 
     #[test]

@@ -1,15 +1,3 @@
-[package]
-name = "krankulator"
-version = "0.1.0"
-authors = ["Anders Åstrand <anders@teknodromen.se>"]
-edition = "2021"
-
-[dependencies]
-hex = "0.4"
-rand = "0.7.3"
-clap = { version = "3.1.1", features = ["derive"] }
-shrust = "0.0.7"
-winit = "0.30"
-pixels = "0.17"
-rodio = "0.17"
-ringbuf = "0.4"
+[workspace]
+members = ["core", "desktop"]
+resolver = "2"
