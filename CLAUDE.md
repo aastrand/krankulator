@@ -143,6 +143,7 @@ cargo clippy --workspace
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core
 - `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
+- `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers
 
 ### Web Frontend (`web/`)
 

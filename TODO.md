@@ -74,14 +74,16 @@ Coverage: ~677/695 licensed NTSC US games (97.4%)
 
 ## Input / Controllers
 
-Desktop: keyboard via winit (arrows, Z/X/A/B, C/V start/select).
+Desktop: keyboard via winit (arrows, Z/X/A/B, C/V start/select). Gamepad via GCController (macOS) / gilrs (Linux/Windows).
 Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select buttons).
 
-- [ ] Gamepad support via gilrs or SDL2 gamepad API [M]
-  - Auto-detect connected controllers
-  - Support Switch Pro Controller, 8BitDo controllers, Xbox, PS controllers
+- [x] Gamepad support [M]
+  - macOS: GCController framework (objc2-game-controller) — required because macOS intercepts Bluetooth controller input
+  - Linux/Windows: gilrs crate with event-based input
+  - Auto-detect connected controllers (up to 2)
   - D-pad and analog stick mapping (with deadzone)
-  - Two-player support (NES has two controller ports)
+  - Two-player support (Joy-Con pair auto-splits into P1/P2)
+  - Edge-detected save/load state and slot cycling on P1
 - [ ] Configurable key/button bindings [S]
   - Save bindings to a config file
   - Per-controller profiles
@@ -173,7 +175,7 @@ Currently: native desktop only (macOS), CI builds on Linux.
   - Landscape touch layout with virtual d-pad (analog-style with deadzone), A/B/Start/Select buttons
   - Portrait "rotate device" prompt with animated sprite
   - Mobile Safari audio workaround (AudioContext resume on gesture + MediaStreamDestination)
-- [ ] Local storage for save RAM and save states
+- [x] Local storage for save RAM and save states
 - [ ] Host on GitHub Pages (krankulator.github.io or similar)
 
 ### Cross-platform desktop builds [M]

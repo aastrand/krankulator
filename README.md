@@ -20,6 +20,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
+- **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **Headless mode** for testing and CI
 
@@ -99,6 +100,8 @@ OPTIONS:
 
 ### Controls
 
+#### Keyboard
+
 | Key | Action |
 |-----|--------|
 | Arrow keys | D-pad |
@@ -114,6 +117,28 @@ OPTIONS:
 | 1-5 | Toggle individual APU channels |
 | 0 | Master mute |
 | Esc | Quit |
+
+#### Gamepad (auto-detected)
+
+Standard controllers (Pro Controller, Xbox, PS, 8BitDo) use conventional mapping. Joy-Con pair auto-splits into P1 (right) and P2 (left):
+
+| Button (P1 right Joy-Con) | Action |
+|---------------------------|--------|
+| Stick | D-pad |
+| Switch X | NES A |
+| Switch B | NES B |
+| + | Start |
+| R / ZR | Select |
+| Switch A | Load state |
+| Switch Y | Save state |
+
+| Button (P2 left Joy-Con) | Action |
+|--------------------------|--------|
+| Stick | D-pad |
+| D-pad down | NES A |
+| D-pad left | NES B |
+| - | Start |
+| L / ZL | Select |
 
 ## Testing
 
