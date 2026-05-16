@@ -3,8 +3,12 @@ pub mod loader;
 pub mod log;
 
 use super::apu;
+use super::cpu;
+use super::cpu::opcodes;
 use super::gfx;
 use super::memory;
+
+use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct PollResult {
@@ -15,12 +19,23 @@ pub struct PollResult {
     pub reset: bool,
 }
 
+pub struct DebugContext<'a> {
+    pub cpu: &'a mut cpu::Cpu,
+    pub mem: &'a mut dyn memory::MemoryMapper,
+    pub breakpoints: &'a mut Box<HashSet<u16>>,
+    pub stepping: &'a mut bool,
+    pub should_log: &'a mut bool,
+    pub verbose: &'a mut bool,
+    pub lookup: &'a opcodes::Lookup,
+}
+
 pub trait IOHandler {
     fn init(&mut self) -> Result<(), String>;
     fn log(&self, logline: String);
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult;
     fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
+    fn on_debug(&mut self, _ctx: &mut DebugContext) {}
 }
 
 pub struct HeadlessIOHandler {}
