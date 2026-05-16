@@ -5,6 +5,7 @@ class NesAudioProcessor extends AudioWorkletProcessor {
         this.writePos = 0;
         this.readPos = 0;
         this.count = 0;
+        this.reportCounter = 0;
 
         this.port.onmessage = (e) => {
             const samples = e.data;
@@ -28,6 +29,11 @@ class NesAudioProcessor extends AudioWorkletProcessor {
             } else {
                 output[i] = 0;
             }
+        }
+        this.reportCounter++;
+        if (this.reportCounter >= 8) {
+            this.port.postMessage(this.count);
+            this.reportCounter = 0;
         }
         return true;
     }
