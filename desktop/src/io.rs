@@ -21,10 +21,13 @@ use krankulator_core::emu::memory;
 use krankulator_core::emu::dbg;
 use krankulator_core::util;
 
+use crate::gamepad::Gamepads;
+
 pub struct WinitPixelsIOHandler {
     pixels: Option<Pixels<'static>>,
     event_loop: Option<EventLoop<()>>,
     window: Option<&'static Window>,
+    gamepads: Gamepads,
     muted: bool,
     last_frame_time: Instant,
 }
@@ -84,6 +87,7 @@ impl WinitPixelsIOHandler {
             pixels: init.pixels,
             event_loop: Some(event_loop),
             window: init.window,
+            gamepads: Gamepads::new(),
             muted: false,
             last_frame_time: Instant::now(),
         }
@@ -276,13 +280,35 @@ impl IOHandler for WinitPixelsIOHandler {
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
-        let result = PollResult {
+
+        let mut result = PollResult {
             exit: handler.exit,
             save_state: handler.save_state,
             load_state: handler.load_state,
             cycle_slot: handler.cycle_slot,
             reset: handler.reset,
         };
+
+        let pad_states = self.gamepads.poll();
+        for (i, state) in pad_states.iter().enumerate() {
+            if let Some(s) = state {
+                let c = &mut mem.controllers()[i];
+                if s.a { c.set_pressed(controller::A); } else { c.set_not_pressed(controller::A); }
+                if s.b { c.set_pressed(controller::B); } else { c.set_not_pressed(controller::B); }
+                if s.start { c.set_pressed(controller::START); } else { c.set_not_pressed(controller::START); }
+                if s.select { c.set_pressed(controller::SELECT); } else { c.set_not_pressed(controller::SELECT); }
+                if s.up { c.set_pressed(controller::UP); } else { c.set_not_pressed(controller::UP); }
+                if s.down { c.set_pressed(controller::DOWN); } else { c.set_not_pressed(controller::DOWN); }
+                if s.left { c.set_pressed(controller::LEFT); } else { c.set_not_pressed(controller::LEFT); }
+                if s.right { c.set_pressed(controller::RIGHT); } else { c.set_not_pressed(controller::RIGHT); }
+
+                if i == 0 {
+                    if s.save_state { result.save_state = true; }
+                    if s.load_state { result.load_state = true; }
+                    if s.cycle_slot { result.cycle_slot = true; }
+                }
+            }
+        }
 
         self.event_loop = Some(event_loop);
         result

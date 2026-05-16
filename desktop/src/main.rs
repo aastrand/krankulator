@@ -1,4 +1,5 @@
 mod audio;
+mod gamepad;
 mod io;
 
 use clap::Parser;

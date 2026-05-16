@@ -16,3 +16,10 @@ pixels = "0.17"
 rodio = "0.17"
 ringbuf = "0.4"
 shrust = "0.0.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-game-controller = { version = "0.3", features = ["GCController", "GCExtendedGamepad", "GCControllerButtonInput", "GCControllerDirectionPad", "GCControllerAxisInput", "GCControllerElement", "GCExtendedGamepadSnapshot"] }
+objc2-foundation = { version = "0.3", features = ["NSArray"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+gilrs = "0.11"
