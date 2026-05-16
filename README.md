@@ -7,6 +7,8 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 ![emulator screenshot 1](screenshots/emulator.png)
 ![emulator screenshot 2](screenshots/emulator2.png)
 ![emulator screenshot 3](screenshots/emulator3.png)
+![emulator screenshot 4](screenshots/mobileweb.png)
+
 
 ## Features
 
