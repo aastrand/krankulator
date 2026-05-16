@@ -18,13 +18,15 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
+- **WebAssembly frontend** — runs in the browser with Canvas 2D rendering and AudioWorklet audio
 - **Headless mode** for testing and CI
 
 ## Architecture
 
 ```mermaid
 graph TD
-    Main["main.rs<br/>CLI + ROM loader"] --> Emu["Emulator<br/>cycle loop & timing"]
+    Main["desktop/main.rs<br/>CLI + ROM loader"] --> Emu["Emulator<br/>cycle loop & timing"]
+    Web["web/lib.rs<br/>wasm entry + rAF loop"] --> Emu
 
     Emu --> CPU["CPU<br/>6502 + unofficial ops"]
     Emu --> PPU["PPU<br/>dot renderer"]
@@ -39,26 +41,43 @@ graph TD
 
     Emu --> IO["IOHandler<br/>trait object"]
     IO --> Winit["WinitPixels<br/>window + input"]
+    IO --> WebIO["WebIO<br/>Canvas 2D + keyboard"]
     IO --> Headless["Headless<br/>testing"]
 
-    APU --> Audio["AudioBackend<br/>rodio / silent / capture"]
+    APU --> Audio["AudioBackend<br/>trait object"]
+    Audio --> Rodio["rodio + ringbuf"]
+    Audio --> Worklet["AudioWorklet"]
+    Audio --> Silent["silent / capture"]
 
     Emu --> SS["Savestate<br/>binary serialize"]
 ```
+
+The project is a Cargo workspace with three crates: `core/` (platform-independent emulation
+library), `desktop/` (native frontend), and `web/` (WebAssembly frontend). The core compiles
+to both native and wasm32 targets with zero cfg gates.
 
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
 the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU. Memory mappers are trait
 objects — each cartridge type implements its own bank switching, mirroring, and IRQ logic
 (e.g. MMC3 scanline counter). Simple discrete-logic mappers (UxROM, CNROM, AxROM, BNROM,
 GxROM) share PPU bus logic via `PpuBus`; BNROM and GxROM emulate AND-type bus conflicts.
-The IO layer is also a trait, allowing windowed or headless operation with the same
-emulation core.
+The IO and audio layers are traits, allowing desktop, web, or headless operation with the
+same emulation core.
 
 ## Building and running
+
+### Desktop
 
 ```bash
 cargo build --release
 cargo run --release -- path/to/game.nes
+```
+
+### Web
+
+```bash
+cargo install trunk
+cd web && trunk serve --port 8080
 ```
 
 ### CLI options
@@ -142,8 +161,11 @@ waveform, spectrum, and envelope comparisons.
 
 ## Platform support
 
-Built on cross-platform crates (winit, pixels, rodio) — runs on macOS, Linux, and
+**Desktop:** Built on cross-platform crates (winit, pixels, rodio) — runs on macOS, Linux, and
 Windows. Tested primarily on macOS.
+
+**Web:** Runs in any modern browser (Firefox, Chrome, Safari) via WebAssembly. Requires
+AudioWorklet support for sound.
 
 ## Resources
 
