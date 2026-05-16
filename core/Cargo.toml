@@ -1,0 +1,9 @@
+[package]
+name = "krankulator-core"
+version = "0.1.0"
+authors = ["Anders Åstrand <anders@teknodromen.se>"]
+edition = "2021"
+
+[dependencies]
+hex = "0.4"
+shrust = "0.0.7"

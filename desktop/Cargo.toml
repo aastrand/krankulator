@@ -1,0 +1,17 @@
+[package]
+name = "krankulator-desktop"
+version = "0.1.0"
+authors = ["Anders Åstrand <anders@teknodromen.se>"]
+edition = "2021"
+
+[[bin]]
+name = "krankulator"
+path = "src/main.rs"
+
+[dependencies]
+krankulator-core = { path = "../core" }
+clap = { version = "3.1.1", features = ["derive"] }
+winit = "0.30"
+pixels = "0.17"
+rodio = "0.17"
+ringbuf = "0.4"

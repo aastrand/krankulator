@@ -1,10 +1,5 @@
-pub mod controller;
-pub mod loader;
-pub mod log;
-
 use std::time::{Duration, Instant};
 
-// NES runs at 60.0988 FPS
 const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
 use pixels::{Pixels, SurfaceTexture};
@@ -18,49 +13,11 @@ use winit::{
     window::{Window, WindowAttributes},
 };
 
-use super::apu;
-use super::gfx;
-use super::memory;
-
-#[derive(Default)]
-pub struct PollResult {
-    pub exit: bool,
-    pub save_state: bool,
-    pub load_state: bool,
-    pub cycle_slot: bool,
-    pub reset: bool,
-}
-
-pub trait IOHandler {
-    fn init(&mut self) -> Result<(), String>;
-    fn log(&self, logline: String);
-    fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult;
-    fn render(&mut self, buf: &gfx::buf::Buffer);
-    fn exit(&self, s: String);
-}
-
-pub struct HeadlessIOHandler {}
-
-impl IOHandler for HeadlessIOHandler {
-    fn init(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-
-    fn log(&self, logline: String) {
-        println!("{}", logline);
-    }
-
-    #[allow(unused_variables)]
-    fn poll(&mut self, _mem: &mut dyn memory::MemoryMapper, _apu: &mut apu::APU) -> PollResult {
-        PollResult::default()
-    }
-
-    fn render(&mut self, _buf: &gfx::buf::Buffer) {}
-
-    fn exit(&self, s: String) {
-        self.log(s);
-    }
-}
+use krankulator_core::emu::apu;
+use krankulator_core::emu::gfx;
+use krankulator_core::emu::io::controller;
+use krankulator_core::emu::io::{IOHandler, PollResult};
+use krankulator_core::emu::memory;
 
 pub struct WinitPixelsIOHandler {
     pixels: Option<Pixels<'static>>,
@@ -330,15 +287,12 @@ impl IOHandler for WinitPixelsIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        // Rate limit to 60 FPS regardless of display refresh rate
         let elapsed = self.last_frame_time.elapsed();
         if elapsed < NES_FRAME_DURATION {
             let sleep_duration = NES_FRAME_DURATION - elapsed;
-            // Use a small sleep for most of the wait, then busy-wait for precision
             if sleep_duration > Duration::from_millis(1) {
                 std::thread::sleep(sleep_duration - Duration::from_millis(1));
             }
-            // Busy-wait for the last bit for higher precision
             while self.last_frame_time.elapsed() < NES_FRAME_DURATION {
                 std::hint::spin_loop();
             }

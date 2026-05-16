@@ -8,13 +8,16 @@ pub mod memory;
 pub mod ppu;
 pub mod savestate;
 
+#[cfg(test)]
+mod integration_tests;
+
 use cpu::opcodes;
 
 extern crate shrust;
 use std::collections::HashSet;
 use std::time::Instant;
 
-use self::audio::{AudioBackend, AudioOutput, CapturingAudioOutput, SilentAudioOutput};
+use self::audio::{AudioBackend, CapturingAudioOutput, SilentAudioOutput};
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -67,24 +70,17 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
-        let audio = Box::new(AudioOutput::new(apu::SAMPLE_RATE)) as Box<dyn AudioBackend>;
-        let iohandler = Box::new(io::WinitPixelsIOHandler::new(256, 240));
-
-        Emulator::new_base(iohandler, mapper, audio)
-    }
-
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
         let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
         let iohandler = Box::new(io::HeadlessIOHandler {});
 
-        Emulator::new_base(iohandler, mapper, audio)
+        Emulator::new_with(iohandler, mapper, audio)
     }
 
     pub fn new_capturing(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
         let audio = Box::new(CapturingAudioOutput::new()) as Box<dyn AudioBackend>;
         let iohandler = Box::new(io::HeadlessIOHandler {});
-        Emulator::new_base(iohandler, mapper, audio)
+        Emulator::new_with(iohandler, mapper, audio)
     }
 
     pub fn drain_captured_audio(&mut self) -> Vec<f32> {
@@ -96,7 +92,7 @@ impl Emulator {
         Emulator::new_headless(mapper)
     }
 
-    fn new_base(
+    pub fn new_with(
         iohandler: Box<dyn io::IOHandler>,
         mut mapper: Box<dyn memory::MemoryMapper>,
         audio: Box<dyn AudioBackend>,
