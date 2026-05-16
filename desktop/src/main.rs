@@ -75,7 +75,8 @@ fn main() -> Result<(), String> {
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {
                         emu::Emulator::new_capturing(mapper)
                     } else if !args.headless {
-                        let audio = Box::new(audio::AudioOutput::new(emu::apu::SAMPLE_RATE));
+                        let audio = Box::new(audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
+                            .expect("No audio output device available"));
                         let io = Box::new(io::WinitPixelsIOHandler::new(256, 240));
                         emu::Emulator::new_with(io, mapper, audio)
                     } else {

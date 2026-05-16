@@ -18,10 +18,6 @@ pub struct AudioOutput {
 }
 
 impl AudioOutput {
-    pub fn new(sample_rate: u32) -> Self {
-        Self::try_new(sample_rate).expect("No audio output device available")
-    }
-
     pub fn try_new(sample_rate: u32) -> Option<Self> {
         let rb = HeapRb::<f32>::new(8192);
         let (producer, consumer) = rb.split();
