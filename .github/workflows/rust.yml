@@ -23,6 +23,18 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    - name: Build core for wasm32
+      run: cargo build -p krankulator-core --target wasm32-unknown-unknown
+    - name: Build web for wasm32
+      run: cargo build -p krankulator-web --target wasm32-unknown-unknown
+
   mixer-tests:
     runs-on: ubuntu-latest
     steps:
