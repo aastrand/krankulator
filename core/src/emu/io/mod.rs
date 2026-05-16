@@ -34,7 +34,6 @@ impl IOHandler for HeadlessIOHandler {
         println!("{}", logline);
     }
 
-    #[allow(unused_variables)]
     fn poll(&mut self, _mem: &mut dyn memory::MemoryMapper, _apu: &mut apu::APU) -> PollResult {
         PollResult::default()
     }
