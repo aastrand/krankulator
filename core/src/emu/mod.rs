@@ -13,9 +13,7 @@ mod integration_tests;
 
 use cpu::opcodes;
 
-extern crate shrust;
 use std::collections::HashSet;
-use std::time::Instant;
 
 use self::audio::{AudioBackend, CapturingAudioOutput, SilentAudioOutput};
 
@@ -46,7 +44,6 @@ pub struct Emulator {
     should_debug_on_infinite_loop: bool,
     should_exit_on_infinite_loop: bool,
     verbose: bool,
-    start_time: Instant,
 
     pub instructions: u64,
     pub cycles: u64,
@@ -64,8 +61,6 @@ pub struct Emulator {
     ppu_register_warmup_until_cpu_cycle: u64,
     rom_path: Option<String>,
     savestate_slot: u8,
-    stats_base_cycles: u64,
-    stats_base_frames: u64,
     last_rendered_frame: u64,
 }
 
@@ -120,7 +115,6 @@ impl Emulator {
             should_debug_on_infinite_loop: false,
             should_exit_on_infinite_loop: true,
             verbose: true,
-            start_time: Instant::now(),
             instructions: 0,
             cycles: 0,
             master_clock: 0,
@@ -136,8 +130,6 @@ impl Emulator {
             ppu_register_warmup_until_cpu_cycle: 29_658,
             rom_path: None,
             savestate_slot: 0,
-            stats_base_cycles: 0,
-            stats_base_frames: 0,
             last_rendered_frame: 0,
         }
     }
@@ -203,9 +195,6 @@ impl Emulator {
         self.load_state_from_reader(&mut r)?;
         self.audio.clear();
         self.last_rendered_frame = self.ppu.frames.saturating_sub(1);
-        self.start_time = Instant::now();
-        self.stats_base_cycles = self.cycles;
-        self.stats_base_frames = self.ppu.frames;
         Ok(())
     }
 
@@ -301,7 +290,6 @@ impl Emulator {
             Err(msg) => self.iohandler.log(msg),
             _ => {}
         }
-        self.start_time = Instant::now();
 
         loop {
             if self.cycle() == CycleState::Exiting {
@@ -321,6 +309,7 @@ impl Emulator {
                 || (!self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc))
             {
                 self.debug();
+                state = CycleState::Exiting;
             }
 
             if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
@@ -331,9 +320,8 @@ impl Emulator {
                     self.iohandler.log(msg);
                     if self.should_debug_on_infinite_loop {
                         self.debug();
-                    } else if self.should_exit_on_infinite_loop {
-                        state = CycleState::Exiting
                     }
+                    state = CycleState::Exiting
                 } else if self.should_exit_on_infinite_loop {
                     self.iohandler.log(format!("reached probable end of code"));
                     state = CycleState::Exiting
@@ -1588,8 +1576,6 @@ impl Emulator {
 
         let logline = self.log_str();
         self.iohandler.log(logline);
-
-        dbg::debug(self);
     }
 
     fn exit(&self) {
@@ -1601,15 +1587,9 @@ impl Emulator {
             }
         }
 
-        let elapsed_secs = self.start_time.elapsed().as_secs_f64();
-        let measured_cycles = self.cycles - self.stats_base_cycles;
-        let measured_frames = self.ppu.frames - self.stats_base_frames;
         self.iohandler.exit(format!(
-            "Exiting after {} instructions, {} cycles ({:.1} MHz) {:.1} avg fps",
-            self.instructions,
-            self.cycles,
-            (measured_cycles as f64 / elapsed_secs) / 1_000_000.0,
-            measured_frames as f64 / elapsed_secs
+            "Exiting after {} instructions, {} cycles, {} frames",
+            self.instructions, self.cycles, self.ppu.frames
         ));
     }
 }
