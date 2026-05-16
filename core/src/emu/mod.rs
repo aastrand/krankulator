@@ -340,7 +340,9 @@ impl Emulator {
                     if self.should_debug_on_infinite_loop {
                         self.debug();
                     }
-                    state = CycleState::Exiting
+                    if self.should_exit_on_infinite_loop {
+                        state = CycleState::Exiting
+                    }
                 } else if self.should_exit_on_infinite_loop {
                     self.iohandler.log(format!("reached probable end of code"));
                     state = CycleState::Exiting

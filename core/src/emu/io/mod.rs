@@ -35,7 +35,9 @@ pub trait IOHandler {
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult;
     fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
-    fn on_debug(&mut self, _ctx: &mut DebugContext) {}
+    fn on_debug(&mut self, ctx: &mut DebugContext) {
+        *ctx.stepping = false;
+    }
 }
 
 pub struct HeadlessIOHandler {}
