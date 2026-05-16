@@ -128,12 +128,14 @@ cargo clippy --workspace
 
 **IO (`emu/io/`)**
 - `IOHandler` trait for input/rendering
-- `loader.rs` — ROM loading (iNES format), includes `load_nes_from_bytes()` for web
+- `loader.rs` — ROM loading (iNES format), includes `load_nes_from_bytes()` and `load_nes_from_bytes_with_sram()` for web
 - `controller.rs` — NES controller state
 - `HeadlessIOHandler` for tests
 
 **Loader (`emu/io/loader.rs`)**
-- `load_nes_from_bytes(&[u8])` — parse iNES ROM from byte slice (used by web)
+- `load_nes_from_bytes(&[u8])` — parse iNES ROM from byte slice
+- `load_nes_from_bytes_with_sram(&[u8], Option<Vec<u8>>)` — same but with pre-loaded SRAM (used by web)
+- `rom_has_battery(&[u8])` — check iNES header for battery flag
 - `InesLoader::load(path)` — load from filesystem (used by desktop)
 
 ### Desktop Frontend (`desktop/src/`)
@@ -144,7 +146,7 @@ cargo clippy --workspace
 
 ### Web Frontend (`web/`)
 
-- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, touch controls, AudioWorklet audio
+- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, touch controls, AudioWorklet audio, localStorage persistence
 - `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor
 - `assets/mario-walking.png` — Sprite sheet for rotate-prompt animation
@@ -175,6 +177,12 @@ Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path v
 - `requestAnimationFrame` loop with `performance.now()` time accumulator
 - Targets 60.0988 FPS (NTSC), caps at 2 frames per rAF to prevent spiral-of-death
 
+**Persistence (web)**
+- Save states and SRAM stored in `localStorage` as base64-encoded binary
+- Keys: `krankulator:{fnv1a_hash}:ss{0-3}` for save states, `krankulator:{fnv1a_hash}:sram` for battery RAM
+- SRAM auto-saves every ~5s, on page unload, and when switching ROMs
+- Save state keys: S (save), A (load), Q (cycle slot 0-3)
+
 ## File Structure
 
 ```
@@ -188,7 +196,7 @@ desktop/            — Native frontend binary
   src/io.rs         — winit + pixels IOHandler
   src/audio.rs      — rodio AudioBackend
 web/                — WebAssembly frontend
-  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend + touch controls
+  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend + touch controls + localStorage persistence
   index.html        — HTML shell (desktop + touch layout + rotate prompt)
   assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
   Trunk.toml        — Build config

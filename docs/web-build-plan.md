@@ -43,16 +43,26 @@
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library (only dep: hex)
   src/emu/          — CPU, PPU, APU, memory mappers, IO traits, audio traits
-desktop/            — Native frontend (winit + pixels + rodio + shrust)
+desktop/            — Native frontend (winit + pixels + rodio)
 web/                — WebAssembly frontend (web-sys + Canvas 2D + AudioWorklet)
-  src/lib.rs        — wasm-bindgen entry, IOHandler/AudioBackend impls, rAF loop
-  assets/           — audio_processor.js, background.jpg, CNAME
+  src/lib.rs        — wasm-bindgen entry, IOHandler/AudioBackend impls, rAF loop, persistence
+  assets/           — audio_processor.js, background.jpg, mario-walking.png, CNAME
   Trunk.toml        — Build config (release, COOP/COEP headers)
 ```
 
 Key traits in core that frontends implement:
 - `IOHandler` — `init()`, `log()`, `poll()`, `render()`, `exit()`
 - `AudioBackend` — `push_samples()`, `flush()`, `clear()`
+
+## Persistence (web)
+
+Save states and battery-backed RAM use `localStorage` with base64-encoded binary data.
+
+Keys: `krankulator:{rom_hash}:ss{0-3}` (save states), `krankulator:{rom_hash}:sram` (battery RAM).
+ROM hash is FNV-1a over the full ROM bytes.
+
+- **Save states**: S = save, A = load, Q = cycle slot (4 slots per ROM)
+- **SRAM**: auto-loaded on ROM start, auto-saved every ~5s + on page unload + on ROM switch
 
 ## Audio architecture
 
