@@ -37,6 +37,7 @@ struct InitHandler {
     pixels: Option<Pixels<'static>>,
     width: u32,
     height: u32,
+    title: String,
 }
 
 impl ApplicationHandler for InitHandler {
@@ -45,7 +46,7 @@ impl ApplicationHandler for InitHandler {
         let window_width = (self.width as f32 * scale) as u32;
         let window_height = (self.height as f32 * scale) as u32;
         let attrs = WindowAttributes::default()
-            .with_title("krankulator")
+            .with_title(&self.title)
             .with_inner_size(LogicalSize::new(window_width, window_height));
         let window = event_loop.create_window(attrs).unwrap();
         let window: &'static Window = Box::leak(Box::new(window));
@@ -66,7 +67,7 @@ impl ApplicationHandler for InitHandler {
 }
 
 impl WinitPixelsIOHandler {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, rom_name: &str) -> Self {
         let mut event_loop = EventLoop::new().unwrap();
 
         let mut init = InitHandler {
@@ -74,6 +75,7 @@ impl WinitPixelsIOHandler {
             pixels: None,
             width,
             height,
+            title: format!("krankulator — {}", rom_name),
         };
 
         loop {
@@ -82,6 +84,8 @@ impl WinitPixelsIOHandler {
                 break;
             }
         }
+
+        set_dock_icon();
 
         Self {
             pixels: init.pixels,
@@ -93,6 +97,25 @@ impl WinitPixelsIOHandler {
         }
     }
 }
+
+#[cfg(target_os = "macos")]
+fn set_dock_icon() {
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+
+    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+    unsafe {
+        let mtm = MainThreadMarker::new_unchecked();
+        let data = NSData::with_bytes(ICON_PNG);
+        if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+            NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image));
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_dock_icon() {}
 
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
