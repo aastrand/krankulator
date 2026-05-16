@@ -19,23 +19,27 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     pub fn new(sample_rate: u32) -> Self {
+        Self::try_new(sample_rate).expect("No audio output device available")
+    }
+
+    pub fn try_new(sample_rate: u32) -> Option<Self> {
         let rb = HeapRb::<f32>::new(8192);
         let (producer, consumer) = rb.split();
         let mute = Arc::new(AtomicBool::new(false));
 
-        let (stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
+        let (stream, stream_handle) = OutputStream::try_default().ok()?;
+        let sink = Sink::try_new(&stream_handle).ok()?;
 
         let source = AudioBufferSource::new(consumer, sample_rate, Arc::clone(&mute));
         sink.append(source);
         sink.play();
 
-        Self {
+        Some(Self {
             producer,
             mute,
             _stream: stream,
             sink,
-        }
+        })
     }
 }
 

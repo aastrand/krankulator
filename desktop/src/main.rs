@@ -143,7 +143,14 @@ mod tests {
 
     #[test]
     fn test_audio_backend_wires_to_core() {
-        let audio = Box::new(audio::AudioOutput::new(emu::apu::SAMPLE_RATE));
+        let audio: Box<dyn krankulator_core::emu::audio::AudioBackend> =
+            match audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE) {
+                Some(a) => Box::new(a),
+                None => {
+                    eprintln!("No audio device available, skipping test");
+                    return;
+                }
+            };
         let mapper = loader::load_nes(&String::from(test_input!("nes/nestest.nes")));
         let mut emu = emu::Emulator::new_with(
             Box::new(emu::io::HeadlessIOHandler {}),
