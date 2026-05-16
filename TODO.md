@@ -105,9 +105,9 @@ Currently: no OSD, debug output goes to terminal only.
 
 ## UI / Desktop App Polish
 
-Currently: bare winit window, no menu, no icon, CLI-only file selection.
+Currently: bare winit window, no menu, CLI-only file selection.
 
-- [ ] App icon (for macOS dock, Windows taskbar, Linux desktop) [XS]
+- [x] App icon (macOS dock icon via NSApplication, web favicon) [XS]
 - [ ] Native menu bar (File, Emulation, Audio, Video, Help) [L]
   - File: Open ROM, Recent ROMs, Close
   - Emulation: Pause/Resume, Reset, Save State, Load State
