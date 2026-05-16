@@ -6,14 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Krankulator is a NES (Nintendo Entertainment System) emulator written in Rust. It emulates the MOS Technology 6502 CPU, PPU (Picture Processing Unit), APU (Audio Processing Unit), and various memory mappers to run NES games and test ROMs.
 
+## Workspace Structure
+
+The project is a Cargo workspace with three crates:
+
+- **`core/`** (`krankulator-core`) — Platform-independent emulation library. Compiles to native and wasm32 with zero cfg gates. Only dependency: `hex`.
+- **`desktop/`** (`krankulator-desktop`) — Native frontend using winit, pixels, rodio. Produces the `krankulator` binary.
+- **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet. Built with `trunk`.
+
+Key traits defined in core that frontends implement:
+- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`
+- `AudioBackend` (`core/src/emu/audio/mod.rs`) — `push_samples()`, `flush()`, `clear()`
+
 ## Common Commands
 
 ### Building and Running
 ```bash
-# Build the project
-cargo build
+# Build everything (native + wasm)
+cargo build --workspace
 
-# Run with a NES ROM file
+# Run desktop with a NES ROM file
 cargo run -- input/nes/nestest.nes
 
 # Run in headless mode (no graphics)
@@ -33,12 +45,21 @@ cargo run -- --loader ascii input/ascii/instructions
 
 # Run with custom code starting address
 cargo run -- --codeaddr 0x400 --loader bin input/bin/test.bin
+
+# Build core for wasm32 (verify no platform deps leak in)
+cargo build -p krankulator-core --target wasm32-unknown-unknown
+
+# Build and serve web version (requires trunk: cargo install trunk)
+cd web && trunk serve --port 8080
 ```
 
 ### Testing
 ```bash
 # Run all tests
-cargo test
+cargo test --workspace
+
+# Run only core tests
+cargo test -p krankulator-core
 
 # Run specific test
 cargo test test_nestest
@@ -54,36 +75,36 @@ cd .. && cargo test --release test_apu_mixer -- --ignored --nocapture --test-thr
 ### Development
 ```bash
 # Check for compilation errors
-cargo check
+cargo check --workspace
 
 # Format code
 cargo fmt
 
 # Run clippy for linting
-cargo clippy
+cargo clippy --workspace
 ```
 
 ## Architecture Overview
 
-### Core Components
+### Core Library (`core/src/`)
 
-**Emulator (src/emu/mod.rs)**
+**Emulator (`emu/mod.rs`)**
 - Main emulator struct that orchestrates CPU, PPU, APU, and memory
 - Handles cycle-accurate timing between components
-- Manages emulation state (running, debugging, breakpoints)
+- `run()` — blocking loop for desktop; `run_one_frame()` — single-frame step for web/rAF
+- `new_with(io, mapper, audio)` — constructor taking trait objects for any frontend
 
-**CPU (src/emu/cpu/mod.rs)**
+**CPU (`emu/cpu/mod.rs`)**
 - MOS 6502 CPU implementation with all official opcodes
 - Handles instruction decoding, execution, and flag management
-- Supports debugging features like breakpoints and register inspection
 
-**PPU (src/emu/ppu/mod.rs)**
+**PPU (`emu/ppu/mod.rs`)**
 - Picture Processing Unit for graphics rendering
 - Implements proper VRAM addressing with internal registers (v, t, x, w)
-- Handles NMI (Non-Maskable Interrupt) generation for VBlank
+- Handles NMI generation for VBlank
 - Per-dot cycle-accurate rendering
 
-**Memory System (src/emu/memory/)**
+**Memory System (`emu/memory/`)**
 - Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
@@ -91,24 +112,50 @@ cargo clippy
 - `PpuBus` shared struct handles CHR read/write, nametable mirroring, palette RAM, and VRAM for simple mappers
 - AND-type bus conflict emulation for discrete logic mappers (BNROM, GxROM)
 
-**APU (src/emu/apu/)**
+**APU (`emu/apu/`)**
 - Audio Processing Unit with pulse, triangle, noise, and DMC channels
 - Frame counter for audio timing
-- Sound generation for authentic NES audio
+- Per-cycle mixer accumulation for proper anti-aliasing
 
-**Graphics (src/emu/gfx/)**
-- Frame buffer (`buf.rs`) and palette lookup table (`palette.rs`)
-- `mod.rs` contains the full-frame renderer
+**Graphics (`emu/gfx/`)**
+- Frame buffer (`buf.rs`): 256x240 RGB pixels
+- Palette lookup table (`palette.rs`)
 
-**Audio (src/emu/audio/)**
-- Audio output handling using rodio crate
+**Audio (`emu/audio/`)**
+- `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
+- `SilentAudioOutput`, `CapturingAudioOutput` for headless/test use
 - WAV writer (`wav.rs`) for capturing test output
-- `CapturingAudioOutput` backend for headless audio capture in tests
+
+**IO (`emu/io/`)**
+- `IOHandler` trait for input/rendering
+- `loader.rs` — ROM loading (iNES format), includes `load_nes_from_bytes()` for web
+- `controller.rs` — NES controller state
+- `HeadlessIOHandler` for tests
+
+**Loader (`emu/io/loader.rs`)**
+- `load_nes_from_bytes(&[u8])` — parse iNES ROM from byte slice (used by web)
+- `InesLoader::load(path)` — load from filesystem (used by desktop)
+
+### Desktop Frontend (`desktop/src/`)
+
+- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core
+- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer
+- `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
+
+### Web Frontend (`web/`)
+
+- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, AudioWorklet audio
+- `index.html` — HTML shell with canvas + file input + lucky button
+- `assets/audio_processor.js` — AudioWorklet ring buffer processor
+- `Trunk.toml` — trunk build config (release mode, COOP/COEP headers)
+
+### Test paths
+
+Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path via `CARGO_MANIFEST_DIR`. No symlinks.
 
 ### Key Design Patterns
 
 **CPU-PPU Synchronization**
-- The emulator runs in discrete cycles, with proper timing between CPU, PPU, and APU
 - PPU runs at 3x CPU speed (3 PPU cycles per CPU cycle)
 - Interleaved per-cycle (CPU instruction, then 3 PPU dots, repeat)
 
@@ -116,40 +163,60 @@ cargo clippy
 - Uses trait objects for different mapper implementations
 - Mappers handle bank switching and memory mirroring specific to cartridge types
 
-**Test-Driven Development**
-- Extensive test suite using actual NES test ROMs
-- Tests cover CPU instructions, PPU behavior, APU functionality, and timing
-- APU mixer integration tests compare captured audio against hardware reference recordings
-  - Requires Python venv: `cd scripts && uv venv && uv pip install -r requirements.txt`
-  - Tests skip gracefully if Python venv or reference files are missing
-  - Reference recordings are in `input/nes/apu/mixer_reference/`
-  - CI runs the 4 ignored mixer tests separately in release mode
+**Audio Pipeline**
+- APU accumulates samples per cycle, outputs batches via `push_samples()`
+- `flush()` called once per frame — desktop is no-op (ring buffer), web sends to AudioWorklet via postMessage
+- Web AudioWorklet uses fixed-size ring buffer (8192 samples) to absorb timing jitter
+
+**Frame pacing (web)**
+- `requestAnimationFrame` loop with `performance.now()` time accumulator
+- Targets 60.0988 FPS (NTSC), caps at 2 frames per rAF to prevent spiral-of-death
 
 ## File Structure
 
-- `src/main.rs` - Entry point with command-line argument parsing
-- `src/emu/` - Core emulation components
-- `src/util/` - Utility functions for hex parsing, file I/O
-- `input/` - Test ROMs and data files
-  - `input/nes/` - NES ROM files for testing
-  - `input/ascii/` - ASCII assembly test files
-  - `input/bin/` - Binary test files
-- `opcodes/` - CPU opcode generation scripts
+```
+Cargo.toml          — Virtual workspace manifest
+core/               — Platform-independent emulation library
+  src/lib.rs        — Crate root, exports test_input! macro
+  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio)
+  src/util/         — Hex parsing, file I/O utilities
+desktop/            — Native frontend binary
+  src/main.rs       — CLI entry point
+  src/io.rs         — winit + pixels IOHandler
+  src/audio.rs      — rodio AudioBackend
+web/                — WebAssembly frontend
+  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend
+  index.html        — HTML shell
+  assets/           — Static assets (audio_processor.js, background.jpg)
+  Trunk.toml        — Build config
+input/              — Test ROMs and data files
+  nes/              — NES ROM files for testing
+  ascii/            — ASCII assembly test files
+  bin/              — Binary test files
+scripts/            — APU mixer test scripts (Python)
+docs/               — Design documents
+```
 
 ## Testing Strategy
 
-The project uses both unit tests and integration tests:
+All emulation tests live in `core/` (393 tests). Desktop has 1 smoke test verifying audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
 - Verify PPU register operations and timing
 - Test memory mapper functionality
 
-**Integration Tests**
+**Integration Tests (`core/src/emu/integration_tests.rs`)**
 - Run complete NES test ROMs (nestest, blargg test suite)
 - Verify cycle-accurate behavior against known-good logs
-- Test various cartridge mappers with real games
-- Compare APU mixer output against square, triangle, noise, and DMC hardware recordings
+- Test various cartridge mappers
+- Savestate roundtrip tests
+
+**APU Mixer Tests**
+- Compare emulator WAV output against hardware reference MP3 recordings
+- Requires Python venv: `cd scripts && uv venv && uv pip install -r requirements.txt`
+- Reference recordings in `input/nes/apu/mixer_reference/`
+- CI runs the 4 ignored mixer tests separately in release mode
 
 ## Important Implementation Details
 
@@ -179,7 +246,6 @@ The project uses both unit tests and integration tests:
 - APU soft reset preserves channel registers and replays last $4017 write
 - Pulse and noise timers tick at half CPU rate; triangle ticks every CPU cycle
 - Per-cycle mixer accumulation for proper anti-aliasing of high-frequency noise
-- Mixer tests compare emulator WAV output against hardware reference MP3 recordings
 
 **CPU Bus**
 - Open bus emulation: write-only registers return last value on data bus
@@ -187,4 +253,3 @@ The project uses both unit tests and integration tests:
 - RMW instructions always perform the dummy read regardless of page crossing
 
 The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/APU 2005/timing, APU reset, cpu_exec_space, CPU interrupts, PPU OAM, VRAM access).
-
