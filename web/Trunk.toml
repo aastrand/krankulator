@@ -1,0 +1,12 @@
+[build]
+target = "index.html"
+dist = "dist"
+release = true
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080
+
+[serve.headers]
+Cross-Origin-Opener-Policy = "same-origin"
+Cross-Origin-Embedder-Policy = "require-corp"

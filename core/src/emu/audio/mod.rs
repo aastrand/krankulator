@@ -3,6 +3,7 @@ pub mod wav;
 pub trait AudioBackend {
     fn push_samples(&mut self, samples: &[f32]);
     fn clear(&mut self);
+    fn flush(&mut self) {}
     fn drain_captured(&mut self) -> Vec<f32> {
         Vec::new()
     }

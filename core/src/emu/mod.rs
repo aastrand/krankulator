@@ -147,6 +147,10 @@ impl Emulator {
         self.should_log = !quiet_mode;
     }
 
+    pub fn init(&mut self) -> Result<(), String> {
+        self.iohandler.init()
+    }
+
     pub fn toggle_debug_on_infinite_loop(&mut self, debug: bool) {
         self.should_debug_on_infinite_loop = debug
     }
@@ -298,6 +302,17 @@ impl Emulator {
         }
 
         self.exit();
+    }
+
+    pub fn run_one_frame(&mut self) -> bool {
+        let target_frame = self.ppu.frames + 1;
+        while self.ppu.frames < target_frame {
+            if self.cycle() == CycleState::Exiting {
+                return false;
+            }
+        }
+        self.audio.flush();
+        true
     }
 
     pub fn cycle(&mut self) -> CycleState {

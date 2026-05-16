@@ -101,191 +101,162 @@ impl Loader for InesLoader {
     fn load(&self, path: &str) -> Result<Box<dyn memory::MemoryMapper>, String> {
         let bytes = util::read_bytes(path)?;
 
-        //0-3: Constant $4E $45 $53 $1A ("NES" followed by MS-DOS end-of-file)
-        if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
-            return Err(format!("ERROR: Missing iNES header magic numbers"));
-        }
-
-        // A file is a NES 2.0 ROM image file if it begins with "NES<EOF>" (same as iNES) and,
-        // additionally, the byte at offset 7 has bit 2 clear and bit 3 set:
-        let is_nes2_header = { bytes[7] & 0b0000_1100 == 0b0000_1000 };
-
-        if is_nes2_header {
-            println!("Header has NES 2.0 extension");
-        }
-
-        let num_prg_blocks = bytes[4];
-        let num_chr_blocks = bytes[5];
-        let flags = bytes[6];
-        let mapper = {
-            let ines_mapper = ((bytes[7] as u16) & 0xF0) | ((flags as u16) >> 4);
-            if is_nes2_header {
-                ines_mapper | (((bytes[8] as u16) & 0x0F) << 8)
+        let sram_data = {
+            let flags = bytes[6];
+            let has_battery = (flags & 0x02) != 0;
+            if has_battery {
+                let sav = sav_path(path);
+                match std::fs::read(&sav) {
+                    Ok(data) => {
+                        println!("Loaded save data from {}", sav.display());
+                        Some(data)
+                    }
+                    Err(_) => None,
+                }
             } else {
-                ines_mapper
-            }
-        };
-        let has_battery = (flags & 0x02) != 0;
-        let prg_ram_units = bytes[8];
-        let submapper = if is_nes2_header {
-            (bytes[8] >> 4) & 0x0F
-        } else {
-            0
-        };
-        let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
-        let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
-
-        let mut prg_banks: Vec<[u8; PRG_BANK_SIZE]> = vec![];
-
-        let chr_ram_size = {
-            if is_nes2_header {
-                /*
-                ---------
-                cccc CCCC
-                |||| ++++- CHR-RAM size (volatile) shift count
-                ++++------ CHR-NVRAM size (non-volatile) shift count
-                If the shift count is zero, there is no CHR-(NV)RAM.
-                If the shift count is non-zero, the actual size is
-                "64 << shift count" bytes, i.e. 8192 bytes for a shift count of 7.
-                */
-                let ram_shift = bytes[11] & 0b0000_1111;
-                let nvram_shift = (bytes[11] & 0b1111_0000) >> 4;
-                let shift = std::cmp::max(ram_shift, nvram_shift);
-
-                64 << shift
-            } else {
-                8192
+                None
             }
         };
 
-        for b in 0..num_prg_blocks {
-            let mut code = [0; PRG_BANK_SIZE];
-
-            let block_offset: usize =
-                prg_offset as usize + (b as u32 * PRG_BANK_SIZE as u32) as usize;
-            code[0..PRG_BANK_SIZE]
-                .clone_from_slice(&bytes[block_offset..(block_offset + PRG_BANK_SIZE)]);
-
-            prg_banks.push(code);
-        }
-
-        let sram_data = if has_battery {
-            let sav = sav_path(path);
-            match std::fs::read(&sav) {
-                Ok(data) => {
-                    println!("Loaded save data from {}", sav.display());
-                    Some(data)
-                }
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-
-        println!(
-            "Loading {} PRG banks, {} CHR banks, with {} PRG RAM units{}",
-            num_prg_blocks,
-            num_chr_blocks,
-            prg_ram_units,
-            if has_battery { ", battery-backed" } else { "" }
-        );
-
-        let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
-
-        if num_chr_blocks > 0 {
-            for b in 0..num_chr_blocks {
-                let mut gfx = [0; CHR_BANK_SIZE];
-
-                let block_offset: usize =
-                    chr_offset as usize + (b as u32 * CHR_BANK_SIZE as u32) as usize;
-                gfx[0..CHR_BANK_SIZE]
-                    .clone_from_slice(&bytes[block_offset..(block_offset + CHR_BANK_SIZE)]);
-
-                chr_banks.push(gfx);
-            }
-        } else {
-            // If the header CHR-ROM value is 0, we should assume that 8KB of CHR-RAM is available.
-            println!("Got {} bytes of CHR RAM", chr_ram_size);
-            for _ in 0..(chr_ram_size / CHR_BANK_SIZE) {
-                let gfx: [u8; CHR_BANK_SIZE] = [0; CHR_BANK_SIZE];
-                chr_banks.push(gfx);
-            }
-        }
-
-        let result: Box<dyn memory::MemoryMapper> = match mapper {
-            0 => Box::new(mapper::nrom::NROMMapper::new(
-                flags,
-                Box::new(*prg_banks.get(0).unwrap()),
-                prg_banks.pop(),
-                chr_banks.pop(),
-            )),
-            1 => Box::new(mapper::mmc1::MMC1Mapper::new(
-                flags,
-                prg_banks,
-                chr_banks,
-                has_battery,
-                sram_data.clone(),
-            )),
-            2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
-            3 => {
-                // CNROM expects 32KB PRG ROM and CHR banks
-                let mut prg_32k = [0; 32 * 1024];
-                if prg_banks.len() >= 2 {
-                    // Combine two 16KB banks into 32KB
-                    prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
-                    prg_32k[16384..32768].copy_from_slice(&prg_banks[1]);
-                } else if prg_banks.len() == 1 {
-                    // Mirror single 16KB bank
-                    prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
-                    prg_32k[16384..32768].copy_from_slice(&prg_banks[0]);
-                } else {
-                    panic!("CNROM requires at least one PRG bank");
-                }
-                Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
-            }
-            4 => {
-                let mmc3_chr = if num_chr_blocks > 0 {
-                    chr_banks
-                } else {
-                    vec![]
-                };
-                Box::new(MMC3Mapper::new(
-                    flags,
-                    prg_banks,
-                    mmc3_chr,
-                    has_battery,
-                    sram_data.clone(),
-                    submapper,
-                ))
-            }
-            7 => Box::new(mapper::axrom::AxROMMapper::new(
-                flags,
-                combine_prg_banks_32k(&prg_banks),
-            )),
-            34 => {
-                if is_nes2_header && submapper != 0 && submapper != 2 {
-                    panic!(
-                        "Mapper 34 submapper {} is not implemented; only BNROM is supported",
-                        submapper
-                    );
-                }
-                Box::new(mapper::bnrom::BNROMMapper::new(
-                    flags,
-                    combine_prg_banks_32k(&prg_banks),
-                ))
-            }
-            66 => Box::new(mapper::gxrom::GxROMMapper::new(
-                flags,
-                combine_prg_banks_32k(&prg_banks),
-                chr_banks,
-            )),
-            _ => panic!("Mapper {:X} not implemented!", mapper),
-        };
-
-        println!("Loaded {} with mapper {}", path, mapper);
-
+        let result = load_nes_from_bytes_inner(&bytes, sram_data)?;
+        println!("Loaded {} with mapper", path);
         Ok(result)
     }
+}
+
+pub fn load_nes_from_bytes(bytes: &[u8]) -> Result<Box<dyn memory::MemoryMapper>, String> {
+    load_nes_from_bytes_inner(bytes, None)
+}
+
+fn load_nes_from_bytes_inner(
+    bytes: &[u8],
+    sram_data: Option<Vec<u8>>,
+) -> Result<Box<dyn memory::MemoryMapper>, String> {
+    if bytes.len() < INES_HEADER_SIZE {
+        return Err("File too small for iNES header".to_string());
+    }
+
+    if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
+        return Err("Missing iNES header magic numbers".to_string());
+    }
+
+    let is_nes2_header = bytes[7] & 0b0000_1100 == 0b0000_1000;
+
+    let num_prg_blocks = bytes[4];
+    let num_chr_blocks = bytes[5];
+    let flags = bytes[6];
+    let mapper_id = {
+        let ines_mapper = ((bytes[7] as u16) & 0xF0) | ((flags as u16) >> 4);
+        if is_nes2_header {
+            ines_mapper | (((bytes[8] as u16) & 0x0F) << 8)
+        } else {
+            ines_mapper
+        }
+    };
+    let has_battery = (flags & 0x02) != 0;
+    let submapper = if is_nes2_header {
+        (bytes[8] >> 4) & 0x0F
+    } else {
+        0
+    };
+    let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
+    let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
+
+    let chr_ram_size = if is_nes2_header {
+        let ram_shift = bytes[11] & 0b0000_1111;
+        let nvram_shift = (bytes[11] & 0b1111_0000) >> 4;
+        let shift = std::cmp::max(ram_shift, nvram_shift);
+        64 << shift
+    } else {
+        8192
+    };
+
+    let mut prg_banks: Vec<[u8; PRG_BANK_SIZE]> = vec![];
+    for b in 0..num_prg_blocks {
+        let mut code = [0; PRG_BANK_SIZE];
+        let block_offset: usize = prg_offset + (b as usize * PRG_BANK_SIZE);
+        code.clone_from_slice(&bytes[block_offset..(block_offset + PRG_BANK_SIZE)]);
+        prg_banks.push(code);
+    }
+
+    let mut chr_banks: Vec<[u8; CHR_BANK_SIZE]> = vec![];
+    if num_chr_blocks > 0 {
+        for b in 0..num_chr_blocks {
+            let mut gfx = [0; CHR_BANK_SIZE];
+            let block_offset: usize = chr_offset + (b as usize * CHR_BANK_SIZE);
+            gfx.clone_from_slice(&bytes[block_offset..(block_offset + CHR_BANK_SIZE)]);
+            chr_banks.push(gfx);
+        }
+    } else {
+        for _ in 0..(chr_ram_size / CHR_BANK_SIZE) {
+            chr_banks.push([0; CHR_BANK_SIZE]);
+        }
+    }
+
+    let result: Box<dyn memory::MemoryMapper> = match mapper_id {
+        0 => Box::new(mapper::nrom::NROMMapper::new(
+            flags,
+            Box::new(*prg_banks.get(0).unwrap()),
+            prg_banks.pop(),
+            chr_banks.pop(),
+        )),
+        1 => Box::new(mapper::mmc1::MMC1Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
+        2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
+        3 => {
+            let mut prg_32k = [0; 32 * 1024];
+            if prg_banks.len() >= 2 {
+                prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
+                prg_32k[16384..32768].copy_from_slice(&prg_banks[1]);
+            } else if prg_banks.len() == 1 {
+                prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
+                prg_32k[16384..32768].copy_from_slice(&prg_banks[0]);
+            } else {
+                return Err("CNROM requires at least one PRG bank".to_string());
+            }
+            Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
+        }
+        4 => {
+            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            Box::new(MMC3Mapper::new(
+                flags,
+                prg_banks,
+                mmc3_chr,
+                has_battery,
+                sram_data,
+                submapper,
+            ))
+        }
+        7 => Box::new(mapper::axrom::AxROMMapper::new(
+            flags,
+            combine_prg_banks_32k(&prg_banks),
+        )),
+        34 => {
+            if is_nes2_header && submapper != 0 && submapper != 2 {
+                return Err(format!(
+                    "Mapper 34 submapper {} not implemented; only BNROM supported",
+                    submapper
+                ));
+            }
+            Box::new(mapper::bnrom::BNROMMapper::new(
+                flags,
+                combine_prg_banks_32k(&prg_banks),
+            ))
+        }
+        66 => Box::new(mapper::gxrom::GxROMMapper::new(
+            flags,
+            combine_prg_banks_32k(&prg_banks),
+            chr_banks,
+        )),
+        _ => return Err(format!("Mapper {:X} not implemented", mapper_id)),
+    };
+
+    Ok(result)
 }
 
 #[allow(dead_code)] // only used in tests
@@ -359,7 +330,7 @@ mod tests {
         assert_eq!(result.is_ok(), false);
         assert_eq!(
             result.err(),
-            Some(format!("ERROR: Missing iNES header magic numbers"))
+            Some(format!("Missing iNES header magic numbers"))
         );
     }
 

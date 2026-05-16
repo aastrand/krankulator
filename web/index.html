@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Krankulator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(rgba(10, 10, 20, 0.85), rgba(10, 10, 20, 0.85)),
+                        url('background.jpg') center/cover no-repeat fixed;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: monospace;
+            color: #eee;
+        }
+        #nes-canvas {
+            image-rendering: pixelated;
+            width: 768px;
+            height: 720px;
+            background: #000;
+            border: 2px solid #333;
+        }
+        .controls {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        button, input[type="file"]::file-selector-button {
+            background: #16213e;
+            color: #eee;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        button:hover { background: #0f3460; }
+        #status { margin-top: 8px; font-size: 12px; color: #888; }
+    </style>
+    <link data-trunk rel="rust" data-wasm-opt="z" />
+    <link data-trunk rel="copy-file" href="assets/audio_processor.js" />
+    <link data-trunk rel="copy-file" href="assets/background.jpg" />
+</head>
+<body>
+    <canvas id="nes-canvas" width="256" height="240"></canvas>
+    <div class="controls">
+        <input type="file" id="rom-input" accept=".nes">
+        <button id="lucky-btn">I'm feeling lucky</button>
+    </div>
+    <div id="status">Load a .nes ROM to start</div>
+</body>
+</html>
