@@ -39,6 +39,14 @@
         }
         button:hover { background: #0f3460; }
         #status { margin-top: 8px; font-size: 12px; color: #888; }
+        .keys {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #666;
+            display: flex;
+            gap: 24px;
+        }
+        .keys span { color: #999; }
     </style>
     <link data-trunk rel="rust" data-wasm-opt="z" />
     <link data-trunk rel="copy-file" href="assets/audio_processor.js" />
@@ -51,5 +59,12 @@
         <button id="lucky-btn">I'm feeling lucky</button>
     </div>
     <div id="status">Load a .nes ROM to start</div>
+    <div class="keys">
+        <div><span>D-Pad:</span> Arrow keys</div>
+        <div><span>A:</span> Z</div>
+        <div><span>B:</span> X</div>
+        <div><span>Start:</span> C</div>
+        <div><span>Select:</span> V</div>
+    </div>
 </body>
 </html>
