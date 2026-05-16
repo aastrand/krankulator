@@ -20,21 +20,20 @@
 ## Phase 2: Polish
 
 - [ ] SharedArrayBuffer ring buffer for audio (replace postMessage, lower latency)
-- [ ] Save states to `localStorage`
-- [ ] Battery-backed RAM (SRAM) persistence to `localStorage`
+- [x] Save states to `localStorage`
+- [x] Battery-backed RAM (SRAM) persistence to `localStorage`
 - [ ] Responsive CSS layout (scale canvas to viewport, max 4x)
 - [ ] Gamepad API support
-- [ ] On-screen touch controls for mobile
+- [x] On-screen touch controls for mobile
 - [ ] Drag-and-drop ROM loading onto canvas
 - [ ] Pause audio on tab visibility change
-- [ ] Interactive debug REPL (shrust) in desktop crate
 
 ## Phase 3: Nice-to-have
 
 - [ ] Web Worker for emulation (off main thread — prevents dropped frames)
 - [ ] wgpu rendering (enables CRT shaders, NTSC filter)
 - [ ] PWA manifest + service worker (offline play)
-- [ ] Mobile-optimized layout with proper touch UX
+- [x] Mobile-optimized layout with proper touch UX
 - [ ] Netplay via WebRTC
 - [ ] Performance profiling (measure frame time budget)
 

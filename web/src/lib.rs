@@ -11,8 +11,107 @@ use web_sys::{
 use krankulator_core::emu;
 use krankulator_core::emu::audio::AudioBackend;
 use krankulator_core::emu::gfx;
-use krankulator_core::emu::io::{controller, IOHandler, PollResult};
+use krankulator_core::emu::io::{controller, loader, IOHandler, PollResult};
 use krankulator_core::emu::memory::MemoryMapper;
+
+// --- localStorage persistence ---
+
+fn local_storage() -> Option<web_sys::Storage> {
+    window().local_storage().ok()?
+}
+
+fn rom_key(rom_hash: &str, suffix: &str) -> String {
+    format!("krankulator:{}:{}", rom_hash, suffix)
+}
+
+fn hash_rom(data: &[u8]) -> String {
+    let mut h: u32 = 0x811c9dc5;
+    for &b in data {
+        h ^= b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    format!("{:08x}", h)
+}
+
+fn storage_get(key: &str) -> Option<String> {
+    local_storage()?.get_item(key).ok()?
+}
+
+fn storage_set(key: &str, value: &str) {
+    if let Some(storage) = local_storage() {
+        let _ = storage.set_item(key, value);
+    }
+}
+
+fn save_sram_to_storage(rom_hash: &str, sram: &[u8]) {
+    let encoded = base64_encode(sram);
+    storage_set(&rom_key(rom_hash, "sram"), &encoded);
+}
+
+fn load_sram_from_storage(rom_hash: &str) -> Option<Vec<u8>> {
+    let encoded = storage_get(&rom_key(rom_hash, "sram"))?;
+    base64_decode(&encoded)
+}
+
+fn save_state_to_storage(rom_hash: &str, slot: u8, data: &[u8]) {
+    let encoded = base64_encode(data);
+    storage_set(&rom_key(rom_hash, &format!("ss{}", slot)), &encoded);
+}
+
+fn load_state_from_storage(rom_hash: &str, slot: u8) -> Option<Vec<u8>> {
+    let encoded = storage_get(&rom_key(rom_hash, &format!("ss{}", slot)))?;
+    base64_decode(&encoded)
+}
+
+const B64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn base64_encode(data: &[u8]) -> String {
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(B64_CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(B64_CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(B64_CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(B64_CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+    for c in s.bytes() {
+        let val = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            _ => continue,
+        };
+        buf = (buf << 6) | val as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
 
 fn window() -> web_sys::Window {
     web_sys::window().unwrap()
@@ -318,11 +417,17 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
 }
 
 fn start_emulator(rom_data: Vec<u8>) {
-    use krankulator_core::emu::io::loader;
-
     GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
 
-    let mapper = match loader::load_nes_from_bytes(&rom_data) {
+    let rom_hash = hash_rom(&rom_data);
+    let has_battery = loader::rom_has_battery(&rom_data);
+    let sram = if has_battery {
+        load_sram_from_storage(&rom_hash)
+    } else {
+        None
+    };
+
+    let mapper = match loader::load_nes_from_bytes_with_sram(&rom_data, sram) {
         Ok(m) => m,
         Err(e) => {
             set_status(&format!("Failed to load ROM: {}", e));
@@ -338,7 +443,7 @@ fn start_emulator(rom_data: Vec<u8>) {
     let keys = KEYS.with(|k| k.clone());
     let audio_port: Rc<RefCell<Option<web_sys::MessagePort>>> = Rc::new(RefCell::new(None));
     let worklet_level: Rc<Cell<u32>> = Rc::new(Cell::new(0));
-    let io_handler = Box::new(WebIOHandler::new(keys));
+    let io_handler = Box::new(WebIOHandler::new(keys.clone()));
     let audio = Box::new(WebAudioBackend::new(audio_port.clone(), worklet_level.clone()));
 
     let mut emu = emu::Emulator::new_with(io_handler, mapper, audio);
@@ -362,9 +467,11 @@ fn start_emulator(rom_data: Vec<u8>) {
     set_status("Running");
 
     let gen = GENERATION.with(|g| g.get());
+    let rom_hash_clone = rom_hash.clone();
+    setup_beforeunload_sram(rom_hash, has_battery, gen);
     wasm_bindgen_futures::spawn_local(async move {
         connect_audio_worklet(audio_ctx, audio_port, worklet_level).await;
-        run_loop(emu, gen);
+        run_loop(emu, gen, keys, rom_hash_clone, has_battery);
     });
 }
 
@@ -444,19 +551,71 @@ async fn connect_audio_worklet(
     }
 }
 
+thread_local! {
+    static BEFOREUNLOAD_CLOSURE: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = RefCell::new(None);
+    static SRAM_SNAPSHOT: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+}
+
+fn setup_beforeunload_sram(rom_hash: String, has_battery: bool, gen: u32) {
+    BEFOREUNLOAD_CLOSURE.with(|prev| {
+        if let Some(old) = prev.borrow_mut().take() {
+            let _ = window().remove_event_listener_with_callback(
+                "beforeunload",
+                old.as_ref().unchecked_ref(),
+            );
+        }
+    });
+
+    if !has_battery {
+        return;
+    }
+
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        let current_gen = GENERATION.with(|g| g.get());
+        if current_gen != gen {
+            return;
+        }
+        SRAM_SNAPSHOT.with(|snap| {
+            if let Some(data) = snap.borrow().as_ref() {
+                save_sram_to_storage(&rom_hash, data);
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    let _ = window().add_event_listener_with_callback("beforeunload", closure.as_ref().unchecked_ref());
+    BEFOREUNLOAD_CLOSURE.with(|prev| *prev.borrow_mut() = Some(closure));
+}
+
 const FRAME_DURATION_MS: f64 = 1000.0 / 60.0988;
 
-fn run_loop(mut emu: emu::Emulator, gen: u32) {
+fn run_loop(
+    mut emu: emu::Emulator,
+    gen: u32,
+    keys: Rc<RefCell<HashSet<String>>>,
+    rom_hash: String,
+    has_battery: bool,
+) {
     let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
     let g = f.clone();
 
     let perf = window().performance().unwrap();
     let mut last_frame_time = perf.now();
     let mut time_accumulator = 0.0;
+    let mut savestate_slot: u8 = 0;
+    let mut prev_save = false;
+    let mut prev_load = false;
+    let mut prev_cycle = false;
+    let mut sram_save_counter: u32 = 0;
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         let current_gen = GENERATION.with(|g| g.get());
         if current_gen != gen {
+            if has_battery {
+                if let Some(sram) = emu.mem.sram_data() {
+                    save_sram_to_storage(&rom_hash, sram);
+                    SRAM_SNAPSHOT.with(|s| *s.borrow_mut() = Some(sram.to_vec()));
+                }
+            }
             return;
         }
 
@@ -478,6 +637,46 @@ fn run_loop(mut emu: emu::Emulator, gen: u32) {
             time_accumulator = 0.0;
         }
 
+        let k = keys.borrow();
+        let save_held = k.contains("KeyS");
+        let load_held = k.contains("KeyA");
+        let cycle_held = k.contains("KeyQ");
+        drop(k);
+
+        if save_held && !prev_save {
+            let data = emu.save_state_to_bytes();
+            save_state_to_storage(&rom_hash, savestate_slot, &data);
+            set_status(&format!("State saved (slot {})", savestate_slot));
+        }
+        if load_held && !prev_load {
+            if let Some(data) = load_state_from_storage(&rom_hash, savestate_slot) {
+                match emu.load_state_from_bytes(&data) {
+                    Ok(()) => set_status(&format!("State loaded (slot {})", savestate_slot)),
+                    Err(e) => set_status(&format!("Load failed: {}", e)),
+                }
+            } else {
+                set_status(&format!("No save in slot {}", savestate_slot));
+            }
+        }
+        if cycle_held && !prev_cycle {
+            savestate_slot = (savestate_slot + 1) % 4;
+            set_status(&format!("Slot {}", savestate_slot));
+        }
+        prev_save = save_held;
+        prev_load = load_held;
+        prev_cycle = cycle_held;
+
+        if has_battery {
+            sram_save_counter += 1;
+            if sram_save_counter >= 300 {
+                sram_save_counter = 0;
+                if let Some(sram) = emu.mem.sram_data() {
+                    save_sram_to_storage(&rom_hash, sram);
+                    SRAM_SNAPSHOT.with(|s| *s.borrow_mut() = Some(sram.to_vec()));
+                }
+            }
+        }
+
         request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));
 
@@ -493,6 +692,7 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 const MAPPED_KEYS: &[&str] = &[
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "KeyZ", "KeyX", "KeyC", "KeyV",
+    "KeyS", "KeyA", "KeyQ",
 ];
 
 fn setup_audio_resume_on_interaction() {

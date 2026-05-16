@@ -128,6 +128,17 @@ pub fn load_nes_from_bytes(bytes: &[u8]) -> Result<Box<dyn memory::MemoryMapper>
     load_nes_from_bytes_inner(bytes, None)
 }
 
+pub fn load_nes_from_bytes_with_sram(
+    bytes: &[u8],
+    sram_data: Option<Vec<u8>>,
+) -> Result<Box<dyn memory::MemoryMapper>, String> {
+    load_nes_from_bytes_inner(bytes, sram_data)
+}
+
+pub fn rom_has_battery(bytes: &[u8]) -> bool {
+    bytes.len() > 6 && (bytes[6] & 0x02) != 0
+}
+
 fn load_nes_from_bytes_inner(
     bytes: &[u8],
     sram_data: Option<Vec<u8>>,
