@@ -181,6 +181,7 @@ impl IOHandler for WebIOHandler {
 thread_local! {
     static KEYS: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
     static GENERATION: Cell<u32> = Cell::new(0);
+    static AUDIO_CTX: RefCell<Option<AudioContext>> = RefCell::new(None);
 }
 
 #[wasm_bindgen(start)]
@@ -190,6 +191,7 @@ pub fn main() {
     KEYS.with(|keys| setup_keyboard(keys.clone()));
     setup_file_input();
     setup_lucky_button();
+    setup_audio_resume_on_interaction();
 }
 
 fn setup_file_input() {
@@ -305,6 +307,10 @@ fn start_emulator(rom_data: Vec<u8>) {
     }
 
     let audio_ctx = create_audio_context();
+    if let Some(ref ctx) = audio_ctx {
+        let _ = ctx.resume();
+    }
+    AUDIO_CTX.with(|ac| *ac.borrow_mut() = audio_ctx.clone());
 
     set_status("Running");
 
@@ -431,6 +437,23 @@ const MAPPED_KEYS: &[&str] = &[
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "KeyZ", "KeyX", "KeyC", "KeyV",
 ];
+
+fn setup_audio_resume_on_interaction() {
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        AUDIO_CTX.with(|ac| {
+            if let Some(ctx) = ac.borrow().as_ref() {
+                if ctx.state() == web_sys::AudioContextState::Suspended {
+                    let _ = ctx.resume();
+                }
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    let doc = document();
+    let _ = doc.add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref());
+    let _ = doc.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+    closure.forget();
+}
 
 fn setup_keyboard(keys: Rc<RefCell<HashSet<String>>>) {
     let keys_down = keys.clone();

@@ -26,6 +26,7 @@ web-sys = { version = "0.3", features = [
     "FileReader",
     "AudioContext",
     "AudioContextOptions",
+    "AudioContextState",
     "AudioWorklet",
     "AudioWorkletNode",
     "AudioNode",
