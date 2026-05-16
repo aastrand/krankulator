@@ -2,8 +2,16 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Krankulator</title>
     <style>
+        @font-face {
+            font-family: 'Press Start 2P';
+            src: url('PressStart2P.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: linear-gradient(rgba(10, 10, 20, 0.85), rgba(10, 10, 20, 0.85)),
@@ -15,6 +23,7 @@
             min-height: 100vh;
             font-family: monospace;
             color: #eee;
+            overflow: hidden;
         }
         #nes-canvas {
             image-rendering: pixelated;
@@ -22,6 +31,7 @@
             height: 720px;
             background: #000;
             border: 2px solid #333;
+            touch-action: none;
         }
         .controls {
             margin-top: 16px;
@@ -47,11 +57,241 @@
             gap: 24px;
         }
         .keys span { color: #999; }
+
+        /* Touch layout — hidden on desktop */
+        #touch-layout, #rotate-prompt { display: none; }
+
+        #touch-layout {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            flex-direction: row;
+            align-items: stretch;
+            background: #0a0a14;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .touch-col-left, .touch-col-right {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 25vw;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .touch-col-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+        }
+
+        #touch-layout canvas {
+            width: auto;
+            height: 100dvh;
+            max-width: 100%;
+            aspect-ratio: 256 / 240;
+            border: none;
+        }
+
+        .touch-meta {
+            position: absolute;
+            bottom: 5dvh;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        #dpad-zone {
+            position: relative;
+            width: 38vw;
+            height: 38vw;
+            max-width: 160px;
+            max-height: 160px;
+            touch-action: none;
+        }
+        #dpad-base {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+        }
+        #dpad-stick {
+            position: absolute;
+            width: 45%;
+            height: 45%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            pointer-events: none;
+        }
+
+        #ab-zone {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            touch-action: none;
+        }
+        .touch-btn-ab {
+            width: 18vw;
+            height: 18vw;
+            max-width: 72px;
+            max-height: 72px;
+            border-radius: 50%;
+            background: rgba(200, 40, 40, 0.45);
+            border: 2px solid rgba(200, 40, 40, 0.65);
+            color: #eee;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 14px;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        #touch-b { margin-top: 30px; }
+        #touch-a { margin-top: -10px; }
+        .touch-btn-ab.pressed { background: rgba(200, 40, 40, 0.8); }
+
+        .touch-btn-small {
+            width: 64px;
+            height: 30px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #aaa;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 7px;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        .touch-btn-small.pressed { background: rgba(255, 255, 255, 0.25); }
+
+        .nudge-arrow {
+            position: absolute;
+            bottom: calc(5dvh + 60px);
+            left: 71%;
+            transform: translateX(-50%);
+            color: #ccc;
+            width: 30px;
+            height: 30px;
+            animation: pulse-down 1s ease-in-out infinite;
+            pointer-events: none;
+        }
+        .nudge-arrow::before {
+            content: "";
+            position: absolute;
+            top: 4px;
+            left: 2px;
+            width: 2px;
+            height: 2px;
+            transform: rotate(90deg) scale(2.5);
+            transform-origin: 8px 8px;
+            box-shadow: 2px 2px,4px 2px,2px 4px,4px 4px,6px 4px,8px 4px,2px 6px,4px 6px,6px 6px,8px 6px,10px 6px,2px 8px,4px 8px,6px 8px,8px 8px,10px 8px,12px 8px,2px 10px,4px 10px,6px 10px,8px 10px,10px 10px,2px 12px,4px 12px,6px 12px,8px 12px,2px 14px,4px 14px;
+        }
+        @keyframes pulse-down {
+            0%, 100% { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+            50% { transform: translateX(-50%) translateY(10px) scale(1.2); opacity: 0.6; }
+        }
+        @keyframes bounce-down{
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .touch-file-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #888;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 7px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            touch-action: none;
+            cursor: pointer;
+        }
+
+        #rotate-prompt {
+            position: fixed;
+            inset: 0;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            background: rgba(10, 10, 20, 0.95);
+            z-index: 100;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 14px;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1.8;
+            padding: 0 24px;
+        }
+        .rotate-icon {
+            width: 71px;
+            height: 72px;
+            transform: rotate(90deg) scale(1.35);
+            transform-origin: center center;
+            animation:
+                mario-walk 0.45s steps(4) infinite,
+                rock 3s ease-in-out infinite;
+            image-rendering: pixelated;
+            margin: 48px 0;
+            background-image: url("mario-walking.png");
+            background-repeat: no-repeat;
+            background-size: 284px 72px;
+        }
+        @keyframes mario-walk {
+            from { background-position: 0 0; }
+            to { background-position: -284px 0; }
+        }
+        @keyframes rock {
+            0%, 100% { transform: rotate(90deg) scale(1.35); }
+            50% { transform: rotate(0deg) scale(1.35); }
+        }
+
+        /* Touch device overrides */
+        @media (pointer: coarse) {
+            .keys { display: none !important; }
+            .controls { display: none !important; }
+            #status { display: none !important; }
+        }
+
+        @media (pointer: coarse) and (orientation: portrait) {
+            #rotate-prompt { display: flex; }
+        }
+
+        @media (pointer: coarse) and (orientation: landscape) {
+            body {
+                justify-content: flex-start;
+                height: 100vh;
+                height: 100dvh;
+            }
+            #nes-canvas { display: none; }
+            #touch-layout {
+                display: flex;
+                height: 100dvh;
+            }
+        }
     </style>
     <link data-trunk rel="rust" data-wasm-opt="z" />
     <link data-trunk rel="copy-file" href="assets/audio_processor.js" />
     <link data-trunk rel="copy-file" href="assets/background.jpg" />
     <link data-trunk rel="copy-file" href="assets/CNAME" />
+    <link data-trunk rel="copy-file" href="assets/PressStart2P.woff2" />
+    <link data-trunk rel="copy-file" href="assets/mario-walking.png" />
 </head>
 <body>
     <canvas id="nes-canvas" width="256" height="240"></canvas>
@@ -66,6 +306,37 @@
         <div><span>B:</span> X</div>
         <div><span>Start:</span> C</div>
         <div><span>Select:</span> V</div>
+    </div>
+
+    <div id="touch-layout">
+        <div class="touch-col-left">
+            <div id="dpad-zone">
+                <div id="dpad-base"></div>
+                <div id="dpad-stick"></div>
+            </div>
+            <div class="touch-meta">
+                <button id="touch-select" class="touch-btn-small">SELECT</button>
+                <button id="touch-start" class="touch-btn-small">START</button>
+            </div>
+        </div>
+        <div class="touch-col-center">
+            <canvas id="nes-canvas-touch" width="256" height="240"></canvas>
+        </div>
+        <div class="touch-col-right">
+            <div id="ab-zone">
+                <button id="touch-b" class="touch-btn-ab">B</button>
+                <button id="touch-a" class="touch-btn-ab">A</button>
+            </div>
+            <div class="touch-meta">
+                <button id="touch-load" class="touch-btn-small">LOAD</button>
+                <button id="touch-lucky" class="touch-btn-small">LUCKY</button>
+            </div>
+            <div id="lucky-nudge" class="nudge-arrow" aria-hidden="true"></div>
+        </div>
+    </div>
+    <div id="rotate-prompt">
+        <div>Rotate your device to landscape mode</div>
+        <div class="rotate-icon"></div>
     </div>
 </body>
 </html>

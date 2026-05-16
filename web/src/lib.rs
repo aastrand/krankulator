@@ -90,7 +90,7 @@ impl AudioBackend for WebAudioBackend {
 // --- Web IO Handler ---
 
 struct WebIOHandler {
-    ctx: Option<CanvasRenderingContext2d>,
+    contexts: Vec<CanvasRenderingContext2d>,
     keys: Rc<RefCell<HashSet<String>>>,
     rgba_buf: Vec<u8>,
 }
@@ -98,29 +98,35 @@ struct WebIOHandler {
 impl WebIOHandler {
     fn new(keys: Rc<RefCell<HashSet<String>>>) -> Self {
         Self {
-            ctx: None,
+            contexts: Vec::new(),
             keys,
             rgba_buf: vec![0u8; 256 * 240 * 4],
         }
     }
 }
 
+fn get_canvas_ctx(id: &str) -> Option<CanvasRenderingContext2d> {
+    let canvas = document()
+        .get_element_by_id(id)?
+        .dyn_into::<HtmlCanvasElement>()
+        .ok()?;
+    canvas
+        .get_context("2d")
+        .ok()??
+        .dyn_into::<CanvasRenderingContext2d>()
+        .ok()
+}
+
 impl IOHandler for WebIOHandler {
     fn init(&mut self) -> Result<(), String> {
-        let canvas = document()
-            .get_element_by_id("nes-canvas")
-            .ok_or("no canvas")?
-            .dyn_into::<HtmlCanvasElement>()
-            .map_err(|_| "not a canvas")?;
-
-        let ctx = canvas
-            .get_context("2d")
-            .map_err(|_| "get_context failed")?
-            .ok_or("no 2d context")?
-            .dyn_into::<CanvasRenderingContext2d>()
-            .map_err(|_| "not CanvasRenderingContext2d")?;
-
-        self.ctx = Some(ctx);
+        for id in &["nes-canvas", "nes-canvas-touch"] {
+            if let Some(ctx) = get_canvas_ctx(id) {
+                self.contexts.push(ctx);
+            }
+        }
+        if self.contexts.is_empty() {
+            return Err("no canvas found".to_string());
+        }
         Ok(())
     }
 
@@ -155,7 +161,9 @@ impl IOHandler for WebIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        let Some(ctx) = &self.ctx else { return };
+        if self.contexts.is_empty() {
+            return;
+        }
 
         let rgb = &buf.data;
         for i in 0..(256 * 240) {
@@ -167,7 +175,9 @@ impl IOHandler for WebIOHandler {
 
         let clamped = wasm_bindgen::Clamped(&self.rgba_buf[..]);
         if let Ok(img_data) = ImageData::new_with_u8_clamped_array_and_sh(clamped, 256, 240) {
-            let _ = ctx.put_image_data(&img_data, 0.0, 0.0);
+            for ctx in &self.contexts {
+                let _ = ctx.put_image_data(&img_data, 0.0, 0.0);
+            }
         }
     }
 
@@ -188,9 +198,14 @@ thread_local! {
 pub fn main() {
     console_error_panic_hook::set_once();
     set_status("Load a .nes ROM to start");
-    KEYS.with(|keys| setup_keyboard(keys.clone()));
+    KEYS.with(|keys| {
+        setup_keyboard(keys.clone());
+        setup_touch_controls(keys.clone());
+    });
     setup_file_input();
     setup_lucky_button();
+    setup_touch_load_button();
+    setup_touch_lucky_button();
     setup_audio_resume_on_interaction();
 }
 
@@ -251,6 +266,35 @@ fn setup_lucky_button() {
     closure.forget();
 }
 
+fn setup_touch_load_button() {
+    let Some(btn) = document().get_element_by_id("touch-load") else { return };
+
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        if let Some(input) = document().get_element_by_id("rom-input") {
+            if let Ok(input) = input.dyn_into::<web_sys::HtmlInputElement>() {
+                input.click();
+            }
+        }
+    }) as Box<dyn FnMut(_)>);
+    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    closure.forget();
+}
+
+fn setup_touch_lucky_button() {
+    let Some(btn) = document().get_element_by_id("touch-lucky") else { return };
+
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        wasm_bindgen_futures::spawn_local(async {
+            match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
+                Ok(data) => start_emulator(data),
+                Err(e) => set_status(&format!("Failed to fetch: {}", e)),
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    closure.forget();
+}
+
 async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     let resp_value = wasm_bindgen_futures::JsFuture::from(window().fetch_with_str(url))
         .await
@@ -287,6 +331,9 @@ fn start_emulator(rom_data: Vec<u8>) {
     };
 
     set_status("Starting...");
+    if let Some(el) = document().get_element_by_id("lucky-nudge") {
+        let _ = el.dyn_into::<web_sys::HtmlElement>().map(|e| e.style().set_property("display", "none"));
+    }
 
     let keys = KEYS.with(|k| k.clone());
     let audio_port: Rc<RefCell<Option<web_sys::MessagePort>>> = Rc::new(RefCell::new(None));
@@ -367,7 +414,17 @@ async fn connect_audio_worklet(
             return;
         }
     };
-    let _ = node.connect_with_audio_node(&ctx.destination());
+    if let Ok(stream_dest) = ctx.create_media_stream_destination() {
+        let _ = node.connect_with_audio_node(&stream_dest);
+        if let Ok(audio_el) = web_sys::HtmlAudioElement::new() {
+            audio_el.set_src_object(Some(&stream_dest.stream()));
+            let _ = audio_el.play();
+            std::mem::forget(audio_el);
+            std::mem::forget(stream_dest);
+        }
+    } else {
+        let _ = node.connect_with_audio_node(&ctx.destination());
+    }
 
     if let Ok(port) = node.port() {
         let level = worklet_level;
@@ -453,6 +510,208 @@ fn setup_audio_resume_on_interaction() {
     let _ = doc.add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref());
     let _ = doc.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
     closure.forget();
+}
+
+// --- Touch Controls ---
+
+fn setup_touch_controls(keys: Rc<RefCell<HashSet<String>>>) {
+    let get_el = |id: &str| -> Option<web_sys::HtmlElement> {
+        document()
+            .get_element_by_id(id)?
+            .dyn_into::<web_sys::HtmlElement>()
+            .ok()
+    };
+
+    if let (Some(zone), Some(stick)) = (get_el("dpad-zone"), get_el("dpad-stick")) {
+        setup_dpad(zone, stick, keys.clone());
+    }
+
+    let buttons: &[(&str, &str)] = &[
+        ("touch-a", "KeyZ"),
+        ("touch-b", "KeyX"),
+        ("touch-start", "KeyC"),
+        ("touch-select", "KeyV"),
+    ];
+    for &(id, key_code) in buttons {
+        if let Some(el) = get_el(id) {
+            setup_action_button(el, key_code, keys.clone());
+        }
+    }
+}
+
+fn setup_dpad(
+    zone: web_sys::HtmlElement,
+    stick: web_sys::HtmlElement,
+    keys: Rc<RefCell<HashSet<String>>>,
+) {
+    let active_touch: Rc<Cell<Option<i32>>> = Rc::new(Cell::new(None));
+
+    let update_directions =
+        |zone: &web_sys::HtmlElement,
+         stick: &web_sys::HtmlElement,
+         keys: &Rc<RefCell<HashSet<String>>>,
+         touch: &web_sys::Touch| {
+            let rect = zone.get_bounding_client_rect();
+            let radius = rect.width() / 2.0;
+            let cx = rect.left() + radius;
+            let cy = rect.top() + rect.height() / 2.0;
+            let dx = touch.client_x() as f64 - cx;
+            let dy = touch.client_y() as f64 - cy;
+
+            let dist = (dx * dx + dy * dy).sqrt();
+            let dead_zone = radius * 0.15;
+
+            let (up, down, left, right) = if dist < dead_zone {
+                (false, false, false, false)
+            } else {
+                let angle = dy.atan2(dx);
+                let threshold = std::f64::consts::PI / 2.8;
+                (
+                    (angle + std::f64::consts::FRAC_PI_2).abs() < threshold,
+                    (angle - std::f64::consts::FRAC_PI_2).abs() < threshold,
+                    (angle.abs() - std::f64::consts::PI).abs() < threshold,
+                    angle.abs() < threshold,
+                )
+            };
+
+            let clamp_dist = dist.min(radius);
+            let (sx, sy) = if dist > 0.0 {
+                (dx / dist * clamp_dist, dy / dist * clamp_dist)
+            } else {
+                (0.0, 0.0)
+            };
+            let _ = stick
+                .style()
+                .set_property("transform", &format!("translate(calc(-50% + {sx:.0}px), calc(-50% + {sy:.0}px))"));
+
+            let mut k = keys.borrow_mut();
+            let dirs: &[(&str, bool)] = &[
+                ("ArrowUp", up),
+                ("ArrowDown", down),
+                ("ArrowLeft", left),
+                ("ArrowRight", right),
+            ];
+            for &(code, active) in dirs {
+                if active {
+                    k.insert(code.to_string());
+                } else {
+                    k.remove(code);
+                }
+            }
+        };
+
+    let clear_directions = |stick: &web_sys::HtmlElement, keys: &Rc<RefCell<HashSet<String>>>| {
+        let _ = stick
+            .style()
+            .set_property("transform", "translate(-50%, -50%)");
+        let mut k = keys.borrow_mut();
+        for code in &["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] {
+            k.remove(*code);
+        }
+    };
+
+    {
+        let zone2 = zone.clone();
+        let stick2 = stick.clone();
+        let keys2 = keys.clone();
+        let at = active_touch.clone();
+        let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            if at.get().is_some() {
+                return;
+            }
+            let touches = e.changed_touches();
+            if let Some(touch) = touches.get(0) {
+                at.set(Some(touch.identifier()));
+                update_directions(&zone2, &stick2, &keys2, &touch);
+            }
+        }) as Box<dyn FnMut(_)>);
+        zone.add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
+            .unwrap();
+        start.forget();
+    }
+
+    {
+        let zone2 = zone.clone();
+        let stick2 = stick.clone();
+        let keys2 = keys.clone();
+        let at = active_touch.clone();
+        let mov = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            let Some(tid) = at.get() else { return };
+            let touches = e.changed_touches();
+            for i in 0..touches.length() {
+                if let Some(touch) = touches.get(i) {
+                    if touch.identifier() == tid {
+                        update_directions(&zone2, &stick2, &keys2, &touch);
+                        return;
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        zone.add_event_listener_with_callback("touchmove", mov.as_ref().unchecked_ref())
+            .unwrap();
+        mov.forget();
+    }
+
+    {
+        let stick2 = stick;
+        let keys2 = keys;
+        let at = active_touch;
+        let end = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            let Some(tid) = at.get() else { return };
+            let touches = e.changed_touches();
+            for i in 0..touches.length() {
+                if let Some(touch) = touches.get(i) {
+                    if touch.identifier() == tid {
+                        at.set(None);
+                        clear_directions(&stick2, &keys2);
+                        return;
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        zone.add_event_listener_with_callback("touchend", end.as_ref().unchecked_ref())
+            .unwrap();
+        zone.add_event_listener_with_callback("touchcancel", end.as_ref().unchecked_ref())
+            .unwrap();
+        end.forget();
+    }
+}
+
+fn setup_action_button(
+    el: web_sys::HtmlElement,
+    key_code: &'static str,
+    keys: Rc<RefCell<HashSet<String>>>,
+) {
+    {
+        let keys2 = keys.clone();
+        let el2 = el.clone();
+        let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            keys2.borrow_mut().insert(key_code.to_string());
+            let _ = el2.class_list().add_1("pressed");
+        }) as Box<dyn FnMut(_)>);
+        el.add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
+            .unwrap();
+        start.forget();
+    }
+
+    {
+        let keys2 = keys;
+        let el2 = el.clone();
+        let end = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            keys2.borrow_mut().remove(key_code);
+            let _ = el2.class_list().remove_1("pressed");
+        }) as Box<dyn FnMut(_)>);
+        el.add_event_listener_with_callback("touchend", end.as_ref().unchecked_ref())
+            .unwrap();
+        el.add_event_listener_with_callback("touchcancel", end.as_ref().unchecked_ref())
+            .unwrap();
+        end.forget();
+    }
 }
 
 fn setup_keyboard(keys: Rc<RefCell<HashSet<String>>>) {

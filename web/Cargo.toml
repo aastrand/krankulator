@@ -44,6 +44,18 @@ web-sys = { version = "0.3", features = [
     "Response",
     "Headers",
     "console",
+    "TouchEvent",
+    "TouchList",
+    "Touch",
+    "HtmlElement",
+    "HtmlAudioElement",
+    "HtmlMediaElement",
+    "MediaStream",
+    "MediaStreamAudioDestinationNode",
+    "Element",
+    "DomTokenList",
+    "CssStyleDeclaration",
+    "DomRect",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
