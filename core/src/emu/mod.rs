@@ -1619,9 +1619,15 @@ impl Emulator {
             }
         }
 
+        let elapsed_secs = self.cycles as f64 / 1_789_773.0;
+        let fps = if elapsed_secs > 0.0 {
+            self.ppu.frames as f64 / elapsed_secs
+        } else {
+            0.0
+        };
         self.iohandler.exit(format!(
-            "Exiting after {} instructions, {} cycles, {} frames",
-            self.instructions, self.cycles, self.ppu.frames
+            "Exiting after {} instructions, {} cycles, {} frames ({:.2} fps, {:.1}s)",
+            self.instructions, self.cycles, self.ppu.frames, fps, elapsed_secs
         ));
     }
 }
