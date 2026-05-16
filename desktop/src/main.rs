@@ -7,6 +7,7 @@ use krankulator_core::emu;
 use krankulator_core::emu::io::loader;
 use krankulator_core::util;
 
+
 /// Krankulator
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -78,7 +79,11 @@ fn main() -> Result<(), String> {
                     } else if !args.headless {
                         let audio = Box::new(audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
                             .expect("No audio output device available"));
-                        let io = Box::new(io::WinitPixelsIOHandler::new(256, 240));
+                        let rom_name = std::path::Path::new(file)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(file);
+                        let io = Box::new(io::WinitPixelsIOHandler::new(256, 240, rom_name));
                         emu::Emulator::new_with(io, mapper, audio)
                     } else {
                         emu::Emulator::new_headless(mapper)
