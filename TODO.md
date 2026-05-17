@@ -93,12 +93,14 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## On-Screen Display
 
-Currently: no OSD, debug output goes to terminal only.
+8x8 bitmap font overlay rendered directly into the framebuffer (core/src/emu/gfx/font.rs, overlay.rs).
+1px outlined text for readability on any background. Toggle with Tab (desktop/web) or double-tap canvas (mobile).
 
-- [ ] On-screen message logger (semi-transparent overlay) [M]
-  - Show transient notifications: save state loaded/saved, controller connected, mute toggled, etc.
-  - Fade out after a few seconds
-- [ ] Optional FPS counter overlay [S]
+- [x] On-screen message logger (semi-transparent overlay) [M]
+  - Toast notifications for save/load state, slot cycling, errors
+  - Auto-expire after 120 frames (~2 seconds), capped at 4 simultaneous
+- [x] Optional FPS counter overlay [S]
+  - Shows emulation time in ms and percentage of 16.64ms NTSC frame budget
 - [ ] Channel mute status indicator (when toggling audio channels 1-5) [XS]
 
 ---

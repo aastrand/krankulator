@@ -23,6 +23,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
+- **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
 - **Headless mode** for testing and CI
 
 ## Architecture
@@ -117,6 +118,7 @@ OPTIONS:
 | M | Mute/unmute log |
 | 1-5 | Toggle individual APU channels |
 | 0 | Master mute |
+| Tab | Toggle frame time overlay |
 | Esc | Quit |
 
 #### Gamepad (auto-detected)

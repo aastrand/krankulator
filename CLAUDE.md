@@ -15,7 +15,7 @@ The project is a Cargo workspace with three crates:
 - **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet, touch controls. Built with `trunk`.
 
 Key traits defined in core that frontends implement:
-- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`
+- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`
 - `AudioBackend` (`core/src/emu/audio/mod.rs`) — `push_samples()`, `flush()`, `clear()`
 
 ## Common Commands
@@ -120,6 +120,8 @@ cargo clippy --workspace
 **Graphics (`emu/gfx/`)**
 - Frame buffer (`buf.rs`): 256x240 RGB pixels
 - Palette lookup table (`palette.rs`)
+- Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
+- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes
 
 **Audio (`emu/audio/`)**
 - `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
@@ -147,7 +149,11 @@ cargo clippy --workspace
 
 ### Web Frontend (`web/`)
 
-- `src/lib.rs` — wasm-bindgen entry, Canvas 2D rendering, keyboard input, touch controls, AudioWorklet audio, localStorage persistence
+- `src/lib.rs` — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
+- `src/io.rs` — `WebIOHandler`: Canvas 2D rendering, controller polling
+- `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction
+- `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle
+- `src/persistence.rs` — localStorage save states/SRAM, base64 encoding, beforeunload handler
 - `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor
 - `assets/mario-walking.png` — Sprite sheet for rotate-prompt animation
@@ -197,7 +203,11 @@ desktop/            — Native frontend binary
   src/io.rs         — winit + pixels IOHandler
   src/audio.rs      — rodio AudioBackend
 web/                — WebAssembly frontend
-  src/lib.rs        — wasm-bindgen entry + web IOHandler/AudioBackend + touch controls + localStorage persistence
+  src/lib.rs        — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
+  src/io.rs         — WebIOHandler (Canvas 2D rendering, controller polling)
+  src/audio.rs      — WebAudioBackend (AudioWorklet, context setup)
+  src/input.rs      — Keyboard, touch controls, double-tap overlay toggle
+  src/persistence.rs — localStorage save states/SRAM, base64, beforeunload
   index.html        — HTML shell (desktop + touch layout + rotate prompt)
   assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
   Trunk.toml        — Build config

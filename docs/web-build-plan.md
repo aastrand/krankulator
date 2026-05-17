@@ -35,7 +35,7 @@
 - [ ] PWA manifest + service worker (offline play)
 - [x] Mobile-optimized layout with proper touch UX
 - [ ] Netplay via WebRTC
-- [ ] Performance profiling (measure frame time budget)
+- [x] Performance profiling (measure frame time budget)
 
 ## Architecture (as built)
 
