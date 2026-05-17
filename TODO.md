@@ -17,10 +17,6 @@ Coverage: ~679/695 licensed NTSC US games (97.7%)
 
 ### Priority 2: High-impact licensed game coverage
 
-**Mapper 206 — DxROM (Namco 108 / MIMIC-1)** [S]
-- Games (~10): Gauntlet, R.B.I. Baseball 1-3, Karnov, Indiana Jones and the Temple of Doom, Fantasy Zone, Pac-Mania, Ring King, Super Sprint
-- Simplified predecessor to MMC3. Uses similar bank select registers ($8000/$8001) but without IRQ counter, without mirroring control, and with smaller bank counts. Can reuse much of existing MMC3 logic.
-
 **Mapper 9 — MMC2 (PxROM)** [done]
 - Games (2): Mike Tyson's Punch-Out!!, Punch-Out!!
 - CHR latch-switching via `ppu_fetch()` hook: reading $0FD8/$0FE8 (left) and $1FD8-$1FDF/$1FE8-$1FEF (right) triggers deferred CHR bank switch. PRG: 8KB switchable + 24KB fixed.
@@ -65,7 +61,7 @@ Coverage: ~679/695 licensed NTSC US games (97.7%)
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
 | Done | 0,1,2,3,4,7,9,34,66 | 679 | 679/695 (97.7%) |
-| Priority 2 | 206, 5 | ~18 | 697 (99.3%) |
+| Priority 2 | 5 | ~8 | 687 (98.8%) |
 | Priority 3 | 118, 119 | 5 | 697 (99.6%) |
 | Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
 | Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
