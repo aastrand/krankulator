@@ -17,6 +17,7 @@ pub struct PollResult {
     pub load_state: bool,
     pub cycle_slot: bool,
     pub reset: bool,
+    pub toggle_overlay: bool,
 }
 
 pub struct DebugContext<'a> {
@@ -35,6 +36,9 @@ pub trait IOHandler {
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult;
     fn render(&mut self, buf: &gfx::buf::Buffer);
     fn exit(&self, s: String);
+    fn frame_time_ms(&self) -> Option<f64> {
+        None
+    }
     fn on_debug(&mut self, ctx: &mut DebugContext) {
         *ctx.stepping = false;
     }

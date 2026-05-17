@@ -62,6 +62,7 @@ pub struct Emulator {
     rom_path: Option<String>,
     savestate_slot: u8,
     last_rendered_frame: u64,
+    pub overlay: gfx::overlay::Overlay,
 }
 
 impl Emulator {
@@ -131,6 +132,7 @@ impl Emulator {
             rom_path: None,
             savestate_slot: 0,
             last_rendered_frame: 0,
+            overlay: gfx::overlay::Overlay::new(),
         }
     }
 
@@ -206,8 +208,12 @@ impl Emulator {
         let path = self.savestate_path();
         let data = self.save_state_to_bytes();
         match std::fs::write(&path, &data) {
-            Ok(()) => println!("State saved to {} ({} bytes)", path, data.len()),
-            Err(e) => println!("Failed to save state: {}", e),
+            Ok(()) => {
+                self.overlay.toast("STATE SAVED".into());
+            }
+            Err(e) => {
+                self.overlay.toast(format!("SAVE FAILED: {}", e));
+            }
         }
     }
 
@@ -216,15 +222,15 @@ impl Emulator {
         let data = match std::fs::read(&path) {
             Ok(d) => d,
             Err(e) => {
-                println!("Failed to load state: {}", e);
+                self.overlay.toast(format!("LOAD FAILED: {}", e));
                 return;
             }
         };
         if let Err(e) = self.load_state_from_bytes(&data) {
-            println!("Failed to load state: {}", e);
+            self.overlay.toast(format!("LOAD FAILED: {}", e));
             return;
         }
-        println!("State loaded from {}", path);
+        self.overlay.toast("STATE LOADED".into());
     }
 
     fn load_state_from_reader(
@@ -390,6 +396,11 @@ impl Emulator {
 
         if self.ppu.frames > self.last_rendered_frame {
             self.last_rendered_frame = self.ppu.frames;
+            if let Some(ms) = self.iohandler.frame_time_ms() {
+                self.overlay.set_frame_time(ms);
+            }
+            self.overlay.tick();
+            self.overlay.draw(&mut self.buf);
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
@@ -409,7 +420,10 @@ impl Emulator {
             }
             if result.cycle_slot {
                 self.savestate_slot = (self.savestate_slot + 1) % 4;
-                println!("Savestate slot: {}", self.savestate_slot);
+                self.overlay.toast(format!("SLOT {}", self.savestate_slot));
+            }
+            if result.toggle_overlay {
+                self.overlay.toggle();
             }
         }
 

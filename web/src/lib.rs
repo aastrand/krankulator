@@ -305,6 +305,7 @@ pub fn main() {
     setup_lucky_button();
     setup_touch_load_button();
     setup_touch_lucky_button();
+    KEYS.with(|keys| setup_canvas_double_tap(keys.clone()));
     setup_audio_resume_on_interaction();
 }
 
@@ -392,6 +393,40 @@ fn setup_touch_lucky_button() {
     }) as Box<dyn FnMut(_)>);
     btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
     closure.forget();
+}
+
+fn setup_canvas_double_tap(keys: Rc<RefCell<HashSet<String>>>) {
+    let last_tap: Rc<Cell<f64>> = Rc::new(Cell::new(0.0));
+    let perf = window().performance().unwrap();
+
+    for id in &["nes-canvas", "nes-canvas-touch"] {
+        let Some(el) = document().get_element_by_id(id) else { continue };
+        let last = last_tap.clone();
+        let perf = perf.clone();
+        let keys = keys.clone();
+        let closure = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            if e.touches().length() != 1 {
+                return;
+            }
+            let now = perf.now();
+            if now - last.get() < 300.0 {
+                keys.borrow_mut().insert("Tab".into());
+                let keys2 = keys.clone();
+                let remove = Closure::once_into_js(move || {
+                    keys2.borrow_mut().remove("Tab");
+                });
+                let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                    remove.unchecked_ref(),
+                    50,
+                );
+                last.set(0.0);
+            } else {
+                last.set(now);
+            }
+        }) as Box<dyn FnMut(_)>);
+        el.add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref()).unwrap();
+        closure.forget();
+    }
 }
 
 async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
@@ -605,6 +640,7 @@ fn run_loop(
     let mut prev_save = false;
     let mut prev_load = false;
     let mut prev_cycle = false;
+    let mut prev_tab = false;
     let mut sram_save_counter: u32 = 0;
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
@@ -625,10 +661,13 @@ fn run_loop(
 
         let mut frames_run = 0;
         while time_accumulator >= FRAME_DURATION_MS && frames_run < 2 {
+            let emu_start = perf.now();
             if !emu.run_one_frame() {
                 set_status("Emulator stopped");
                 return;
             }
+            let emu_ms = perf.now() - emu_start;
+            emu.overlay.set_frame_time(emu_ms);
             time_accumulator -= FRAME_DURATION_MS;
             frames_run += 1;
         }
@@ -641,30 +680,35 @@ fn run_loop(
         let save_held = k.contains("KeyS");
         let load_held = k.contains("KeyA");
         let cycle_held = k.contains("KeyQ");
+        let tab_held = k.contains("Tab");
         drop(k);
 
         if save_held && !prev_save {
             let data = emu.save_state_to_bytes();
             save_state_to_storage(&rom_hash, savestate_slot, &data);
-            set_status(&format!("State saved (slot {})", savestate_slot));
+            emu.overlay.toast("STATE SAVED".into());
         }
         if load_held && !prev_load {
             if let Some(data) = load_state_from_storage(&rom_hash, savestate_slot) {
                 match emu.load_state_from_bytes(&data) {
-                    Ok(()) => set_status(&format!("State loaded (slot {})", savestate_slot)),
-                    Err(e) => set_status(&format!("Load failed: {}", e)),
+                    Ok(()) => emu.overlay.toast("STATE LOADED".into()),
+                    Err(e) => emu.overlay.toast(format!("LOAD FAILED: {}", e)),
                 }
             } else {
-                set_status(&format!("No save in slot {}", savestate_slot));
+                emu.overlay.toast(format!("NO SAVE IN SLOT {}", savestate_slot));
             }
         }
         if cycle_held && !prev_cycle {
             savestate_slot = (savestate_slot + 1) % 4;
-            set_status(&format!("Slot {}", savestate_slot));
+            emu.overlay.toast(format!("SLOT {}", savestate_slot));
+        }
+        if tab_held && !prev_tab {
+            emu.overlay.toggle();
         }
         prev_save = save_held;
         prev_load = load_held;
         prev_cycle = cycle_held;
+        prev_tab = tab_held;
 
         if has_battery {
             sram_save_counter += 1;
@@ -692,7 +736,7 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 const MAPPED_KEYS: &[&str] = &[
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "KeyZ", "KeyX", "KeyC", "KeyV",
-    "KeyS", "KeyA", "KeyQ",
+    "KeyS", "KeyA", "KeyQ", "Tab",
 ];
 
 fn setup_audio_resume_on_interaction() {

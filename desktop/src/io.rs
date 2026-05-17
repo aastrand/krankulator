@@ -30,6 +30,7 @@ pub struct WinitPixelsIOHandler {
     gamepads: Gamepads,
     muted: bool,
     last_frame_time: Instant,
+    last_frame_ms: f64,
 }
 
 struct InitHandler {
@@ -94,6 +95,7 @@ impl WinitPixelsIOHandler {
             gamepads: Gamepads::new(),
             muted: false,
             last_frame_time: Instant::now(),
+            last_frame_ms: 0.0,
         }
     }
 }
@@ -127,6 +129,7 @@ struct PollHandler<'a> {
     load_state: bool,
     cycle_slot: bool,
     reset: bool,
+    toggle_overlay: bool,
 }
 
 impl ApplicationHandler for PollHandler<'_> {
@@ -209,6 +212,11 @@ impl ApplicationHandler for PollHandler<'_> {
                             if pressed {
                                 let on = !self.apu.get_master_mute();
                                 self.apu.set_master_mute(on);
+                            }
+                        }
+                        KeyCode::Tab => {
+                            if pressed {
+                                self.toggle_overlay = true;
                             }
                         }
                         KeyCode::KeyZ => {
@@ -300,6 +308,7 @@ impl IOHandler for WinitPixelsIOHandler {
             load_state: false,
             cycle_slot: false,
             reset: false,
+            toggle_overlay: false,
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
@@ -310,6 +319,7 @@ impl IOHandler for WinitPixelsIOHandler {
             load_state: handler.load_state,
             cycle_slot: handler.cycle_slot,
             reset: handler.reset,
+            toggle_overlay: handler.toggle_overlay,
         };
 
         let pad_states = self.gamepads.poll();
@@ -337,8 +347,13 @@ impl IOHandler for WinitPixelsIOHandler {
         result
     }
 
+    fn frame_time_ms(&self) -> Option<f64> {
+        Some(self.last_frame_ms)
+    }
+
     fn render(&mut self, buf: &gfx::buf::Buffer) {
         let elapsed = self.last_frame_time.elapsed();
+        self.last_frame_ms = elapsed.as_secs_f64() * 1000.0;
         if elapsed < NES_FRAME_DURATION {
             let sleep_duration = NES_FRAME_DURATION - elapsed;
             if sleep_duration > Duration::from_millis(1) {
