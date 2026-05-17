@@ -53,6 +53,7 @@ pub fn main() {
     setup_lucky_button();
     setup_touch_load_button();
     setup_touch_lucky_button();
+    setup_fullscreen_toggle();
     audio::setup_audio_resume_on_interaction();
     audio::setup_visibility_pause();
 }
@@ -111,6 +112,25 @@ fn setup_lucky_button() {
     }) as Box<dyn FnMut(_)>);
 
     btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    closure.forget();
+}
+
+fn setup_fullscreen_toggle() {
+    let canvas = document()
+        .get_element_by_id("nes-canvas")
+        .unwrap();
+
+    let canvas_clone = canvas.clone();
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        let doc = document();
+        if doc.fullscreen_element().is_some() {
+            doc.exit_fullscreen();
+        } else {
+            canvas_clone.request_fullscreen().ok();
+        }
+    }) as Box<dyn FnMut(_)>);
+
+    canvas.add_event_listener_with_callback("dblclick", closure.as_ref().unchecked_ref()).unwrap();
     closure.forget();
 }
 
@@ -244,6 +264,7 @@ fn run_loop(
     let mut prev_load = false;
     let mut prev_cycle = false;
     let mut prev_tab = false;
+    let mut prev_fullscreen = false;
     let mut sram_save_counter: u32 = 0;
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
@@ -284,6 +305,7 @@ fn run_loop(
         let mut load_held = k.contains("KeyA");
         let mut cycle_held = k.contains("KeyQ");
         let tab_held = k.contains("Tab");
+        let fullscreen_held = k.contains("KeyF");
         drop(k);
 
         if let Some(gp) = input::poll_gamepad() {
@@ -314,6 +336,15 @@ fn run_loop(
         if tab_held && !prev_tab {
             emu.overlay.toggle();
         }
+        if fullscreen_held && !prev_fullscreen {
+            let doc = document();
+            if doc.fullscreen_element().is_some() {
+                doc.exit_fullscreen();
+            } else if let Some(canvas) = doc.get_element_by_id("nes-canvas") {
+                let _ = canvas.request_fullscreen();
+            }
+        }
+        prev_fullscreen = fullscreen_held;
         prev_save = save_held;
         prev_load = load_held;
         prev_cycle = cycle_held;

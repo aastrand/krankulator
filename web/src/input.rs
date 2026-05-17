@@ -12,7 +12,7 @@ use super::{document, window};
 pub const MAPPED_KEYS: &[&str] = &[
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "KeyZ", "KeyX", "KeyC", "KeyV",
-    "KeyS", "KeyA", "KeyQ", "Tab",
+    "KeyS", "KeyA", "KeyQ", "KeyF", "Tab",
 ];
 
 pub fn setup_keyboard(keys: Rc<RefCell<HashSet<String>>>) {

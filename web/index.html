@@ -28,11 +28,17 @@
         }
         #nes-canvas {
             image-rendering: pixelated;
-            width: 768px;
-            height: 720px;
+            width: min(1024px, calc(100vw - 32px), calc((100vh - 140px) * 256 / 240));
+            aspect-ratio: 256 / 240;
             background: #000;
             border: 2px solid #333;
             touch-action: none;
+        }
+        #nes-canvas:fullscreen {
+            width: 100vw;
+            max-height: 100vh;
+            border: none;
+            background: #000;
         }
         .controls {
             margin-top: 16px;
