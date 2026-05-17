@@ -192,7 +192,7 @@ mod platform {
 #[cfg(not(target_os = "macos"))]
 mod platform {
     use super::RawState;
-    use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
+    use gilrs::{Axis, Button, EventType, GamepadId, Gilrs, MappingSource};
 
     pub struct PlatformGamepads {
         gilrs: Gilrs,
@@ -205,7 +205,7 @@ mod platform {
             let gilrs = Gilrs::new().unwrap();
             let mut players = [None; 2];
             for (id, gamepad) in gilrs.gamepads() {
-                if gamepad.is_connected() {
+                if gamepad.is_connected() && gamepad.mapping_source() == MappingSource::SdlMappings {
                     if players[0].is_none() {
                         players[0] = Some(id);
                     } else if players[1].is_none() {
@@ -228,10 +228,13 @@ mod platform {
                     1
                 } else {
                     if matches!(event.event, EventType::Connected) {
-                        if self.players[0].is_none() {
-                            self.players[0] = Some(event.id);
-                        } else if self.players[1].is_none() {
-                            self.players[1] = Some(event.id);
+                        let gp = self.gilrs.gamepad(event.id);
+                        if gp.mapping_source() == MappingSource::SdlMappings {
+                            if self.players[0].is_none() {
+                                self.players[0] = Some(event.id);
+                            } else if self.players[1].is_none() {
+                                self.players[1] = Some(event.id);
+                            }
                         }
                     }
                     continue;

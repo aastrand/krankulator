@@ -31,6 +31,7 @@ pub struct WinitPixelsIOHandler {
     muted: bool,
     last_frame_time: Instant,
     last_frame_ms: f64,
+    kb_state: u8,
 }
 
 struct InitHandler {
@@ -96,6 +97,7 @@ impl WinitPixelsIOHandler {
             muted: false,
             last_frame_time: Instant::now(),
             last_frame_ms: 0.0,
+            kb_state: 0,
         }
     }
 }
@@ -121,9 +123,9 @@ fn set_dock_icon() {}
 
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
-    mem: &'a mut dyn memory::MemoryMapper,
     apu: &'a mut apu::APU,
     muted: &'a mut bool,
+    kb_state: &'a mut u8,
     exit: bool,
     save_state: bool,
     load_state: bool,
@@ -221,58 +223,58 @@ impl ApplicationHandler for PollHandler<'_> {
                         }
                         KeyCode::KeyZ => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::A);
+                                *self.kb_state |= controller::A;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::A);
+                                *self.kb_state &= !controller::A;
                             }
                         }
                         KeyCode::KeyX => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::B);
+                                *self.kb_state |= controller::B;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::B);
+                                *self.kb_state &= !controller::B;
                             }
                         }
                         KeyCode::KeyC => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::START);
+                                *self.kb_state |= controller::START;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::START);
+                                *self.kb_state &= !controller::START;
                             }
                         }
                         KeyCode::KeyV => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::SELECT);
+                                *self.kb_state |= controller::SELECT;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::SELECT);
+                                *self.kb_state &= !controller::SELECT;
                             }
                         }
                         KeyCode::ArrowLeft => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::LEFT);
+                                *self.kb_state |= controller::LEFT;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::LEFT);
+                                *self.kb_state &= !controller::LEFT;
                             }
                         }
                         KeyCode::ArrowRight => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::RIGHT);
+                                *self.kb_state |= controller::RIGHT;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::RIGHT);
+                                *self.kb_state &= !controller::RIGHT;
                             }
                         }
                         KeyCode::ArrowUp => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::UP);
+                                *self.kb_state |= controller::UP;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::UP);
+                                *self.kb_state &= !controller::UP;
                             }
                         }
                         KeyCode::ArrowDown => {
                             if pressed {
-                                self.mem.controllers()[0].set_pressed(controller::DOWN);
+                                *self.kb_state |= controller::DOWN;
                             } else {
-                                self.mem.controllers()[0].set_not_pressed(controller::DOWN);
+                                *self.kb_state &= !controller::DOWN;
                             }
                         }
                         _ => {}
@@ -300,9 +302,9 @@ impl IOHandler for WinitPixelsIOHandler {
 
         let mut handler = PollHandler {
             pixels: self.pixels.as_mut().unwrap(),
-            mem,
             apu,
             muted: &mut self.muted,
+            kb_state: &mut self.kb_state,
             exit: false,
             save_state: false,
             load_state: false,
@@ -323,24 +325,37 @@ impl IOHandler for WinitPixelsIOHandler {
         };
 
         let pad_states = self.gamepads.poll();
-        for (i, state) in pad_states.iter().enumerate() {
-            if let Some(s) = state {
-                let c = &mut mem.controllers()[i];
-                if s.a { c.set_pressed(controller::A); } else { c.set_not_pressed(controller::A); }
-                if s.b { c.set_pressed(controller::B); } else { c.set_not_pressed(controller::B); }
-                if s.start { c.set_pressed(controller::START); } else { c.set_not_pressed(controller::START); }
-                if s.select { c.set_pressed(controller::SELECT); } else { c.set_not_pressed(controller::SELECT); }
-                if s.up { c.set_pressed(controller::UP); } else { c.set_not_pressed(controller::UP); }
-                if s.down { c.set_pressed(controller::DOWN); } else { c.set_not_pressed(controller::DOWN); }
-                if s.left { c.set_pressed(controller::LEFT); } else { c.set_not_pressed(controller::LEFT); }
-                if s.right { c.set_pressed(controller::RIGHT); } else { c.set_not_pressed(controller::RIGHT); }
 
-                if i == 0 {
-                    if s.save_state { result.save_state = true; }
-                    if s.load_state { result.load_state = true; }
-                    if s.cycle_slot { result.cycle_slot = true; }
-                }
-            }
+        // Merge keyboard and gamepad for player 0 (OR logic: either source can press)
+        let mut p0_state = self.kb_state;
+        if let Some(s) = &pad_states[0] {
+            if s.a { p0_state |= controller::A; }
+            if s.b { p0_state |= controller::B; }
+            if s.start { p0_state |= controller::START; }
+            if s.select { p0_state |= controller::SELECT; }
+            if s.up { p0_state |= controller::UP; }
+            if s.down { p0_state |= controller::DOWN; }
+            if s.left { p0_state |= controller::LEFT; }
+            if s.right { p0_state |= controller::RIGHT; }
+            if s.save_state { result.save_state = true; }
+            if s.load_state { result.load_state = true; }
+            if s.cycle_slot { result.cycle_slot = true; }
+        }
+        mem.controllers()[0].load_status(p0_state);
+
+        // Player 2: gamepad only
+        if let Some(s) = &pad_states[1] {
+            let c = &mut mem.controllers()[1];
+            let mut state: u8 = 0;
+            if s.a { state |= controller::A; }
+            if s.b { state |= controller::B; }
+            if s.start { state |= controller::START; }
+            if s.select { state |= controller::SELECT; }
+            if s.up { state |= controller::UP; }
+            if s.down { state |= controller::DOWN; }
+            if s.left { state |= controller::LEFT; }
+            if s.right { state |= controller::RIGHT; }
+            c.load_status(state);
         }
 
         self.event_loop = Some(event_loop);
