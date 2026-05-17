@@ -247,6 +247,7 @@ fn load_nes_from_bytes_inner(
             flags,
             combine_prg_banks_32k(&prg_banks),
         )),
+        9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
         34 => {
             if is_nes2_header && submapper != 0 && submapper != 2 {
                 return Err(format!(

@@ -106,7 +106,7 @@ cargo clippy --workspace
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3)
@@ -262,7 +262,7 @@ All emulation tests live in `core/` (393 tests). Desktop has 1 smoke test verify
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM
+- NROM, MMC1, MMC2, MMC3, UxROM, AxROM, CNROM, BNROM, GxROM
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo

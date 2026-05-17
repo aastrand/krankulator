@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), BNROM (34), GxROM (66)**
-Coverage: ~677/695 licensed NTSC US games (97.4%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66)**
+Coverage: ~679/695 licensed NTSC US games (97.7%)
 
 ### Completed: Priority 1 quick wins
 
@@ -21,9 +21,9 @@ Coverage: ~677/695 licensed NTSC US games (97.4%)
 - Games (~10): Gauntlet, R.B.I. Baseball 1-3, Karnov, Indiana Jones and the Temple of Doom, Fantasy Zone, Pac-Mania, Ring King, Super Sprint
 - Simplified predecessor to MMC3. Uses similar bank select registers ($8000/$8001) but without IRQ counter, without mirroring control, and with smaller bank counts. Can reuse much of existing MMC3 logic.
 
-**Mapper 9 — MMC2 (PxROM)** [M]
+**Mapper 9 — MMC2 (PxROM)** [done]
 - Games (2): Mike Tyson's Punch-Out!!, Punch-Out!!
-- Unique CHR latch-switching: reading specific tiles ($FD/$FE) from pattern tables automatically switches CHR banks. Requires hooking into PPU tile fetch logic. PRG banking is simple (8KB switchable + 24KB fixed).
+- CHR latch-switching via `ppu_fetch()` hook: reading $0FD8/$0FE8 (left) and $1FD8-$1FDF/$1FE8-$1FEF (right) triggers deferred CHR bank switch. PRG: 8KB switchable + 24KB fixed.
 
 **Mapper 5 — MMC5 (ExROM)** [XL]
 - Games (~8): Castlevania III: Dracula's Curse, Laser Invasion, Uncharted Waters, Romance of the Three Kingdoms II, Nobunaga's Ambition II, Gemfire, L'Empereur
@@ -64,8 +64,8 @@ Coverage: ~677/695 licensed NTSC US games (97.4%)
 
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
-| Done | 0,1,2,3,4,7,34,66 | 677 | 677/695 (97.4%) |
-| Priority 2 | 206, 9, 5 | ~20 | 697 (99.3%) |
+| Done | 0,1,2,3,4,7,9,34,66 | 679 | 679/695 (97.7%) |
+| Priority 2 | 206, 5 | ~18 | 697 (99.3%) |
 | Priority 3 | 118, 119 | 5 | 697 (99.6%) |
 | Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
 | Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
