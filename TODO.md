@@ -75,15 +75,17 @@ Coverage: ~677/695 licensed NTSC US games (97.4%)
 ## Input / Controllers
 
 Desktop: keyboard via winit (arrows, Z/X/A/B, C/V start/select). Gamepad via GCController (macOS) / gilrs (Linux/Windows).
-Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select buttons).
+Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select buttons) + Gamepad API (standard mapping).
 
 - [x] Gamepad support [M]
   - macOS: GCController framework (objc2-game-controller) — required because macOS intercepts Bluetooth controller input
-  - Linux/Windows: gilrs crate with event-based input
+  - Linux/Windows: gilrs crate with event-based input, SdlMappings filter to avoid misdetected HID devices
+  - Web: Gamepad API (navigator.getGamepads()), standard mapping, OR-merged with keyboard/touch
   - Auto-detect connected controllers (up to 2)
   - D-pad and analog stick mapping (with deadzone)
   - Two-player support (Joy-Con pair auto-splits into P1/P2)
   - Edge-detected save/load state and slot cycling on P1
+  - All platforms: input sources OR-merged so keyboard and gamepad work simultaneously
 - [ ] Configurable key/button bindings [S]
   - Save bindings to a config file
   - Per-controller profiles

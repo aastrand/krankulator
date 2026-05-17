@@ -23,7 +23,7 @@
 - [x] Save states to `localStorage`
 - [x] Battery-backed RAM (SRAM) persistence to `localStorage`
 - [ ] Responsive CSS layout (scale canvas to viewport, max 4x)
-- [ ] Gamepad API support
+- [x] Gamepad API support (standard mapping, OR-merged with keyboard/touch)
 - [x] On-screen touch controls for mobile
 - [ ] Drag-and-drop ROM loading onto canvas
 - [ ] Pause audio on tab visibility change
@@ -45,9 +45,13 @@ core/               — Platform-independent emulation library (only dep: hex)
   src/emu/          — CPU, PPU, APU, memory mappers, IO traits, audio traits
 desktop/            — Native frontend (winit + pixels + rodio)
 web/                — WebAssembly frontend (web-sys + Canvas 2D + AudioWorklet)
-  src/lib.rs        — wasm-bindgen entry, IOHandler/AudioBackend impls, rAF loop, persistence
+  src/lib.rs        — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
+  src/io.rs         — WebIOHandler (Canvas 2D rendering, controller polling)
+  src/audio.rs      — WebAudioBackend (AudioWorklet, context setup, resume-on-interaction)
+  src/input.rs      — Keyboard, touch controls, Gamepad API polling
+  src/persistence.rs — localStorage save states/SRAM, base64, beforeunload
   assets/           — audio_processor.js, background.jpg, mario-walking.png, CNAME
-  Trunk.toml        — Build config (release, COOP/COEP headers)
+  Trunk.toml        — Build config (release, COOP/COEP headers, TLS cert paths)
 ```
 
 Key traits in core that frontends implement:
