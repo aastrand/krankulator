@@ -5,6 +5,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::KeyboardEvent;
 
+use krankulator_core::emu::io::controller;
+
 use super::{document, window};
 
 pub const MAPPED_KEYS: &[&str] = &[
@@ -233,6 +235,57 @@ fn setup_dpad(
             .unwrap();
         end.forget();
     }
+}
+
+pub struct GamepadPollResult {
+    pub buttons: u8,
+    pub save_state: bool,
+    pub load_state: bool,
+    pub cycle_slot: bool,
+}
+
+pub fn poll_gamepad() -> Option<GamepadPollResult> {
+    let gamepads = window().navigator().get_gamepads().ok()?;
+    for i in 0..gamepads.length() {
+        let gp: web_sys::Gamepad = gamepads.get(i).dyn_into().ok()?;
+        if !gp.connected() || gp.mapping() != web_sys::GamepadMappingType::Standard {
+            continue;
+        }
+
+        let btns = gp.buttons();
+        let btn = |idx: u32| -> bool {
+            btns.get(idx)
+                .dyn_into::<web_sys::GamepadButton>()
+                .ok()
+                .map_or(false, |b| b.pressed())
+        };
+
+        let axes = gp.axes();
+        let axis = |idx: u32| -> f64 {
+            axes.get(idx).as_f64().unwrap_or(0.0)
+        };
+
+        let lx = axis(0);
+        let ly = axis(1);
+
+        let mut buttons: u8 = 0;
+        if btn(1) { buttons |= controller::A; }
+        if btn(0) { buttons |= controller::B; }
+        if btn(9) { buttons |= controller::START; }
+        if btn(8) { buttons |= controller::SELECT; }
+        if btn(12) || ly < -0.5 { buttons |= controller::UP; }
+        if btn(13) || ly > 0.5 { buttons |= controller::DOWN; }
+        if btn(14) || lx < -0.5 { buttons |= controller::LEFT; }
+        if btn(15) || lx > 0.5 { buttons |= controller::RIGHT; }
+
+        return Some(GamepadPollResult {
+            buttons,
+            save_state: btn(5),
+            load_state: btn(4),
+            cycle_slot: btn(6),
+        });
+    }
+    None
 }
 
 fn setup_action_button(

@@ -6,6 +6,8 @@ release = true
 [serve]
 addresses = ["0.0.0.0"]
 port = 8080
+tls_certificate = "../localhost+1.pem"
+tls_key = "../localhost+1-key.pem"
 
 [serve.headers]
 Cross-Origin-Opener-Policy = "same-origin"

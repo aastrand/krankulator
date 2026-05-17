@@ -50,7 +50,8 @@ cargo run -- --codeaddr 0x400 --loader bin input/bin/test.bin
 cargo build -p krankulator-core --target wasm32-unknown-unknown
 
 # Build and serve web version (requires trunk: cargo install trunk)
-cd web && trunk serve --port 8080
+# HTTPS required for Gamepad API / SharedArrayBuffer — see docs/web-dev-setup.md
+cd web && trunk serve
 ```
 
 ### Testing
@@ -145,20 +146,20 @@ cargo clippy --workspace
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core
 - `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
-- `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers
+- `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
 ### Web Frontend (`web/`)
 
 - `src/lib.rs` — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
 - `src/io.rs` — `WebIOHandler`: Canvas 2D rendering, controller polling
 - `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction
-- `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle
+- `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle, Gamepad API polling
 - `src/persistence.rs` — localStorage save states/SRAM, base64 encoding, beforeunload handler
 - `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor
 - `assets/mario-walking.png` — Sprite sheet for rotate-prompt animation
 - `assets/PressStart2P.woff2` — Pixel font (OFL licensed)
-- `Trunk.toml` — trunk build config (release mode, COOP/COEP headers)
+- `Trunk.toml` — trunk build config (release mode, COOP/COEP headers, TLS cert paths)
 
 ### Test paths
 
@@ -190,6 +191,12 @@ Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path v
 - SRAM auto-saves every ~5s, on page unload, and when switching ROMs
 - Save state keys: S (save), A (load), Q (cycle slot 0-3)
 
+**Input merging**
+- Multiple input sources (keyboard, touch, gamepad) are OR-merged into a single controller state bitmask each frame
+- Desktop: keyboard state tracked in `kb_state: u8`, OR'd with gilrs gamepad state, written via `load_status()`
+- Web: keyboard/touch keys set OR'd with Gamepad API poll result
+- Gamepad meta-actions (save/load/cycle) use edge detection (trigger on press, not hold)
+
 ## File Structure
 
 ```
@@ -206,7 +213,7 @@ web/                — WebAssembly frontend
   src/lib.rs        — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
   src/io.rs         — WebIOHandler (Canvas 2D rendering, controller polling)
   src/audio.rs      — WebAudioBackend (AudioWorklet, context setup)
-  src/input.rs      — Keyboard, touch controls, double-tap overlay toggle
+  src/input.rs      — Keyboard, touch controls, double-tap overlay toggle, Gamepad API
   src/persistence.rs — localStorage save states/SRAM, base64, beforeunload
   index.html        — HTML shell (desktop + touch layout + rotate prompt)
   assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
@@ -216,7 +223,7 @@ input/              — Test ROMs and data files
   ascii/            — ASCII assembly test files
   bin/              — Binary test files
 scripts/            — APU mixer test scripts (Python)
-docs/               — Design documents
+docs/               — Design documents and dev setup guides
 ```
 
 ## Testing Strategy

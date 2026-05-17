@@ -58,7 +58,6 @@ impl IOHandler for WebIOHandler {
 
     fn poll(&mut self, mem: &mut dyn MemoryMapper, _apu: &mut emu::apu::APU) -> PollResult {
         let keys = self.keys.borrow();
-        let ctrl = &mut mem.controllers()[0];
 
         let mapping: &[(&str, u8)] = &[
             ("ArrowUp", controller::UP),
@@ -71,14 +70,18 @@ impl IOHandler for WebIOHandler {
             ("KeyV", controller::SELECT),
         ];
 
+        let mut state: u8 = 0;
         for &(code, button) in mapping {
             if keys.contains(code) {
-                ctrl.set_pressed(button);
-            } else {
-                ctrl.set_not_pressed(button);
+                state |= button;
             }
         }
 
+        if let Some(gp) = super::input::poll_gamepad() {
+            state |= gp.buttons;
+        }
+
+        mem.controllers()[0].load_status(state);
         PollResult::default()
     }
 

@@ -279,11 +279,17 @@ fn run_loop(
         }
 
         let k = keys.borrow();
-        let save_held = k.contains("KeyS");
-        let load_held = k.contains("KeyA");
-        let cycle_held = k.contains("KeyQ");
+        let mut save_held = k.contains("KeyS");
+        let mut load_held = k.contains("KeyA");
+        let mut cycle_held = k.contains("KeyQ");
         let tab_held = k.contains("Tab");
         drop(k);
+
+        if let Some(gp) = input::poll_gamepad() {
+            save_held |= gp.save_state;
+            load_held |= gp.load_state;
+            cycle_held |= gp.cycle_slot;
+        }
 
         if save_held && !prev_save {
             let data = emu.save_state_to_bytes();
