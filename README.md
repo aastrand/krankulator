@@ -196,6 +196,10 @@ Windows. Tested primarily on macOS.
 AudioWorklet support for sound. Mobile devices get a dedicated landscape touch layout with
 virtual d-pad and action buttons.
 
+## License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify, and distribute the software for any noncommercial purpose. See the LICENSE file for full terms.
+
 ## Resources
 
 - [nesdev wiki](https://www.nesdev.org/wiki/) — the authoritative NES hardware reference

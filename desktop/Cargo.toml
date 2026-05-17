@@ -3,6 +3,7 @@ name = "krankulator-desktop"
 version = "0.1.0"
 authors = ["Anders Åstrand <anders@teknodromen.se>"]
 edition = "2021"
+license-file.workspace = true
 
 [[bin]]
 name = "krankulator"
