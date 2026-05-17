@@ -152,8 +152,8 @@ cargo clippy --workspace
 
 - `src/lib.rs` — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
 - `src/io.rs` — `WebIOHandler`: Canvas 2D rendering, controller polling
-- `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction
-- `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle, Gamepad API polling
+- `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction, visibility pause
+- `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle, Gamepad API polling, fullscreen toggle (F key / double-click)
 - `src/persistence.rs` — localStorage save states/SRAM, base64 encoding, beforeunload handler
 - `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor

@@ -168,19 +168,14 @@ Currently: native desktop only (macOS), CI builds on Linux.
   - Separate Cargo workspace member or feature flag
 - Gives access to RetroArch's ecosystem: shaders, netplay, achievements, controller support, recording
 
-### Web (WASM + WebGL) [XL]
-- [x] Compile core emulation to wasm32-unknown-unknown
-  - Factor out platform-specific code (audio, windowing) behind a trait/abstraction
-  - Audio via Web Audio API (wasm-bindgen + web-sys)
-  - Rendering via canvas 2D (via web-sys)
-  - File loading via file picker in browser
-  - Touch controls for mobile (on-screen D-pad and buttons)
-- [x] Mobile-friendly responsive layout
-  - Landscape touch layout with virtual d-pad (analog-style with deadzone), A/B/Start/Select buttons
-  - Portrait "rotate device" prompt with animated sprite
-  - Mobile Safari audio workaround (AudioContext resume on gesture + MediaStreamDestination)
+### Web (WASM + Canvas 2D) [XL] — Complete
+- [x] Compile core emulation to wasm32-unknown-unknown (workspace split, zero cfg gates)
+- [x] Canvas 2D rendering, AudioWorklet audio, keyboard/touch/gamepad input
+- [x] Mobile-friendly responsive layout with touch controls
+- [x] Responsive canvas scaling (up to 4x) with fullscreen mode (F key / double-click)
+- [x] Audio pause on tab visibility change
 - [x] Local storage for save RAM and save states
-- [x] Host on GitHub Pages (krankulator.github.io or similar)
+- [x] Hosted on GitHub Pages (krankulator.teknodromen.se)
 
 ### Cross-platform desktop builds [M]
 - [ ] macOS: .app bundle with icon, code signing
