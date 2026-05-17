@@ -54,6 +54,7 @@ pub fn main() {
     setup_touch_load_button();
     setup_touch_lucky_button();
     audio::setup_audio_resume_on_interaction();
+    audio::setup_visibility_pause();
 }
 
 fn setup_file_input() {

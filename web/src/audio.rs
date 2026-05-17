@@ -157,3 +157,21 @@ pub fn setup_audio_resume_on_interaction() {
     let _ = doc.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
     closure.forget();
 }
+
+pub fn setup_visibility_pause() {
+    let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        AUDIO_CTX.with(|ac| {
+            if let Some(ctx) = ac.borrow().as_ref() {
+                if super::document().hidden() {
+                    let _ = ctx.suspend();
+                } else {
+                    let _ = ctx.resume();
+                }
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    let doc = super::document();
+    let _ = doc.add_event_listener_with_callback("visibilitychange", closure.as_ref().unchecked_ref());
+    closure.forget();
+}
