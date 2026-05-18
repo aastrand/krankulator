@@ -44,9 +44,15 @@ impl Default for RawState {
     }
 }
 
+pub struct GamepadPollResult {
+    pub states: [Option<GamepadState>; 2],
+    pub toasts: Vec<String>,
+}
+
 pub struct Gamepads {
     inner: PlatformGamepads,
     prev_shoulders: [[bool; 3]; 2],
+    was_connected: [bool; 2],
 }
 
 impl Gamepads {
@@ -54,13 +60,24 @@ impl Gamepads {
         Self {
             inner: PlatformGamepads::new(),
             prev_shoulders: [[false; 3]; 2],
+            was_connected: [false; 2],
         }
     }
 
-    pub fn poll(&mut self) -> [Option<GamepadState>; 2] {
-        let raw = self.inner.poll();
-        let mut result: [Option<GamepadState>; 2] = [None, None];
+    pub fn poll(&mut self) -> GamepadPollResult {
+        let (raw, _names) = self.inner.poll();
+        let mut states: [Option<GamepadState>; 2] = [None, None];
+        let mut toasts = Vec::new();
+
         for (i, state) in raw.iter().enumerate() {
+            let is_connected = state.is_some();
+            if is_connected && !self.was_connected[i] {
+                toasts.push(format!("P{} CONNECTED", i + 1));
+            } else if !is_connected && self.was_connected[i] {
+                toasts.push(format!("P{} DISCONNECTED", i + 1));
+            }
+            self.was_connected[i] = is_connected;
+
             if let Some(s) = state {
                 let prev = &mut self.prev_shoulders[i];
                 let save = s.right_shoulder && !prev[0];
@@ -69,7 +86,7 @@ impl Gamepads {
                 prev[0] = s.right_shoulder;
                 prev[1] = s.left_shoulder;
                 prev[2] = s.left_trigger;
-                result[i] = Some(GamepadState {
+                states[i] = Some(GamepadState {
                     a: s.a,
                     b: s.b,
                     start: s.start,
@@ -84,7 +101,7 @@ impl Gamepads {
                 });
             }
         }
-        result
+        GamepadPollResult { states, toasts }
     }
 }
 
@@ -100,8 +117,9 @@ mod platform {
             Self
         }
 
-        pub fn poll(&mut self) -> [Option<RawState>; 2] {
+        pub fn poll(&mut self) -> ([Option<RawState>; 2], [Option<String>; 2]) {
             let mut result: [Option<RawState>; 2] = [None, None];
+            let mut names: [Option<String>; 2] = [None, None];
             let controllers = unsafe { GCController::controllers() };
 
             let mut slot = 0;
@@ -113,10 +131,13 @@ mod platform {
                     continue;
                 };
 
-                let is_joycon_pair = unsafe { controller.vendorName() }
-                    .map_or(false, |n| n.to_string().contains("Joy-Con"));
+                let vendor = unsafe { controller.vendorName() }
+                    .map(|n| n.to_string());
+                let is_joycon_pair = vendor.as_deref().map_or(false, |n| n.contains("Joy-Con"));
 
                 if is_joycon_pair && slot == 0 {
+                    names[0] = vendor.clone();
+                    names[1] = vendor;
                     unsafe {
                         let rx = -gamepad.rightThumbstick().xAxis().value();
                         let ry = -gamepad.rightThumbstick().yAxis().value();
@@ -163,6 +184,7 @@ mod platform {
                     }
                     slot = 2;
                 } else {
+                    names[slot] = vendor;
                     unsafe {
                         let dpad = gamepad.dpad();
                         let lx = gamepad.leftThumbstick().xAxis().value();
@@ -184,7 +206,7 @@ mod platform {
                     slot += 1;
                 }
             }
-            result
+            (result, names)
         }
     }
 }
@@ -220,7 +242,7 @@ mod platform {
             }
         }
 
-        pub fn poll(&mut self) -> [Option<RawState>; 2] {
+        pub fn poll(&mut self) -> ([Option<RawState>; 2], [Option<String>; 2]) {
             while let Some(event) = self.gilrs.next_event() {
                 let player = if self.players[0] == Some(event.id) {
                     0
@@ -264,8 +286,10 @@ mod platform {
                     EventType::Disconnected => {
                         if self.players[0] == Some(event.id) {
                             self.players[0] = None;
+                            self.states[0] = RawState::default();
                         } else if self.players[1] == Some(event.id) {
                             self.players[1] = None;
+                            self.states[1] = RawState::default();
                         }
                     }
                     _ => {}
@@ -273,8 +297,9 @@ mod platform {
             }
 
             let mut result: [Option<RawState>; 2] = [None, None];
+            let mut names: [Option<String>; 2] = [None, None];
             for i in 0..2 {
-                if self.players[i].is_some() {
+                if let Some(id) = self.players[i] {
                     let s = &self.states[i];
                     result[i] = Some(RawState {
                         a: s.a,
@@ -289,9 +314,10 @@ mod platform {
                         right_shoulder: s.right_shoulder,
                         left_trigger: s.left_trigger,
                     });
+                    names[i] = Some(self.gilrs.gamepad(id).name().to_string());
                 }
             }
-            result
+            (result, names)
         }
 
         fn apply_button(&mut self, btn: &Button, player: usize, pressed: bool) {

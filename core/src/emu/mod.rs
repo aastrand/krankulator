@@ -425,6 +425,9 @@ impl Emulator {
             if result.toggle_overlay {
                 self.overlay.toggle();
             }
+            for msg in result.toasts {
+                self.overlay.toast(msg);
+            }
         }
 
         self.cycles += 1;

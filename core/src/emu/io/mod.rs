@@ -18,6 +18,7 @@ pub struct PollResult {
     pub cycle_slot: bool,
     pub reset: bool,
     pub toggle_overlay: bool,
+    pub toasts: Vec<String>,
 }
 
 pub struct DebugContext<'a> {

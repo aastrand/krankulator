@@ -322,13 +322,17 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: handler.cycle_slot,
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
+            toasts: Vec::new(),
         };
 
-        let pad_states = self.gamepads.poll();
+        let gp = self.gamepads.poll();
+        for msg in gp.toasts {
+            result.toasts.push(msg);
+        }
 
         // Merge keyboard and gamepad for player 0 (OR logic: either source can press)
         let mut p0_state = self.kb_state;
-        if let Some(s) = &pad_states[0] {
+        if let Some(s) = &gp.states[0] {
             if s.a { p0_state |= controller::A; }
             if s.b { p0_state |= controller::B; }
             if s.start { p0_state |= controller::START; }
@@ -344,7 +348,7 @@ impl IOHandler for WinitPixelsIOHandler {
         mem.controllers()[0].load_status(p0_state);
 
         // Player 2: gamepad only
-        if let Some(s) = &pad_states[1] {
+        if let Some(s) = &gp.states[1] {
             let c = &mut mem.controllers()[1];
             let mut state: u8 = 0;
             if s.a { state |= controller::A; }
