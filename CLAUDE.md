@@ -119,10 +119,10 @@ cargo clippy --workspace
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
-- Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3)
+- Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle()` for per-cycle mapper logic (MMC5 audio/IRQ), `notify_ppu_ctrl()` for sprite size tracking, and `audio_expansion_output()` for expansion audio mixing
 - `PpuBus` shared struct handles CHR read/write, nametable mirroring, palette RAM, and VRAM for simple mappers
 - AND-type bus conflict emulation for discrete logic mappers (BNROM, GxROM)
 
@@ -289,7 +289,7 @@ All emulation tests live in `core/` (458 tests, 29 ignored). Desktop has 1 smoke
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC2, MMC3, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM
+- NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo

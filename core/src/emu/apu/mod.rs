@@ -112,6 +112,7 @@ pub struct APU {
     audio_filter: AudioFilter,
     // Pulse and noise timers tick every 2 CPU cycles (half-rate)
     half_clock: bool,
+    expansion_audio: f32,
 }
 
 impl APU {
@@ -137,6 +138,7 @@ impl APU {
             last_4017_write: None,
             audio_filter: AudioFilter::new(SAMPLE_RATE),
             half_clock: false,
+            expansion_audio: 0.0,
         };
         apu.hard_reset();
         apu
@@ -178,6 +180,7 @@ impl APU {
         self.enabled_channels = 0;
         self.mute_mask = 0;
         self.half_clock = false;
+        self.expansion_audio = 0.0;
         self.audio_filter.reset();
         for s in &mut self.sample_buffer {
             *s = 0.0;
@@ -428,6 +431,7 @@ impl APU {
     }
 
     pub fn cycle(&mut self, dot: u64, memory: &mut dyn crate::emu::memory::MemoryMapper) {
+        self.expansion_audio = memory.audio_expansion_output();
         let frame_step = self.frame_counter.cycle();
 
         match frame_step {
@@ -477,7 +481,7 @@ impl APU {
         self.pulse1.end_cycle();
         self.pulse2.end_cycle();
 
-        self.sample_accumulator += self.mix_current() as f64;
+        self.sample_accumulator += self.mix_current(self.expansion_audio) as f64;
         self.sample_accumulator_count += 1;
 
         self.cycles_since_sample += 1.0;
@@ -504,7 +508,7 @@ impl APU {
         self.pulse2.clock_sweep();
     }
 
-    fn mix_current(&self) -> f32 {
+    fn mix_current(&self, expansion: f32) -> f32 {
         let mut pulse1_sample = self.pulse1.get_sample();
         let mut pulse2_sample = self.pulse2.get_sample();
         let mut triangle_sample = self.triangle.get_sample();
@@ -533,6 +537,7 @@ impl APU {
             triangle_sample,
             noise_sample,
             dmc_sample,
+            expansion,
         )
     }
 
@@ -552,10 +557,18 @@ impl APU {
         }
     }
 
-    fn mix_channels(&self, pulse1: f32, pulse2: f32, triangle: f32, noise: f32, dmc: f32) -> f32 {
+    fn mix_channels(
+        &self,
+        pulse1: f32,
+        pulse2: f32,
+        triangle: f32,
+        noise: f32,
+        dmc: f32,
+        expansion_pulse: f32,
+    ) -> f32 {
         // NES nonlinear mixer (NESdev); inputs are raw DAC counts:
         // pulse/noise 0–15, triangle 0–15, DMC 0–127
-        let pulse_sum = pulse1 + pulse2;
+        let pulse_sum = pulse1 + pulse2 + expansion_pulse;
         let pulse_out = if pulse_sum > 0.0 {
             95.88 / (8128.0 / pulse_sum + 100.0)
         } else {
@@ -899,13 +912,13 @@ mod tests {
     fn test_apu_mix_channels() {
         let apu = APU::new();
 
-        let mixed = apu.mix_channels(15.0, 15.0, 15.0, 15.0, 127.0);
+        let mixed = apu.mix_channels(15.0, 15.0, 15.0, 15.0, 127.0, 0.0);
         assert!(mixed > 0.8 && mixed <= 1.0);
 
-        let mixed = apu.mix_channels(0.0, 0.0, 0.0, 0.0, 0.0);
+        let mixed = apu.mix_channels(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         assert!(mixed.abs() < 1e-5);
 
-        let mixed = apu.mix_channels(15.0, 0.0, 0.0, 0.0, 0.0);
+        let mixed = apu.mix_channels(15.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         assert!(mixed > 0.0 && mixed < 0.5);
     }
 
