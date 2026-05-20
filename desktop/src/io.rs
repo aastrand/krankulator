@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
-use pixels::{Pixels, SurfaceTexture};
+use pixels::{Pixels, ScalingMode, SurfaceTexture};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::{
     application::ApplicationHandler,
@@ -10,7 +10,7 @@ use winit::{
     event::{ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowAttributes},
+    window::{Fullscreen, Window, WindowAttributes},
 };
 
 use krankulator_core::emu::apu;
@@ -32,6 +32,8 @@ pub struct WinitPixelsIOHandler {
     last_frame_time: Instant,
     last_frame_ms: f64,
     kb_state: u8,
+    fullscreen: bool,
+    pixel_perfect: bool,
 }
 
 struct InitHandler {
@@ -89,8 +91,13 @@ impl WinitPixelsIOHandler {
 
         set_dock_icon();
 
+        let mut pixels = init.pixels;
+        if let Some(p) = pixels.as_mut() {
+            p.set_scaling_mode(ScalingMode::PixelPerfect);
+        }
+
         Self {
-            pixels: init.pixels,
+            pixels,
             event_loop: Some(event_loop),
             window: init.window,
             gamepads: Gamepads::new(),
@@ -98,6 +105,8 @@ impl WinitPixelsIOHandler {
             last_frame_time: Instant::now(),
             last_frame_ms: 0.0,
             kb_state: 0,
+            fullscreen: false,
+            pixel_perfect: true,
         }
     }
 }
@@ -123,8 +132,11 @@ fn set_dock_icon() {}
 
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
+    window: &'static Window,
     apu: &'a mut apu::APU,
     muted: &'a mut bool,
+    fullscreen: &'a mut bool,
+    pixel_perfect: &'a mut bool,
     kb_state: &'a mut u8,
     exit: bool,
     save_state: bool,
@@ -132,6 +144,7 @@ struct PollHandler<'a> {
     cycle_slot: bool,
     reset: bool,
     toggle_overlay: bool,
+    toasts: Vec<String>,
 }
 
 impl ApplicationHandler for PollHandler<'_> {
@@ -159,6 +172,30 @@ impl ApplicationHandler for PollHandler<'_> {
                         KeyCode::Escape => {
                             self.exit = true;
                             event_loop.exit();
+                        }
+                        KeyCode::F11 => {
+                            if pressed {
+                                *self.fullscreen = !*self.fullscreen;
+                                if *self.fullscreen {
+                                    self.window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                                    self.toasts.push("Fullscreen".into());
+                                } else {
+                                    self.window.set_fullscreen(None);
+                                    self.toasts.push("Windowed".into());
+                                }
+                            }
+                        }
+                        KeyCode::KeyI => {
+                            if pressed {
+                                *self.pixel_perfect = !*self.pixel_perfect;
+                                if *self.pixel_perfect {
+                                    self.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
+                                    self.toasts.push("Integer scaling".into());
+                                } else {
+                                    self.pixels.set_scaling_mode(ScalingMode::Fill);
+                                    self.toasts.push("Fill scaling".into());
+                                }
+                            }
                         }
                         KeyCode::KeyM => {
                             if pressed {
@@ -302,8 +339,11 @@ impl IOHandler for WinitPixelsIOHandler {
 
         let mut handler = PollHandler {
             pixels: self.pixels.as_mut().unwrap(),
+            window: self.window.unwrap(),
             apu,
             muted: &mut self.muted,
+            fullscreen: &mut self.fullscreen,
+            pixel_perfect: &mut self.pixel_perfect,
             kb_state: &mut self.kb_state,
             exit: false,
             save_state: false,
@@ -311,6 +351,7 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: false,
             reset: false,
             toggle_overlay: false,
+            toasts: Vec::new(),
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
@@ -322,7 +363,7 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: handler.cycle_slot,
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
-            toasts: Vec::new(),
+            toasts: handler.toasts,
         };
 
         let gp = self.gamepads.poll();
