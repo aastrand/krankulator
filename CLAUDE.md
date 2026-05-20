@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Krankulator is a NES (Nintendo Entertainment System) emulator written in Rust. It emulates the MOS Technology 6502 CPU, PPU (Picture Processing Unit), APU (Audio Processing Unit), and various memory mappers to run NES games and test ROMs.
 
+## Versioning
+
+The project uses SemVer with auto-incremented patch numbers. The version is `MAJOR.MINOR.PATCH` where PATCH = total commit count on master (computed by CI via `git rev-list --count HEAD`). Major and minor are set manually in the Cargo.toml files.
+
+**When to bump major/minor:** If a change breaks save state compatibility, removes a supported mapper, changes the libretro API surface, or otherwise breaks backwards compatibility with existing users, suggest bumping the major version. If a change adds significant new features (new mapper, new frontend, new emulation capability), suggest bumping the minor version. Update the `version` field in all four `Cargo.toml` files (core, desktop, web, libretro), the `LIBRARY_VERSION` in `libretro/src/lib.rs`, and `display_version` in `libretro/krankulator_libretro.info`.
+
 ## Workspace Structure
 
 The project is a Cargo workspace with four crates:

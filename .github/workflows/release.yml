@@ -8,7 +8,23 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.calc.outputs.version }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Calculate version
+      id: calc
+      run: |
+        MAJOR_MINOR=$(grep '^version' core/Cargo.toml | head -1 | sed 's/.*"\([0-9]*\.[0-9]*\).*/\1/')
+        PATCH=$(git rev-list --count HEAD)
+        echo "version=${MAJOR_MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
+
   build-macos:
+    needs: version
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
@@ -44,6 +60,7 @@ jobs:
         path: Krankulator-macOS-arm64.zip
 
   build-windows:
+    needs: version
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
@@ -58,6 +75,7 @@ jobs:
         path: Krankulator-Windows-x86_64.zip
 
   build-linux:
+    needs: version
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -84,6 +102,7 @@ jobs:
         path: Krankulator-Linux-x86_64.AppImage
 
   build-libretro-linux:
+    needs: version
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -96,6 +115,7 @@ jobs:
         path: krankulator_libretro-linux-x86_64.so
 
   build-libretro-linux-arm64:
+    needs: version
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -115,6 +135,7 @@ jobs:
         path: krankulator_libretro-linux-aarch64.so
 
   build-libretro-windows:
+    needs: version
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
@@ -127,6 +148,7 @@ jobs:
         path: krankulator_libretro.dll
 
   build-libretro-macos:
+    needs: version
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
@@ -139,7 +161,7 @@ jobs:
         path: krankulator_libretro.dylib
 
   release:
-    needs: [build-macos, build-windows, build-linux, build-libretro-linux, build-libretro-linux-arm64, build-libretro-windows, build-libretro-macos]
+    needs: [version, build-macos, build-windows, build-linux, build-libretro-linux, build-libretro-linux-arm64, build-libretro-windows, build-libretro-macos]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -155,9 +177,9 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: latest
-        name: Latest Build
+        name: "v${{ needs.version.outputs.version }}"
         body: |
-          Automated build from commit ${{ github.sha }}.
+          **v${{ needs.version.outputs.version }}** — built from commit ${{ github.sha }}.
 
           **macOS** — .app bundle (arm64). After unzipping, run `xattr -cr Krankulator.app` in Terminal before opening (required for unsigned apps).
           **Windows** — Portable .exe (x86_64). No installer needed. SmartScreen may warn "unrecognised app" — click More info → Run anyway.

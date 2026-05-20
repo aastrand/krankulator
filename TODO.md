@@ -187,7 +187,7 @@ Currently: GitHub Actions runs `cargo build`, `cargo test`, APU mixer reference 
   - Rolling `latest` release with macOS arm64, Windows x86_64, Linux x86_64 artifacts
 - [x] WASM build + deploy to GitHub Pages [M]
 - [x] RetroArch core artifacts (build the libretro .dylib/.dll/.so for Linux x86_64/aarch64, Windows, macOS) [M]
-- [ ] Version numbering scheme (CalVer or SemVer) [XS]
+- [x] Version numbering scheme (SemVer, patch auto-incremented by commit count) [XS]
 - [ ] Release notes generation (from conventional commits or PR titles) [S]
 
 ---

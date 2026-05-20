@@ -21,7 +21,7 @@ const SAMPLE_RATE: f64 = 44100.0;
 const SERIALIZE_MAX_SIZE: usize = 256 * 1024;
 
 static LIBRARY_NAME: &[u8] = b"Krankulator\0";
-static LIBRARY_VERSION: &[u8] = b"0.1.0\0";
+static LIBRARY_VERSION: &[u8] = b"1.0.0\0";
 static VALID_EXTENSIONS: &[u8] = b"nes\0";
 
 static mut environment_cb: Option<RetroEnvironmentT> = None;

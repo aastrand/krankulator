@@ -1,6 +1,6 @@
 [package]
 name = "krankulator-web"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Anders Åstrand <anders@teknodromen.se>"]
 edition = "2021"
 license-file.workspace = true
