@@ -105,7 +105,7 @@ jobs:
           Automated build from commit ${{ github.sha }}.
 
           **macOS** — Ad-hoc signed .app bundle (arm64). Right-click → Open to bypass Gatekeeper. If macOS says "damaged", run: `xattr -cr Krankulator.app`
-          **Windows** — Portable .exe (x86_64). No installer needed.
+          **Windows** — Portable .exe (x86_64). No installer needed. SmartScreen may warn "unrecognised app" — click More info → Run anyway.
           **Linux** — AppImage (x86_64). `chmod +x` and run.
         fail_on_unmatched_files: false
         files: |
