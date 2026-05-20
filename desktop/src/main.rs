@@ -46,16 +46,34 @@ struct Args {
 
     /// Input file to use
     #[clap()]
-    input: String,
+    input: Option<String>,
 }
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
 
+    let input = match args.input {
+        Some(path) => path,
+        None => {
+            let file = rfd::FileDialog::new()
+                .set_title("Open NES ROM")
+                .add_filter("NES ROMs", &["nes"])
+                .add_filter("All files", &["*"])
+                .pick_file();
+            match file {
+                Some(path) => path.to_string_lossy().into_owned(),
+                None => {
+                    println!("No ROM selected");
+                    std::process::exit(0);
+                }
+            }
+        }
+    };
+
     let mut emu = match args.loader.as_str() {
         "bin" => {
             let loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
-            let result = loader.load(&args.input);
+            let result = loader.load(&input);
             match result {
                 Ok(mapper) => emu::Emulator::new_headless(mapper),
                 Err(msg) => panic!("{}", msg),
@@ -63,7 +81,7 @@ fn main() -> Result<(), String> {
         }
         "ascii" => {
             let loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
-            let result = loader.load(&args.input);
+            let result = loader.load(&input);
             match result {
                 Ok(mapper) => emu::Emulator::new_headless(mapper),
                 Err(msg) => panic!("{}", msg),
@@ -71,7 +89,7 @@ fn main() -> Result<(), String> {
         }
         "nes" => {
             let loader: Box<dyn loader::Loader> = loader::InesLoader::new();
-            let file = &args.input;
+            let file = &input;
             match loader.load(file) {
                 Ok(mapper) => {
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {

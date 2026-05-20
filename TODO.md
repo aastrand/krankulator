@@ -114,9 +114,9 @@ Currently: bare winit window, no menu, CLI-only file selection.
   - Audio: Mute, Channel toggles
   - Video: Fullscreen, scaling options
   - Help: About, keyboard shortcuts
-- [ ] File open dialog (native via rfd crate) [S]
+- [x] File open dialog (native via rfd crate) [S]
   - Filter for .nes files
-  - Remember last opened directory
+- [ ] Remember last opened directory [XS]
 - [x] Fullscreen toggle (F11), integer/fill scaling toggle (I) [S]
 - [x] Window title shows loaded ROM name [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
