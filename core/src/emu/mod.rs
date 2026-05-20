@@ -1248,6 +1248,9 @@ impl Emulator {
                 }
                 self.mem.notify_ppu_ctrl(value);
             }
+            if reg == ppu::MASK_REG_ADDR {
+                self.mem.notify_ppu_mask(value);
+            }
             if let Some((waddr, wval)) = self.ppu.write(reg, value) {
                 self.mem.ppu_write(waddr, wval);
             }

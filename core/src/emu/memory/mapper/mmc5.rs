@@ -245,6 +245,9 @@ pub struct MMC5Mapper {
     // Tile counter for CHR A/B switching (counts NT byte fetches, not attribute fetches)
     split_tile_number: u8,
     need_in_frame: bool,
+
+    // True during PPU rendering fetches (ppu_fetch), false during CPU PPUDATA access
+    rendering: bool,
 }
 
 impl MMC5Mapper {
@@ -345,6 +348,7 @@ impl MMC5Mapper {
             has_battery,
             split_tile_number: 0,
             need_in_frame: false,
+            rendering: false,
         };
         // Default: last bank mapped to $E000
         mapper.prg_bank_regs[4] = last_prg_bank | 0x80;
@@ -443,12 +447,17 @@ impl MMC5Mapper {
 
     fn resolve_chr_addr(&self, addr: u16) -> usize {
         let addr = addr as usize & 0x1FFF;
-        let use_b = if self.large_sprites {
-            // 8x16: A banks for sprite fetches (tiles 32-39), B for BG
-            !(self.split_tile_number >= 32 && self.split_tile_number < 40)
-                && (self.in_frame || self.last_chr_write_was_b)
+        let use_b = if self.rendering {
+            if self.large_sprites {
+                // 8x16: A banks for sprite fetches (tiles 32-39), B for BG
+                !(self.split_tile_number >= 32 && self.split_tile_number < 40)
+                    && self.in_frame
+            } else {
+                // 8x8: always use A banks for rendering
+                false
+            }
         } else {
-            // 8x8: whichever bank set was last written
+            // PPUDATA access: use whichever bank set was last written
             self.last_chr_write_was_b
         };
 
@@ -479,10 +488,14 @@ impl MMC5Mapper {
                 base + sub
             }
             2 => {
-                // 2KB mode
+                // 2KB mode: B uses registers 1,3 (mirrored across both halves)
                 let slot = addr / 2048;
                 let reg = if use_b {
-                    self.chr_bank_b[slot & 1]
+                    if slot & 1 == 0 {
+                        self.chr_bank_b[1]
+                    } else {
+                        self.chr_bank_b[3]
+                    }
                 } else {
                     match slot {
                         0 => self.chr_bank_a[1],
@@ -599,13 +612,14 @@ impl MMC5Mapper {
 
     fn detect_scanline(&mut self, addr: u16) {
         if self.nt_read_counter >= 2 {
-            // Already detected 3+ consecutive identical reads — fire scanline boundary
             if !self.in_frame && !self.need_in_frame {
                 self.need_in_frame = true;
                 self.scanline_counter = 0;
             } else {
                 self.scanline_counter = self.scanline_counter.wrapping_add(1);
-                if self.irq_scanline == self.scanline_counter {
+                if self.irq_scanline != 0
+                    && self.irq_scanline == self.scanline_counter
+                {
                     self.irq_pending = true;
                 }
             }
@@ -862,6 +876,7 @@ impl MemoryMapper for MMC5Mapper {
     }
 
     fn ppu_fetch(&mut self, addr: u16, _dot: u64) -> u8 {
+        self.rendering = true;
         self.ppu_idle_counter = 3;
         let addr = addr % 0x4000;
 
@@ -1033,39 +1048,32 @@ impl MemoryMapper for MMC5Mapper {
             self.ppu_idle_counter -= 1;
             if self.ppu_idle_counter == 0 {
                 self.in_frame = false;
+                self.rendering = false;
+                self.nt_read_counter = 0;
+                self.last_ppu_read_addr = 0;
             }
         }
 
-        // Clock MMC5 audio at half CPU rate
-        self.audio_half_clock = !self.audio_half_clock;
-        if self.audio_half_clock {
-            self.pulse1.cycle();
-            self.pulse2.cycle();
-        }
+        // MMC5 pulses tick every CPU cycle (no half-rate divider unlike APU)
+        self.pulse1.cycle();
+        self.pulse2.cycle();
 
-        // MMC5 internal frame counter for envelope/length
+        // MMC5 internal 240Hz frame counter (independent of APU $4017).
+        // Envelope clocked at 240Hz (every quarter-frame tick).
+        // Length counter clocked at 240Hz too (2x the APU's 120Hz rate).
         self.audio_frame_counter += 1;
-        if self.audio_frame_counter == 3729 {
-            // Quarter frame
-            self.pulse1.clock_envelope();
-            self.pulse2.clock_envelope();
-        } else if self.audio_frame_counter == 7457 {
-            // Half frame
-            self.pulse1.clock_envelope();
-            self.pulse2.clock_envelope();
-            self.pulse1.clock_length_counter();
-            self.pulse2.clock_length_counter();
-        } else if self.audio_frame_counter == 11186 {
-            // Quarter frame
-            self.pulse1.clock_envelope();
-            self.pulse2.clock_envelope();
-        } else if self.audio_frame_counter >= 14915 {
-            // Half frame
+        if self.audio_frame_counter == 3729
+            || self.audio_frame_counter == 7457
+            || self.audio_frame_counter == 11186
+            || self.audio_frame_counter >= 14915
+        {
             self.pulse1.clock_envelope();
             self.pulse2.clock_envelope();
             self.pulse1.clock_length_counter();
             self.pulse2.clock_length_counter();
-            self.audio_frame_counter = 0;
+            if self.audio_frame_counter >= 14915 {
+                self.audio_frame_counter = 0;
+            }
         }
     }
 
@@ -1073,8 +1081,19 @@ impl MemoryMapper for MMC5Mapper {
         self.large_sprites = value & 0x20 != 0;
     }
 
+    fn notify_ppu_mask(&mut self, value: u8) {
+        let rendering_enabled = value & 0x18 != 0;
+        if !rendering_enabled {
+            self.in_frame = false;
+            self.irq_pending = false;
+            self.scanline_counter = 0;
+            self.last_ppu_read_addr = 0;
+            self.nt_read_counter = 0;
+        }
+    }
+
     fn audio_expansion_output(&self) -> f32 {
-        self.pulse1.output + self.pulse2.output + self.pcm_output / 16.0
+        -(self.pulse1.output + self.pulse2.output + self.pcm_output / 16.0)
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
@@ -1152,6 +1171,7 @@ impl MemoryMapper for MMC5Mapper {
         // Fetch tracking
         w.write_u8(self.split_tile_number);
         w.write_bool(self.need_in_frame);
+        w.write_bool(self.rendering);
     }
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -1222,6 +1242,7 @@ impl MemoryMapper for MMC5Mapper {
 
         self.split_tile_number = r.read_u8()?;
         self.need_in_frame = r.read_bool()?;
+        self.rendering = r.read_bool()?;
 
         Ok(())
     }
@@ -1438,14 +1459,13 @@ mod tests {
     }
 
     fn simulate_scanline_boundary(m: &mut MMC5Mapper) {
-        // 3 consecutive identical reads trigger a scanline boundary
+        // 3 consecutive identical NT reads trigger a scanline boundary
+        // on the NEXT call (the 4th read fires the >= 2 check at the top).
         let addr = 0x2000;
         m.detect_scanline(addr);
         m.detect_scanline(addr);
         m.detect_scanline(addr);
-        // The third call with counter >= 2 fires the boundary.
-        // Then we need a different address to reset the counter for next boundary.
-        m.detect_scanline(0x2001);
+        m.detect_scanline(0x2001); // 4th read (different addr) fires the boundary
     }
 
     #[test]
@@ -1478,6 +1498,85 @@ mod tests {
     }
 
     #[test]
+    fn test_irq_scanline_zero_never_fires() {
+        let mut m = make_mapper(2, 1);
+        m.cpu_write(0x5203, 0); // $5203=0 is special: comparison never matches
+        m.cpu_write(0x5204, 0x80);
+
+        for _ in 0..260 {
+            simulate_scanline_boundary(&mut m);
+        }
+
+        assert!(!m.irq_pending);
+    }
+
+    #[test]
+    fn test_irq_fires_on_exact_target_scanline() {
+        let mut m = make_mapper(2, 1);
+        m.cpu_write(0x5203, 3); // IRQ on scanline 3
+        m.cpu_write(0x5204, 0x80);
+
+        // Boundary 1: frame entry (need_in_frame, counter=0)
+        simulate_scanline_boundary(&mut m);
+        assert!(!m.irq_pending);
+        assert_eq!(m.scanline_counter, 0);
+
+        // Boundary 2: counter 0→1
+        simulate_scanline_boundary(&mut m);
+        assert!(!m.irq_pending);
+        assert_eq!(m.scanline_counter, 1);
+
+        // Boundary 3: counter 1→2
+        simulate_scanline_boundary(&mut m);
+        assert!(!m.irq_pending);
+        assert_eq!(m.scanline_counter, 2);
+
+        // Boundary 4: counter 2→3 = target → IRQ fires
+        simulate_scanline_boundary(&mut m);
+        assert!(m.irq_pending);
+        assert_eq!(m.scanline_counter, 3);
+
+        // Verify target 1 fires on the 2nd in-frame boundary
+        let mut m2 = make_mapper(2, 1);
+        m2.cpu_write(0x5203, 1);
+        m2.cpu_write(0x5204, 0x80);
+        simulate_scanline_boundary(&mut m2); // frame entry
+        assert!(!m2.irq_pending);
+        simulate_scanline_boundary(&mut m2); // counter 0→1 = target
+        assert!(m2.irq_pending);
+    }
+
+    #[test]
+    fn test_idle_counter_resets_rendering_and_nt_state() {
+        let mut m = make_mapper(2, 1);
+        m.in_frame = true;
+        m.rendering = true;
+        m.nt_read_counter = 2;
+        m.last_ppu_read_addr = 0x2000;
+        m.ppu_idle_counter = 3;
+
+        m.cpu_cycle();
+        m.cpu_cycle();
+        m.cpu_cycle();
+
+        assert!(!m.in_frame);
+        assert!(!m.rendering);
+        assert_eq!(m.nt_read_counter, 0);
+        assert_eq!(m.last_ppu_read_addr, 0);
+    }
+
+    #[test]
+    fn test_tile_counter_resets_on_scanline_boundary() {
+        let mut m = make_mapper(2, 1);
+        m.in_frame = true;
+        m.split_tile_number = 42; // End of previous scanline
+
+        // Scanline boundary should reset tile counter
+        simulate_scanline_boundary(&mut m);
+        assert_eq!(m.split_tile_number, 0);
+    }
+
+    #[test]
     fn test_nmi_vector_clears_in_frame() {
         let mut m = make_mapper(2, 1);
         m.in_frame = true;
@@ -1487,6 +1586,34 @@ mod tests {
         assert!(!m.in_frame);
         assert_eq!(m.scanline_counter, 0);
         assert!(!m.irq_pending);
+    }
+
+    #[test]
+    fn test_ppu_mask_rendering_disabled_clears_frame() {
+        let mut m = make_mapper(2, 1);
+        m.in_frame = true;
+        m.scanline_counter = 10;
+        m.irq_pending = true;
+
+        // Disable rendering (bits 3-4 both clear)
+        m.notify_ppu_mask(0x00);
+        assert!(!m.in_frame);
+        assert_eq!(m.scanline_counter, 0);
+        assert!(!m.irq_pending);
+    }
+
+    #[test]
+    fn test_ppu_mask_rendering_enabled_preserves_frame() {
+        let mut m = make_mapper(2, 1);
+        m.in_frame = true;
+        m.scanline_counter = 10;
+        m.irq_pending = true;
+
+        // BG enabled (bit 3) — rendering still on
+        m.notify_ppu_mask(0x08);
+        assert!(m.in_frame);
+        assert_eq!(m.scanline_counter, 10);
+        assert!(m.irq_pending);
     }
 
     #[test]
@@ -1536,7 +1663,7 @@ mod tests {
         }
 
         let output = m.audio_expansion_output();
-        assert!(output >= 0.0);
+        assert!(output <= 0.0); // Inverted polarity
     }
 
     #[test]
@@ -1689,20 +1816,49 @@ mod tests {
     }
 
     #[test]
+    fn test_chr_b_bank_2kb_mode_uses_correct_registers() {
+        let mut m = make_mapper(2, 4);
+        m.cpu_write(0x5101, 2); // 2KB mode
+        m.rendering = false; // PPUDATA path so we can control use_b
+        // Write B registers: B[0]=$5128, B[1]=$5129, B[2]=$512A, B[3]=$512B
+        m.cpu_write(0x5128, 0); // B[0] — should NOT be used
+        m.cpu_write(0x5129, 3); // B[1] — used for slots 0,2
+        m.cpu_write(0x512A, 0); // B[2] — should NOT be used
+        m.cpu_write(0x512B, 7); // B[3] — used for slots 1,3
+        // last_chr_write_was_b is true after writing $512B
+
+        // Slot 0 ($0000-$07FF): should use B[1]=3, base = 3*2 = bank 6
+        let val = m.ppu_read(0x0000);
+        assert_eq!(val, 6); // First byte of 1KB bank 6
+
+        // Slot 1 ($0800-$0FFF): should use B[3]=7, base = 7*2 = bank 14
+        let val = m.ppu_read(0x0800);
+        assert_eq!(val, 14); // First byte of 1KB bank 14
+
+        // Slot 2 ($1000-$17FF): mirrors slot 0, should use B[1]=3
+        let val = m.ppu_read(0x1000);
+        assert_eq!(val, 6);
+
+        // Slot 3 ($1800-$1FFF): mirrors slot 1, should use B[3]=7
+        let val = m.ppu_read(0x1800);
+        assert_eq!(val, 14);
+    }
+
+    #[test]
     fn test_pcm_channel() {
         let mut m = make_mapper(2, 1);
         // Write mode (default)
         m.cpu_write(0x5011, 0x80);
-        assert!(m.audio_expansion_output() > 0.0);
+        assert!(m.audio_expansion_output() < 0.0); // Inverted polarity
 
         // Value 0 is ignored
         m.cpu_write(0x5011, 0x00);
-        assert!(m.audio_expansion_output() > 0.0); // Still 0x80
+        assert!(m.audio_expansion_output() < 0.0); // Still 0x80
 
         // Read mode blocks writes
         m.cpu_write(0x5010, 0x01);
         m.cpu_write(0x5011, 0x40);
-        assert!(m.audio_expansion_output() > 0.0); // Still 0x80
+        assert!(m.audio_expansion_output() < 0.0); // Still 0x80
     }
 
     #[test]
@@ -1737,6 +1893,7 @@ mod tests {
         m.cpu_write(0x5101, 3);
         m.large_sprites = true;
         m.in_frame = true;
+        m.rendering = true;
 
         // A banks for sprites
         m.cpu_write(0x5120, 5);
@@ -1755,18 +1912,33 @@ mod tests {
     }
 
     #[test]
-    fn test_8x8_mode_uses_last_written_set() {
+    fn test_8x8_rendering_always_uses_a_banks() {
+        let mut m = make_mapper(2, 4);
+        m.cpu_write(0x5101, 3); // 1KB mode
+        m.large_sprites = false; // 8x8 mode
+        m.rendering = true;
+
+        m.cpu_write(0x5120, 5); // A bank
+        m.cpu_write(0x5128, 10); // B bank (last written)
+        // During rendering in 8x8 mode, A banks are always used
+        let val = m.ppu_read(0x0000);
+        assert_eq!(val, 5);
+    }
+
+    #[test]
+    fn test_8x8_ppudata_uses_last_written_set() {
         let mut m = make_mapper(2, 4);
         m.cpu_write(0x5101, 3);
         m.large_sprites = false; // 8x8 mode
+        m.rendering = false; // PPUDATA access
 
         m.cpu_write(0x5120, 5); // A bank
-        // After writing A, should use A banks
+        // After writing A, PPUDATA should use A banks
         let val = m.ppu_read(0x0000);
         assert_eq!(val, 5);
 
         m.cpu_write(0x5128, 10); // B bank (now last written)
-        // After writing B, should use B banks
+        // After writing B, PPUDATA should use B banks
         let val = m.ppu_read(0x0000);
         assert_eq!(val, 10);
     }

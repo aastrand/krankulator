@@ -86,6 +86,8 @@ pub trait MemoryMapper {
 
     fn notify_ppu_ctrl(&mut self, _value: u8) {}
 
+    fn notify_ppu_mask(&mut self, _value: u8) {}
+
     fn audio_expansion_output(&self) -> f32 {
         0.0
     }
