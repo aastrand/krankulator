@@ -55,13 +55,21 @@ fn main() -> Result<(), String> {
     let input = match args.input {
         Some(path) => path,
         None => {
-            let file = rfd::FileDialog::new()
+            let mut dialog = rfd::FileDialog::new()
                 .set_title("Open NES ROM")
                 .add_filter("NES ROMs", &["nes"])
-                .add_filter("All files", &["*"])
-                .pick_file();
+                .add_filter("All files", &["*"]);
+            if let Some(dir) = load_last_rom_dir() {
+                dialog = dialog.set_directory(&dir);
+            }
+            let file = dialog.pick_file();
             match file {
-                Some(path) => path.to_string_lossy().into_owned(),
+                Some(path) => {
+                    if let Some(dir) = path.parent() {
+                        save_last_rom_dir(dir);
+                    }
+                    path.to_string_lossy().into_owned()
+                }
                 None => {
                     println!("No ROM selected");
                     std::process::exit(0);
@@ -159,6 +167,24 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn config_dir() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("krankulator"))
+}
+
+fn load_last_rom_dir() -> Option<std::path::PathBuf> {
+    let path = config_dir()?.join("last_rom_dir");
+    let dir = std::fs::read_to_string(path).ok()?;
+    let dir = std::path::PathBuf::from(dir.trim());
+    dir.is_dir().then_some(dir)
+}
+
+fn save_last_rom_dir(dir: &std::path::Path) {
+    if let Some(config) = config_dir() {
+        let _ = std::fs::create_dir_all(&config);
+        let _ = std::fs::write(config.join("last_rom_dir"), dir.to_string_lossy().as_bytes());
+    }
 }
 
 #[cfg(test)]

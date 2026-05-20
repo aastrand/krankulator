@@ -16,6 +16,7 @@ winit = "0.30"
 pixels = "0.17"
 rodio = "0.17"
 rfd = "0.15"
+dirs = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 ringbuf = "0.4"
 shrust = "0.0.7"
