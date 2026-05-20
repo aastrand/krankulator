@@ -127,7 +127,7 @@ Currently: bare winit window, no menu, CLI-only file selection.
 ## Emulation Features
 
 - [ ] Rewind (ring buffer of save states, hold a key to scrub back) [L]
-- [ ] Fast-forward (uncapped speed while held, or 2x/4x toggle) [S]
+- [x] Fast-forward (hold Space for uncapped speed) [S]
 - [ ] Slow-motion (0.5x speed toggle) [XS]
 - [ ] Screenshot (save framebuffer as PNG) [S]
 - [ ] Video recording (save to GIF or MP4) [L]

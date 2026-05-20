@@ -283,8 +283,11 @@ fn run_loop(
         time_accumulator += now - last_frame_time;
         last_frame_time = now;
 
+        let fast_forward = keys.borrow().contains("Space");
+        let max_frames = if fast_forward { 20 } else { 2 };
+
         let mut frames_run = 0;
-        while time_accumulator >= FRAME_DURATION_MS && frames_run < 2 {
+        while time_accumulator >= FRAME_DURATION_MS && frames_run < max_frames {
             let emu_start = perf.now();
             if !emu.run_one_frame() {
                 set_status("Emulator stopped");

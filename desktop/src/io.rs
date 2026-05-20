@@ -32,6 +32,7 @@ pub struct WinitPixelsIOHandler {
     last_frame_time: Instant,
     last_frame_ms: f64,
     kb_state: u8,
+    fast_forward: bool,
     fullscreen: bool,
     pixel_perfect: bool,
 }
@@ -106,6 +107,7 @@ impl WinitPixelsIOHandler {
             last_frame_time: Instant::now(),
             last_frame_ms: 0.0,
             kb_state: 0,
+            fast_forward: false,
             fullscreen: false,
             pixel_perfect: true,
         }
@@ -146,6 +148,7 @@ struct PollHandler<'a> {
     fullscreen: &'a mut bool,
     pixel_perfect: &'a mut bool,
     kb_state: &'a mut u8,
+    fast_forward: &'a mut bool,
     exit: bool,
     save_state: bool,
     load_state: bool,
@@ -266,6 +269,9 @@ impl ApplicationHandler for PollHandler<'_> {
                                 self.toggle_overlay = true;
                             }
                         }
+                        KeyCode::Space => {
+                            *self.fast_forward = pressed;
+                        }
                         KeyCode::KeyZ => {
                             if pressed {
                                 *self.kb_state |= controller::A;
@@ -353,6 +359,7 @@ impl IOHandler for WinitPixelsIOHandler {
             fullscreen: &mut self.fullscreen,
             pixel_perfect: &mut self.pixel_perfect,
             kb_state: &mut self.kb_state,
+            fast_forward: &mut self.fast_forward,
             exit: false,
             save_state: false,
             load_state: false,
@@ -422,7 +429,7 @@ impl IOHandler for WinitPixelsIOHandler {
     fn render(&mut self, buf: &gfx::buf::Buffer) {
         let elapsed = self.last_frame_time.elapsed();
         self.last_frame_ms = elapsed.as_secs_f64() * 1000.0;
-        if elapsed < NES_FRAME_DURATION {
+        if !self.fast_forward && elapsed < NES_FRAME_DURATION {
             let sleep_duration = NES_FRAME_DURATION - elapsed;
             if sleep_duration > Duration::from_millis(1) {
                 std::thread::sleep(sleep_duration - Duration::from_millis(1));

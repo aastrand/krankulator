@@ -132,6 +132,7 @@ OPTIONS:
 | 0 | Master mute |
 | F11 | Toggle fullscreen |
 | I | Toggle integer/fill scaling |
+| Space | Fast-forward (hold) |
 | Tab | Toggle frame time overlay |
 | Esc | Quit |
 
