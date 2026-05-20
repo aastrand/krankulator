@@ -117,7 +117,7 @@ Currently: bare winit window, no menu, CLI-only file selection.
 - [ ] File open dialog (native via rfd crate) [S]
   - Filter for .nes files
   - Remember last opened directory
-- [ ] Fullscreen toggle (F11 or Cmd+F) [S]
+- [x] Fullscreen toggle (F11), integer/fill scaling toggle (I) [S]
 - [x] Window title shows loaded ROM name [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
 - [ ] Recent ROMs list (persist across sessions) [M]
@@ -139,12 +139,11 @@ Currently: bare winit window, no menu, CLI-only file selection.
 
 ## Video / Rendering
 
-Currently: pixels crate, 4x integer scale, no filters.
+Currently: pixels crate, integer scaling (default) or fill scaling (I key), fullscreen (F11).
 
 - [ ] Shader/filter support [L]
   - CRT scanline filter
   - NTSC composite video simulation (blargg's nes_ntsc or similar)
-  - Nearest-neighbor vs bilinear scaling option
 - [ ] Configurable window scale (1x-6x) [S]
 - [ ] Aspect ratio correction (8:7 pixel aspect ratio for accurate NES output) [S]
 - [ ] Overscan cropping option (hide top/bottom 8 scanlines like real TVs did) [S]
@@ -153,7 +152,7 @@ Currently: pixels crate, 4x integer scale, no filters.
 
 ## Build Targets
 
-Currently: native desktop only (macOS), CI builds on Linux.
+Currently: native desktop (macOS, Windows, Linux) and web (WASM). CI builds and releases all platforms.
 
 ### RetroArch / libretro core [XL]
 - [ ] Create a libretro core wrapper (`krankulator_libretro`)
@@ -173,25 +172,21 @@ Currently: native desktop only (macOS), CI builds on Linux.
 - [x] Local storage for save RAM and save states
 - [x] Hosted on GitHub Pages (krankulator.teknodromen.se)
 
-### Cross-platform desktop builds [M]
-- [ ] macOS: .app bundle with icon, code signing
-- [ ] Windows: .exe with icon, optional installer (WiX or NSIS)
-- [ ] Linux: AppImage or .deb package
+### Cross-platform desktop builds [M] — Complete
+- [x] macOS: .app bundle with icon (arm64)
+- [x] Windows: .exe with embedded icon (x86_64)
+- [x] Linux: AppImage (x86_64)
 
 ---
 
 ## CI/CD & Releases
 
-Currently: GitHub Actions runs `cargo build`, `cargo test`, and a separate release-mode APU mixer reference job on push to master. No releases.
+Currently: GitHub Actions runs `cargo build`, `cargo test`, APU mixer reference tests, web deployment to GitHub Pages, and automated releases on push to master.
 
-- [ ] Automated releases on master push (or on git tags) [L]
-  - Build matrix: macOS (x86_64 + aarch64), Windows (x86_64), Linux (x86_64)
-  - Produce downloadable artifacts (zip/tar.gz per platform)
-  - GitHub Release with changelog from commits
+- [x] Automated releases on master push [L]
+  - Rolling `latest` release with macOS arm64, Windows x86_64, Linux x86_64 artifacts
+- [x] WASM build + deploy to GitHub Pages [M]
 - [ ] RetroArch core artifacts (build the libretro .dylib/.dll/.so) [M]
-- [ ] WASM build step [M]
-  - wasm-pack or cargo build --target wasm32-unknown-unknown
-  - Deploy to GitHub Pages automatically
 - [ ] Version numbering scheme (CalVer or SemVer) [XS]
 - [ ] Release notes generation (from conventional commits or PR titles) [S]
 

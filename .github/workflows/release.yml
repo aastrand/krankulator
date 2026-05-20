@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build
+      run: cargo build --release -p krankulator-desktop
+    - name: Create .icns
+      run: |
+        mkdir icon.iconset
+        sips -z 16 16     desktop/assets/icon.png --out icon.iconset/icon_16x16.png
+        sips -z 32 32     desktop/assets/icon.png --out icon.iconset/icon_16x16@2x.png
+        sips -z 32 32     desktop/assets/icon.png --out icon.iconset/icon_32x32.png
+        sips -z 64 64     desktop/assets/icon.png --out icon.iconset/icon_32x32@2x.png
+        sips -z 128 128   desktop/assets/icon.png --out icon.iconset/icon_128x128.png
+        sips -z 256 256   desktop/assets/icon.png --out icon.iconset/icon_128x128@2x.png
+        sips -z 256 256   desktop/assets/icon.png --out icon.iconset/icon_256x256.png
+        sips -z 512 512   desktop/assets/icon.png --out icon.iconset/icon_256x256@2x.png
+        sips -z 512 512   desktop/assets/icon.png --out icon.iconset/icon_512x512.png
+        sips -z 1024 1024 desktop/assets/icon.png --out icon.iconset/icon_512x512@2x.png
+        iconutil -c icns icon.iconset -o icon.icns
+    - name: Create .app bundle
+      run: |
+        mkdir -p Krankulator.app/Contents/MacOS
+        mkdir -p Krankulator.app/Contents/Resources
+        cp target/release/krankulator Krankulator.app/Contents/MacOS/
+        cp desktop/assets/Info.plist Krankulator.app/Contents/
+        cp icon.icns Krankulator.app/Contents/Resources/
+        zip -r Krankulator-macOS-arm64.zip Krankulator.app
+    - uses: actions/upload-artifact@v4
+      with:
+        name: macos
+        path: Krankulator-macOS-arm64.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build
+      run: cargo build --release -p krankulator-desktop
+    - name: Package
+      run: Compress-Archive -Path target/release/krankulator.exe -DestinationPath Krankulator-Windows-x86_64.zip
+    - uses: actions/upload-artifact@v4
+      with:
+        name: windows
+        path: Krankulator-Windows-x86_64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libfuse2
+    - name: Build
+      run: cargo build --release -p krankulator-desktop
+    - name: Create AppImage
+      run: |
+        wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+        ./linuxdeploy-x86_64.AppImage \
+          --appdir AppDir \
+          --executable target/release/krankulator \
+          --desktop-file desktop/assets/krankulator.desktop \
+          --icon-file desktop/assets/icon.png \
+          --output appimage
+        mv Krankulator-*.AppImage Krankulator-Linux-x86_64.AppImage
+    - uses: actions/upload-artifact@v4
+      with:
+        name: linux
+        path: Krankulator-Linux-x86_64.AppImage
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        merge-multiple: true
+    - name: Delete old release
+      run: gh release delete latest --yes --cleanup-tag || true
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_REPO: ${{ github.repository }}
+    - name: Create release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: Latest Build
+        body: |
+          Automated build from commit ${{ github.sha }}.
+
+          **macOS** — Unsigned .app bundle (arm64). Right-click → Open to bypass Gatekeeper.
+          **Windows** — Portable .exe (x86_64). No installer needed.
+          **Linux** — AppImage (x86_64). `chmod +x` and run.
+        files: |
+          Krankulator-macOS-arm64.zip
+          Krankulator-Windows-x86_64.zip
+          Krankulator-Linux-x86_64.AppImage

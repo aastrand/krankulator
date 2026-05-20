@@ -207,8 +207,10 @@ core/               — Platform-independent emulation library
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
-  src/io.rs         — winit + pixels IOHandler
+  src/io.rs         — winit + pixels IOHandler (fullscreen, scaling)
   src/audio.rs      — rodio AudioBackend
+  build.rs          — Windows icon embedding (winresource)
+  assets/           — icon.png, icon.ico, Info.plist, krankulator.desktop
 web/                — WebAssembly frontend
   src/lib.rs        — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
   src/io.rs         — WebIOHandler (Canvas 2D rendering, controller polling)

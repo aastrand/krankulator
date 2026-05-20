@@ -20,7 +20,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3 cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
-- **Windowed rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels)
+- **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
@@ -119,6 +119,8 @@ OPTIONS:
 | M | Mute/unmute log |
 | 1-5 | Toggle individual APU channels |
 | 0 | Master mute |
+| F11 | Toggle fullscreen |
+| I | Toggle integer/fill scaling |
 | Tab | Toggle frame time overlay |
 | Esc | Quit |
 
@@ -190,10 +192,18 @@ waveform, spectrum, and envelope comparisons.
 | CPU registers/RAM | Registers after reset, RAM after reset | ✅ |
 | VRAM access | VRAM read/write validation | ✅ |
 
+## Downloads
+
+Pre-built binaries are available on the [Releases](https://github.com/aastrand/krankulator/releases/tag/latest) page, built automatically from master:
+
+- **macOS** — `.app` bundle (arm64). Unsigned — right-click → Open to bypass Gatekeeper.
+- **Windows** — Portable `.exe` (x86_64). No installer needed.
+- **Linux** — AppImage (x86_64). `chmod +x` and run.
+
 ## Platform support
 
 **Desktop:** Built on cross-platform crates (winit, pixels, rodio) — runs on macOS, Linux, and
-Windows. Tested primarily on macOS.
+Windows. Tested primarily on macOS and Linux.
 
 **Web:** Runs in any modern browser (Firefox, Chrome, Safari) via WebAssembly. Requires
 AudioWorklet support for sound. Mobile devices get a dedicated landscape touch layout with

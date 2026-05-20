@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Krankulator
+Exec=krankulator
+Icon=krankulator
+Type=Application
+Categories=Game;Emulator;
+Comment=NES emulator
