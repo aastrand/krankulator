@@ -55,6 +55,14 @@ fn main() -> Result<(), String> {
     let input = match args.input {
         Some(path) => path,
         None => {
+            #[cfg(target_os = "macos")]
+            {
+                use objc2::MainThreadMarker;
+                use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+                let mtm = unsafe { MainThreadMarker::new_unchecked() };
+                let app = NSApplication::sharedApplication(mtm);
+                app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+            }
             let mut dialog = rfd::FileDialog::new()
                 .set_title("Open NES ROM")
                 .add_filter("NES ROMs", &["nes"])
