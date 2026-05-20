@@ -84,6 +84,7 @@ jobs:
 
   release:
     needs: [build-macos, build-windows, build-linux]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
     - uses: actions/download-artifact@v4
@@ -105,6 +106,7 @@ jobs:
           **macOS** — Unsigned .app bundle (arm64). Right-click → Open to bypass Gatekeeper.
           **Windows** — Portable .exe (x86_64). No installer needed.
           **Linux** — AppImage (x86_64). `chmod +x` and run.
+        fail_on_unmatched_files: false
         files: |
           Krankulator-macOS-arm64.zip
           Krankulator-Windows-x86_64.zip
