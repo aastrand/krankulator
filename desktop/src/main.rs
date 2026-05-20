@@ -55,23 +55,8 @@ fn main() -> Result<(), String> {
     let input = match args.input {
         Some(path) => path,
         None => {
-            #[cfg(target_os = "macos")]
-            {
-                use objc2::MainThreadMarker;
-                use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                let app = NSApplication::sharedApplication(mtm);
-                app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-            }
-            let mut dialog = rfd::FileDialog::new()
-                .set_title("Open NES ROM")
-                .add_filter("NES ROMs", &["nes"])
-                .add_filter("All files", &["*"]);
-            if let Some(dir) = load_last_rom_dir() {
-                dialog = dialog.set_directory(&dir);
-            }
-            let file = dialog.pick_file();
-            match file {
+            let path = pick_rom_file();
+            match path {
                 Some(path) => {
                     if let Some(dir) = path.parent() {
                         save_last_rom_dir(dir);
@@ -175,6 +160,41 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn pick_rom_file() -> Option<std::path::PathBuf> {
+    let mut script = String::from("POSIX path of (choose file of type {\"nes\"} with prompt \"Open NES ROM\"");
+    if let Some(dir) = load_last_rom_dir() {
+        let dir_str = dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        script = format!(
+            "POSIX path of (choose file of type {{\"nes\"}} default location POSIX file \"{}\" with prompt \"Open NES ROM\"",
+            dir_str
+        );
+    }
+    script.push(')');
+    let output = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
+        if path.is_empty() { None } else { Some(std::path::PathBuf::from(path)) }
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pick_rom_file() -> Option<std::path::PathBuf> {
+    let mut dialog = rfd::FileDialog::new()
+        .set_title("Open NES ROM")
+        .add_filter("NES ROMs", &["nes"])
+        .add_filter("All files", &["*"]);
+    if let Some(dir) = load_last_rom_dir() {
+        dialog = dialog.set_directory(&dir);
+    }
+    dialog.pick_file()
 }
 
 fn config_dir() -> Option<std::path::PathBuf> {
