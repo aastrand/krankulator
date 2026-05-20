@@ -43,6 +43,9 @@ pub trait MemoryMapper {
     fn sram_data(&self) -> Option<&[u8]> {
         None
     }
+    fn sram_data_mut(&mut self) -> Option<&mut [u8]> {
+        None
+    }
 
     fn mapper_id(&self) -> u8 {
         0xFF

@@ -23,6 +23,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
+- **RetroArch / libretro core** — load as a core in RetroArch for shaders, netplay, achievements, and universal controller support (Linux x86_64/aarch64, Windows, macOS)
 - **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
 - **Headless mode** for testing and CI
 
@@ -32,6 +33,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 graph TD
     Main["desktop/main.rs<br/>CLI + ROM loader"] --> Emu["Emulator<br/>cycle loop & timing"]
     Web["web/lib.rs<br/>wasm entry + rAF loop"] --> Emu
+    Libretro["libretro/lib.rs<br/>RetroArch core"] --> Emu
 
     Emu --> CPU["CPU<br/>6502 + unofficial ops"]
     Emu --> PPU["PPU<br/>dot renderer"]
@@ -49,18 +51,20 @@ graph TD
     IO --> Winit["WinitPixels<br/>window + input"]
     IO --> WebIO["WebIO<br/>Canvas 2D + keyboard + touch"]
     IO --> Headless["Headless<br/>testing"]
+    IO --> LibretroIO["LibretroIO<br/>RetroArch callbacks"]
 
     APU --> Audio["AudioBackend<br/>trait object"]
     Audio --> Rodio["rodio + ringbuf"]
     Audio --> Worklet["AudioWorklet"]
     Audio --> Silent["silent / capture"]
+    Audio --> LibretroAudio["LibretroAudio<br/>batch callback"]
 
     Emu --> SS["Savestate<br/>binary serialize"]
 ```
 
-The project is a Cargo workspace with three crates: `core/` (platform-independent emulation
-library), `desktop/` (native frontend), and `web/` (WebAssembly frontend). The core compiles
-to both native and wasm32 targets with zero cfg gates.
+The project is a Cargo workspace with four crates: `core/` (platform-independent emulation
+library), `desktop/` (native frontend), `web/` (WebAssembly frontend), and `libretro/`
+(RetroArch core). The core compiles to both native and wasm32 targets with zero cfg gates.
 
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
 the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU. Memory mappers are trait
@@ -84,6 +88,13 @@ cargo run --release -- path/to/game.nes
 ```bash
 cargo install trunk
 cd web && trunk serve --port 8080
+```
+
+### RetroArch
+
+```bash
+cargo build --release -p krankulator-libretro
+retroarch -L target/release/libkrankulator_libretro.so path/to/game.nes
 ```
 
 ### CLI options
@@ -199,6 +210,7 @@ Pre-built binaries are available on the [Releases](https://github.com/aastrand/k
 - **macOS** — `.app` bundle (arm64). Unsigned — right-click → Open to bypass Gatekeeper.
 - **Windows** — Portable `.exe` (x86_64). No installer needed.
 - **Linux** — AppImage (x86_64). `chmod +x` and run.
+- **RetroArch cores** — `.so` (Linux x86_64 + aarch64), `.dll` (Windows), `.dylib` (macOS). Load in RetroArch via Load Core.
 
 ## Platform support
 
@@ -208,6 +220,9 @@ Windows. Tested primarily on macOS and Linux.
 **Web:** Runs in any modern browser (Firefox, Chrome, Safari) via WebAssembly. Requires
 AudioWorklet support for sound. Mobile devices get a dedicated landscape touch layout with
 virtual d-pad and action buttons.
+
+**RetroArch:** Available as a libretro core for Linux (x86_64 + aarch64), Windows, and macOS.
+Supports save states, SRAM persistence, and two-player input through RetroArch's unified interface.
 
 ## License
 

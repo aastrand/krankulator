@@ -8,11 +8,12 @@ Krankulator is a NES (Nintendo Entertainment System) emulator written in Rust. I
 
 ## Workspace Structure
 
-The project is a Cargo workspace with three crates:
+The project is a Cargo workspace with four crates:
 
 - **`core/`** (`krankulator-core`) — Platform-independent emulation library. Compiles to native and wasm32 with zero cfg gates. Only dependency: `hex`.
 - **`desktop/`** (`krankulator-desktop`) — Native frontend using winit, pixels, rodio. Produces the `krankulator` binary.
 - **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet, touch controls. Built with `trunk`.
+- **`libretro/`** (`krankulator-libretro`) — RetroArch/libretro core. Raw C FFI, no extra dependencies. Produces `krankulator_libretro.so/.dll/.dylib`.
 
 Key traits defined in core that frontends implement:
 - `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`
@@ -45,6 +46,12 @@ cargo run -- --loader ascii input/ascii/instructions
 
 # Run with custom code starting address
 cargo run -- --codeaddr 0x400 --loader bin input/bin/test.bin
+
+# Build libretro core for RetroArch
+cargo build --release -p krankulator-libretro
+
+# Test with RetroArch
+retroarch -L target/release/libkrankulator_libretro.so path/to/game.nes
 
 # Build core for wasm32 (verify no platform deps leak in)
 cargo build -p krankulator-core --target wasm32-unknown-unknown
@@ -161,6 +168,13 @@ cargo clippy --workspace
 - `assets/PressStart2P.woff2` — Pixel font (OFL licensed)
 - `Trunk.toml` — trunk build config (release mode, COOP/COEP headers, TLS cert paths)
 
+### Libretro Core (`libretro/`)
+
+- `src/lib.rs` — All 25 `#[no_mangle] extern "C"` libretro API exports, `LibretroIOHandler`, `LibretroAudioBackend`
+- `src/libretro_sys.rs` — Minimal C type definitions mirroring `libretro.h` (structs, constants, callback types)
+- `krankulator_libretro.info` — Core metadata for RetroArch
+- Raw FFI with zero extra dependencies beyond `krankulator-core`
+
 ### Test paths
 
 Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path via `CARGO_MANIFEST_DIR`. No symlinks.
@@ -220,6 +234,10 @@ web/                — WebAssembly frontend
   index.html        — HTML shell (desktop + touch layout + rotate prompt)
   assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
   Trunk.toml        — Build config
+libretro/           — RetroArch / libretro core
+  src/lib.rs        — FFI exports, LibretroIOHandler, LibretroAudioBackend
+  src/libretro_sys.rs — C type definitions (structs, constants, callbacks)
+  krankulator_libretro.info — Core metadata for RetroArch
 input/              — Test ROMs and data files
   nes/              — NES ROM files for testing
   ascii/            — ASCII assembly test files

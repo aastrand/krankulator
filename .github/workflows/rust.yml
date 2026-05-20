@@ -35,6 +35,19 @@ jobs:
     - name: Build web for wasm32
       run: cargo build -p krankulator-web --target wasm32-unknown-unknown
 
+  libretro:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build libretro core
+      run: cargo build -p krankulator-libretro --release
+    - name: Verify shared library exports
+      run: |
+        count=$(nm -D target/release/libkrankulator_libretro.so | grep -c 'T retro_')
+        echo "Found $count retro_ exports"
+        [ "$count" -ge 25 ]
+
   mixer-tests:
     runs-on: ubuntu-latest
     steps:

@@ -395,6 +395,14 @@ impl MemoryMapper for MMC1Mapper {
         }
     }
 
+    fn sram_data_mut(&mut self) -> Option<&mut [u8]> {
+        if self.has_battery {
+            Some(&mut self._mmc_ram[..])
+        } else {
+            None
+        }
+    }
+
     fn mapper_id(&self) -> u8 {
         1
     }

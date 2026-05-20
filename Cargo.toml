@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "desktop", "web"]
+members = ["core", "desktop", "web", "libretro"]
 resolver = "2"
 
 [workspace.package]

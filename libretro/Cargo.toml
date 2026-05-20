@@ -1,0 +1,12 @@
+[package]
+name = "krankulator-libretro"
+version = "0.1.0"
+edition = "2021"
+license-file.workspace = true
+
+[lib]
+name = "krankulator_libretro"
+crate-type = ["cdylib"]
+
+[dependencies]
+krankulator-core = { path = "../core" }

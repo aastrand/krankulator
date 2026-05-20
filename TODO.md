@@ -154,13 +154,13 @@ Currently: pixels crate, integer scaling (default) or fill scaling (I key), full
 
 Currently: native desktop (macOS, Windows, Linux) and web (WASM). CI builds and releases all platforms.
 
-### RetroArch / libretro core [XL]
-- [ ] Create a libretro core wrapper (`krankulator_libretro`)
+### RetroArch / libretro core [XL] — Complete
+- [x] Create a libretro core wrapper (`krankulator_libretro`)
   - Implement libretro API (retro_run, retro_load_game, etc.)
   - Audio/video callbacks instead of direct output
   - Input abstracted through libretro API
   - Core info file (.info) for RetroArch
-  - Separate Cargo workspace member or feature flag
+  - Separate Cargo workspace member
 - Gives access to RetroArch's ecosystem: shaders, netplay, achievements, controller support, recording
 
 ### Web (WASM + Canvas 2D) [XL] — Complete
@@ -186,7 +186,7 @@ Currently: GitHub Actions runs `cargo build`, `cargo test`, APU mixer reference 
 - [x] Automated releases on master push [L]
   - Rolling `latest` release with macOS arm64, Windows x86_64, Linux x86_64 artifacts
 - [x] WASM build + deploy to GitHub Pages [M]
-- [ ] RetroArch core artifacts (build the libretro .dylib/.dll/.so) [M]
+- [x] RetroArch core artifacts (build the libretro .dylib/.dll/.so for Linux x86_64/aarch64, Windows, macOS) [M]
 - [ ] Version numbering scheme (CalVer or SemVer) [XS]
 - [ ] Release notes generation (from conventional commits or PR titles) [S]
 

@@ -83,8 +83,63 @@ jobs:
         name: linux
         path: Krankulator-Linux-x86_64.AppImage
 
+  build-libretro-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - run: cargo build --release -p krankulator-libretro
+    - run: mv target/release/libkrankulator_libretro.so krankulator_libretro-linux-x86_64.so
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libretro-linux
+        path: krankulator_libretro-linux-x86_64.so
+
+  build-libretro-linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-unknown-linux-gnu
+    - name: Install cross-compilation toolchain
+      run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+    - name: Build
+      run: cargo build --release -p krankulator-libretro --target aarch64-unknown-linux-gnu
+      env:
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+    - run: mv target/aarch64-unknown-linux-gnu/release/libkrankulator_libretro.so krankulator_libretro-linux-aarch64.so
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libretro-linux-arm64
+        path: krankulator_libretro-linux-aarch64.so
+
+  build-libretro-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - run: cargo build --release -p krankulator-libretro
+    - run: Move-Item target/release/krankulator_libretro.dll krankulator_libretro.dll
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libretro-windows
+        path: krankulator_libretro.dll
+
+  build-libretro-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - run: cargo build --release -p krankulator-libretro
+    - run: mv target/release/libkrankulator_libretro.dylib krankulator_libretro.dylib
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libretro-macos
+        path: krankulator_libretro.dylib
+
   release:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-windows, build-linux, build-libretro-linux, build-libretro-linux-arm64, build-libretro-windows, build-libretro-macos]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -107,8 +162,14 @@ jobs:
           **macOS** — .app bundle (arm64). After unzipping, run `xattr -cr Krankulator.app` in Terminal before opening (required for unsigned apps).
           **Windows** — Portable .exe (x86_64). No installer needed. SmartScreen may warn "unrecognised app" — click More info → Run anyway.
           **Linux** — AppImage (x86_64). `chmod +x` and run.
+
+          **RetroArch / libretro cores** — load in RetroArch via Load Core → Load Core (select file). Available for Linux x86_64, Linux aarch64 (Raspberry Pi), Windows x86_64, and macOS arm64.
         fail_on_unmatched_files: false
         files: |
           Krankulator-macOS-arm64.zip
           Krankulator-Windows-x86_64.zip
           Krankulator-Linux-x86_64.AppImage
+          krankulator_libretro-linux-x86_64.so
+          krankulator_libretro-linux-aarch64.so
+          krankulator_libretro.dll
+          krankulator_libretro.dylib
