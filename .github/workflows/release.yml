@@ -67,13 +67,14 @@ jobs:
       run: cargo build --release -p krankulator-desktop
     - name: Create AppImage
       run: |
+        convert desktop/assets/icon.png -resize 256x256 krankulator-256.png
         wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
         chmod +x linuxdeploy-x86_64.AppImage
         ./linuxdeploy-x86_64.AppImage \
           --appdir AppDir \
           --executable target/release/krankulator \
           --desktop-file desktop/assets/krankulator.desktop \
-          --icon-file desktop/assets/icon.png \
+          --icon-file krankulator-256.png \
           --output appimage
         mv Krankulator-*.AppImage Krankulator-Linux-x86_64.AppImage
     - uses: actions/upload-artifact@v4
