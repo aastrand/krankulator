@@ -26,9 +26,16 @@ jobs:
   build-macos:
     needs: version
     runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
+    - name: Patch version
+      run: |
+        sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml desktop/Cargo.toml web/Cargo.toml libretro/Cargo.toml
+        sed -i '' "s/LIBRARY_VERSION: &\[u8\] = b\".*\\\\0\";/LIBRARY_VERSION: \&[u8] = b\"$VERSION\\\\0\";/" libretro/src/lib.rs
+        sed -i '' "s/display_version = \".*\"/display_version = \"$VERSION\"/" libretro/krankulator_libretro.info
     - name: Build
       run: cargo build --release -p krankulator-desktop
     - name: Create .icns
@@ -53,35 +60,52 @@ jobs:
         cp desktop/assets/Info.plist Krankulator.app/Contents/
         cp icon.icns Krankulator.app/Contents/Resources/
         codesign --force --deep -s - Krankulator.app
-        zip -r Krankulator-macOS-arm64.zip Krankulator.app
+        zip -r "Krankulator-${VERSION}-macOS-arm64.zip" Krankulator.app
     - uses: actions/upload-artifact@v4
       with:
         name: macos
-        path: Krankulator-macOS-arm64.zip
+        path: Krankulator-*-macOS-arm64.zip
 
   build-windows:
     needs: version
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
+    - name: Patch version
+      shell: pwsh
+      run: |
+        foreach ($f in @('core/Cargo.toml', 'desktop/Cargo.toml', 'web/Cargo.toml', 'libretro/Cargo.toml')) {
+          (Get-Content $f) -replace '^version = ".*"', "version = `"$env:VERSION`"" | Set-Content $f
+        }
+        (Get-Content 'libretro/src/lib.rs') -replace 'LIBRARY_VERSION: &\[u8\] = b".*\\0";', "LIBRARY_VERSION: &[u8] = b`"$env:VERSION\0`";" | Set-Content 'libretro/src/lib.rs'
+        (Get-Content 'libretro/krankulator_libretro.info') -replace 'display_version = ".*"', "display_version = `"$env:VERSION`"" | Set-Content 'libretro/krankulator_libretro.info'
     - name: Build
       run: cargo build --release -p krankulator-desktop
     - name: Package
-      run: Compress-Archive -Path target/release/krankulator.exe -DestinationPath Krankulator-Windows-x86_64.zip
+      run: Compress-Archive -Path target/release/krankulator.exe -DestinationPath "Krankulator-${env:VERSION}-Windows-x86_64.zip"
     - uses: actions/upload-artifact@v4
       with:
         name: windows
-        path: Krankulator-Windows-x86_64.zip
+        path: Krankulator-*-Windows-x86_64.zip
 
   build-linux:
     needs: version
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libfuse2 imagemagick
+    - name: Patch version
+      run: |
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml desktop/Cargo.toml web/Cargo.toml libretro/Cargo.toml
+        sed -i "s/LIBRARY_VERSION: &\[u8\] = b\".*\\\\0\";/LIBRARY_VERSION: \&[u8] = b\"$VERSION\\\\0\";/" libretro/src/lib.rs
+        sed -i "s/display_version = \".*\"/display_version = \"$VERSION\"/" libretro/krankulator_libretro.info
     - name: Build
       run: cargo build --release -p krankulator-desktop
     - name: Create AppImage
@@ -95,18 +119,25 @@ jobs:
           --desktop-file desktop/assets/krankulator.desktop \
           --icon-file krankulator.png \
           --output appimage
-        mv Krankulator-*.AppImage Krankulator-Linux-x86_64.AppImage
+        mv Krankulator-*.AppImage "Krankulator-${VERSION}-Linux-x86_64.AppImage"
     - uses: actions/upload-artifact@v4
       with:
         name: linux
-        path: Krankulator-Linux-x86_64.AppImage
+        path: Krankulator-*-Linux-x86_64.AppImage
 
   build-libretro-linux:
     needs: version
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
+    - name: Patch version
+      run: |
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml libretro/Cargo.toml
+        sed -i "s/LIBRARY_VERSION: &\[u8\] = b\".*\\\\0\";/LIBRARY_VERSION: \&[u8] = b\"$VERSION\\\\0\";/" libretro/src/lib.rs
+        sed -i "s/display_version = \".*\"/display_version = \"$VERSION\"/" libretro/krankulator_libretro.info
     - run: cargo build --release -p krankulator-libretro
     - run: mv target/release/libkrankulator_libretro.so krankulator_libretro-linux-x86_64.so
     - uses: actions/upload-artifact@v4
@@ -117,6 +148,8 @@ jobs:
   build-libretro-linux-arm64:
     needs: version
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -124,6 +157,11 @@ jobs:
         targets: aarch64-unknown-linux-gnu
     - name: Install cross-compilation toolchain
       run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+    - name: Patch version
+      run: |
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml libretro/Cargo.toml
+        sed -i "s/LIBRARY_VERSION: &\[u8\] = b\".*\\\\0\";/LIBRARY_VERSION: \&[u8] = b\"$VERSION\\\\0\";/" libretro/src/lib.rs
+        sed -i "s/display_version = \".*\"/display_version = \"$VERSION\"/" libretro/krankulator_libretro.info
     - name: Build
       run: cargo build --release -p krankulator-libretro --target aarch64-unknown-linux-gnu
       env:
@@ -137,9 +175,19 @@ jobs:
   build-libretro-windows:
     needs: version
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
+    - name: Patch version
+      shell: pwsh
+      run: |
+        foreach ($f in @('core/Cargo.toml', 'libretro/Cargo.toml')) {
+          (Get-Content $f) -replace '^version = ".*"', "version = `"$env:VERSION`"" | Set-Content $f
+        }
+        (Get-Content 'libretro/src/lib.rs') -replace 'LIBRARY_VERSION: &\[u8\] = b".*\\0";', "LIBRARY_VERSION: &[u8] = b`"$env:VERSION\0`";" | Set-Content 'libretro/src/lib.rs'
+        (Get-Content 'libretro/krankulator_libretro.info') -replace 'display_version = ".*"', "display_version = `"$env:VERSION`"" | Set-Content 'libretro/krankulator_libretro.info'
     - run: cargo build --release -p krankulator-libretro
     - run: Move-Item target/release/krankulator_libretro.dll krankulator_libretro.dll
     - uses: actions/upload-artifact@v4
@@ -150,9 +198,16 @@ jobs:
   build-libretro-macos:
     needs: version
     runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
+    - name: Patch version
+      run: |
+        sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml libretro/Cargo.toml
+        sed -i '' "s/LIBRARY_VERSION: &\[u8\] = b\".*\\\\0\";/LIBRARY_VERSION: \&[u8] = b\"$VERSION\\\\0\";/" libretro/src/lib.rs
+        sed -i '' "s/display_version = \".*\"/display_version = \"$VERSION\"/" libretro/krankulator_libretro.info
     - run: cargo build --release -p krankulator-libretro
     - run: mv target/release/libkrankulator_libretro.dylib krankulator_libretro.dylib
     - uses: actions/upload-artifact@v4
@@ -164,6 +219,8 @@ jobs:
     needs: [version, build-macos, build-windows, build-linux, build-libretro-linux, build-libretro-linux-arm64, build-libretro-windows, build-libretro-macos]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
     - uses: actions/download-artifact@v4
       with:
@@ -188,9 +245,9 @@ jobs:
           **RetroArch / libretro cores** — load in RetroArch via Load Core → Load Core (select file). Available for Linux x86_64, Linux aarch64 (Raspberry Pi), Windows x86_64, and macOS arm64.
         fail_on_unmatched_files: false
         files: |
-          Krankulator-macOS-arm64.zip
-          Krankulator-Windows-x86_64.zip
-          Krankulator-Linux-x86_64.AppImage
+          Krankulator-*-macOS-arm64.zip
+          Krankulator-*-Windows-x86_64.zip
+          Krankulator-*-Linux-x86_64.AppImage
           krankulator_libretro-linux-x86_64.so
           krankulator_libretro-linux-aarch64.so
           krankulator_libretro.dll
