@@ -36,6 +36,7 @@ jobs:
         cp target/release/krankulator Krankulator.app/Contents/MacOS/
         cp desktop/assets/Info.plist Krankulator.app/Contents/
         cp icon.icns Krankulator.app/Contents/Resources/
+        codesign --force --deep -s - Krankulator.app
         zip -r Krankulator-macOS-arm64.zip Krankulator.app
     - uses: actions/upload-artifact@v4
       with:
@@ -103,7 +104,7 @@ jobs:
         body: |
           Automated build from commit ${{ github.sha }}.
 
-          **macOS** — Unsigned .app bundle (arm64). Right-click → Open to bypass Gatekeeper.
+          **macOS** — Ad-hoc signed .app bundle (arm64). Right-click → Open to bypass Gatekeeper. If macOS says "damaged", run: `xattr -cr Krankulator.app`
           **Windows** — Portable .exe (x86_64). No installer needed.
           **Linux** — AppImage (x86_64). `chmod +x` and run.
         fail_on_unmatched_files: false

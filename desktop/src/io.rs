@@ -10,7 +10,7 @@ use winit::{
     event::{ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Fullscreen, Window, WindowAttributes},
+    window::{Fullscreen, Icon, Window, WindowAttributes},
 };
 
 use krankulator_core::emu::apu;
@@ -51,7 +51,8 @@ impl ApplicationHandler for InitHandler {
         let window_height = (self.height as f32 * scale) as u32;
         let attrs = WindowAttributes::default()
             .with_title(&self.title)
-            .with_inner_size(LogicalSize::new(window_width, window_height));
+            .with_inner_size(LogicalSize::new(window_width, window_height))
+            .with_window_icon(load_window_icon());
         let window = event_loop.create_window(attrs).unwrap();
         let window: &'static Window = Box::leak(Box::new(window));
         let size = window.inner_size();
@@ -109,6 +110,13 @@ impl WinitPixelsIOHandler {
             pixel_perfect: true,
         }
     }
+}
+
+fn load_window_icon() -> Option<Icon> {
+    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+    let img = image::load_from_memory(ICON_PNG).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    Icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
 #[cfg(target_os = "macos")]
