@@ -254,7 +254,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (393 tests). Desktop has 1 smoke test verifying audio backend wiring.
+All emulation tests live in `core/` (458 tests, 29 ignored). Desktop has 1 smoke test verifying audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -262,10 +262,11 @@ All emulation tests live in `core/` (393 tests). Desktop has 1 smoke test verify
 - Test memory mapper functionality
 
 **Integration Tests (`core/src/emu/integration_tests.rs`)**
-- Run complete NES test ROMs (nestest, blargg test suite)
+- Run complete NES test ROMs (nestest, blargg CPU/PPU/APU suites, interrupt tests, timing tests, DMC tests)
 - Verify cycle-accurate behavior against known-good logs
 - Test various cartridge mappers
 - Savestate roundtrip tests
+- Tests that fail are `#[ignore]`d — run with `cargo test -- --ignored` to check progress
 
 **APU Mixer Tests**
 - Compare emulator WAV output against hardware reference MP3 recordings
@@ -307,4 +308,4 @@ All emulation tests live in `core/` (393 tests). Desktop has 1 smoke test verify
 - Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
 - RMW instructions always perform the dummy read regardless of page crossing
 
-The emulator passes all standard NES test ROM suites (Klaus2m5, nestest, blargg CPU/PPU/APU/APU 2005/timing, APU reset, cpu_exec_space, CPU interrupts, PPU OAM, VRAM access).
+The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction misc, CPU interrupt CLI latency, PPU VBL basics/clear/NMI control/even-odd frames, OAM read, and MMC3. Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), advanced PPU VBL timing (suppression, nmi_on/off_timing), PPU open bus decay, DMA cycle stealing, and full instruction timing for unofficial opcodes.

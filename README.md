@@ -187,22 +187,35 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
+429 tests passing, 29 ignored (pending accuracy work).
+
 | Suite | Tests | Status |
 |-------|-------|--------|
 | [Klaus2m5 6502 functional](https://github.com/Klaus2m5/6502_65C02_functional_tests) | Full instruction + addressing mode coverage | ✅ |
 | [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | ✅ |
-| [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` — all official opcodes | ✅ |
-| Blargg PPU | VBlank basics/set/clear time, NMI control/timing/on/off, VBL suppression, even/odd frames/timing | ✅ |
+| [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` v3 + v5 — all official opcodes | ✅ |
+| Blargg PPU | VBlank basics, clear time, NMI control, even/odd frames | ✅ |
+| Blargg PPU | VBL set time, NMI timing, suppression, NMI on/off timing, even/odd timing | ❌ |
+| Blargg PPU 2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ |
 | Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
-| Blargg APU 2005 | Length counter, length table, IRQ flag/timing, clock jitter, len timing mode 0/1, reset timing, len halt timing, len reload timing | ✅ |
+| Blargg APU 2005 | All 11 tests | ✅ |
 | APU mixer references | Square, triangle, noise, and DMC output compared against hardware recordings | ✅ |
 | APU reset | $4015 cleared, $4017 timing/written, IRQ flag cleared, len ctrs enabled, works immediately | ✅ |
+| DMC tests | status, status_irq | ✅ |
+| DMC tests | buffer_retained, latency | ❌ |
 | cpu_exec_space | APU register space execution | ✅ |
-| Blargg instruction timing | Cycle-accurate instruction timing | ✅ |
-| CPU interrupts | NMI and BRK interaction | ✅ |
-| PPU OAM | OAM read, OAM stress | ✅ |
+| cpu_exec_space | PPU I/O space execution | ❌ |
+| Instruction timing | Branch timing (2-branch_timing) | ✅ |
+| Instruction timing | Full instruction timing (1-instr_timing) | ❌ |
+| CPU timing test | All official instruction cycle counts | ✅ |
+| Instruction misc | abs_x_wrap, branch_wrap, dummy_reads | ✅ |
+| Branch timing | Branch basics, backward, forward | ✅ |
+| CPU interrupts | CLI latency | ✅ |
+| CPU interrupts | NMI/BRK, NMI/IRQ, IRQ/DMA, branch delays IRQ | ❌ |
+| PPU OAM | OAM read | ✅ |
+| PPU OAM | OAM stress, open bus | ❌ |
 | CPU registers/RAM | Registers after reset, RAM after reset | ✅ |
-| VRAM access | VRAM read/write validation | ✅ |
+| MMC3 | All 6 tests | ✅ |
 
 ## Downloads
 

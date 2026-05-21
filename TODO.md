@@ -194,41 +194,107 @@ Currently: GitHub Actions runs `cargo build`, `cargo test`, APU mixer reference 
 
 ## Test ROMs
 
-Currently: copies of test ROMs checked into `input/nes/`. Source repo at `/Users/anders/Documents/code/nes-test-roms/` (66 test suites).
+Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes-test-roms/` (66 test suites).
 
 - [ ] Add nes-test-roms as a git submodule (replace copied files in `input/nes/`) [M]
   - Update all test paths in source code to point at submodule location
   - Remove duplicated ROM files from repo
   - CI: init submodule in GitHub Actions workflow
-- [ ] Aim for 100% pass rate across all applicable suites. Track status per-suite:
+- [ ] Aim for 100% pass rate across all applicable suites. Track status per-suite.
 
-### Not yet tested / known failing
+### Already tested (wired up in our test suite)
 
-These suites exist in nes-test-roms but aren't currently wired up as tests:
+| Suite | ROMs | Status | Location |
+|-------|------|--------|----------|
+| instr_test-v3 | official_only, all_instrs | ✅ | integration_tests.rs |
+| instr_test-v5 | official_only | ✅ | integration_tests.rs |
+| blargg_nes_cpu_test5 | official | ✅ | (same ROM as instr_test) |
+| cpu_reset | ram_after_reset, registers | ✅ | integration_tests.rs |
+| cpu_exec_space | APU test | ✅ | apu/mod.rs |
+| cpu_exec_space | PPU I/O test | ❌ ignored | integration_tests.rs |
+| cpu_interrupts_v2 | 1-cli_latency | ✅ | integration_tests.rs |
+| cpu_interrupts_v2 | 2-nmi_and_brk, 3-nmi_and_irq, 4-irq_and_dma, 5-branch_delays_irq | ❌ ignored | integration_tests.rs |
+| instr_timing | 2-branch_timing | ✅ | integration_tests.rs |
+| instr_timing | 1-instr_timing | ❌ ignored | integration_tests.rs |
+| cpu_timing_test6 | 1 ROM | ✅ | integration_tests.rs |
+| instr_misc | abs_x_wrap, branch_wrap, dummy_reads | ✅ | integration_tests.rs |
+| instr_misc | dummy_reads_apu | ❌ ignored | integration_tests.rs |
+| branch_timing_tests | all 3 | ✅ | integration_tests.rs |
+| apu_test | all 8 singles | ✅ | apu/mod.rs |
+| blargg_apu_2005 | all 11 | ✅ | apu/mod.rs |
+| apu_reset | all 6 | ✅ | apu/mod.rs |
+| pal_apu_tests | all 10 | ⏸ ignored (needs PAL) | apu/mod.rs |
+| dmc_tests | status, status_irq | ✅ | integration_tests.rs |
+| dmc_tests | buffer_retained, latency | ❌ ignored | integration_tests.rs |
+| oam_read | 1 | ✅ | integration_tests.rs |
+| ppu_vbl_nmi | 01, 03, 04, 09 | ✅ | integration_tests.rs |
+| ppu_vbl_nmi | 02, 05, 06, 07, 08, 10 | ❌ ignored | integration_tests.rs |
+| blargg_ppu_tests_2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ | integration_tests.rs |
+| ppu_open_bus | 1 | ❌ ignored | integration_tests.rs |
+| oam_stress | 1 | ❌ ignored | integration_tests.rs |
+| mmc3_test | all 6 | ✅ | memory/mapper/mmc3.rs |
+| apu_mixer | 4 | ⏸ ignored (release-only) | apu/mod.rs |
 
-- [ ] branch_timing_tests
-- [ ] cpu_dummy_reads
-- [ ] cpu_dummy_writes
-- [ ] cpu_exec_space (partial — only APU test referenced)
-- [ ] cpu_reset
-- [ ] cpu_timing_test6
-- [ ] dmc_dma_during_read4
-- [ ] dmc_tests
-- [ ] instr_misc
-- [ ] mmc3_test_2
-- [ ] mmc5test / mmc5test_v2 (needs mapper 5)
-- [ ] ppu_open_bus
-- [ ] ppu_read_buffer
-- [ ] sprite_overflow_tests
-- [ ] sprdma_and_dmc_dma
-- [ ] scanline / scanline-a1
-- [ ] nmi_sync
-- [ ] stress
-- [ ] pal_apu_tests (needs PAL mode)
-- [ ] read_joy3 (controller read timing)
-- [ ] scrolltest
-- [ ] full_palette
-- [ ] vbl_nmi_timing (separate from blargg's ppu_vbl_nmi)
+### Not yet wired up
+
+All use the blargg $6000 status protocol (0=pass) and run to infinite loop.
+ROMs not yet copied into `input/nes/`.
+
+**PPU timing**
+
+1. [ ] `vbl_nmi_timing` — 7 ROMs testing VBL/NMI to single-PPU-clock accuracy. Separate from blargg's ppu_vbl_nmi suite, even more timing-precise.
+2. [ ] `ppu_read_buffer` — thorough PPU $2007 read buffer tests (1 ROM). ~20 second test, mammoth coverage of read buffer edge cases.
+
+**Sprite tests (need sprite 0 hit upgrade)**
+
+3. [ ] `sprite_hit_tests_2005.10.05` — 11 ROMs testing sprite 0 hit. basics, alignment, corners, flip, left_clip, right_edge, screen_bottom, double_height, timing_basics, timing_order, edge_timing. Currently our sprite 0 hit is position-based, not pixel-overlap — expect failures on 02+ until upgraded.
+4. [ ] `sprite_overflow_tests` — 5 ROMs (Basics, Details, Timing, Obscure, Emulator). Tests the buggy sprite overflow flag evaluation. Basics may pass, later ones test the diagonal evaluation bug.
+
+**CPU dummy reads/writes (may need bus accuracy work)**
+
+5. [ ] `cpu_dummy_reads` — 1 ROM. Tests that indexed addressing does dummy read at uncorrected address. We document this behavior as implemented.
+6. [ ] `cpu_dummy_writes` — 2 ROMs (OAM, PPU mem). Tests RMW instructions write-back-original-then-modified. Requires accurate PPU/OAM side effects from dummy writes.
+
+**DMC/DMA cycle stealing (needs DMA accuracy work)**
+
+7. [ ] `dmc_dma_during_read4` — 5 ROMs testing DMC DMA interleaving with $2007/$4016 reads. Very precise cycle-stealing behavior.
+8. [ ] `sprdma_and_dmc_dma` — 2 ROMs testing OAM DMA + DMC DMA interaction. Cycle-accurate DMA interleaving.
+
+**MMC3 revision tests**
+
+9. [ ] `mmc3_test_2` — 6 ROMs, updated version of mmc3_test. Tests 5 and 6 distinguish MMC3 rev A vs rev B (we pass mmc3_test already, these may differ on edge cases).
+
+### Not automatable (visual, interactive, or needs unsupported hardware)
+
+These cannot be tested with the $6000 protocol — they're visual demos, interactive tests, or require unsupported mappers/peripherals.
+
+| Suite | Why not automatable |
+|-------|-------------------|
+| 240pee | Interactive menu-driven visual test suite |
+| blargg_litewall | Visual rendering demo |
+| full_palette | Visual (displays palette colors) |
+| scanline / scanline-a1 | Visual scanline rendering demo |
+| scrolltest | Visual + interactive scroll test |
+| nmi_sync | Visual demo (timed-write line drawing) |
+| read_joy3 | Requires precise controller read timing / input |
+| tvpassfail | Interactive TV display test |
+| vaus-test / PaddleTest3 | Requires Vaus/paddle controller hardware |
+| dpcmletterbox | Visual DPCM demo |
+| soundtest | Audio playback demo |
+| volume_tests | Audio volume level demo |
+| stomper | Visual demo |
+| nes15-1.0.0 | Puzzle game |
+| ny2011 / spritecans-2011 / stars_se | Demos |
+| tutor | Tutorial demo |
+| window5 | Visual demo |
+| stress | Mixed visual + interactive test suite |
+| nrom368 | Needs NROM-368 mapper variant |
+| exram / mmc5test / mmc5test_v2 | Needs mapper 5 (MMC5) — add when MMC5 is implemented |
+| m22chrbankingtest | Needs mapper 22 (VRC2a) |
+| MMC1_A12 | Visual/manual MMC1 test |
+| fdsirqtests | Needs FDS mapper |
+| pal_apu_tests | Already wired up but ignored (needs PAL mode) |
+| other/ | Collection of misc demos and homebrew games |
 
 ---
 

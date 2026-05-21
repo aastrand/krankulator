@@ -52,7 +52,7 @@ pub struct Emulator {
     cpu_bus_cycle_offset: u8,
     cpu_open_bus: u8,
     irq_sample_deadline: u64,
-    irq_inhibit_one: bool,
+    irq_allowed: bool,
 
     should_trigger_nmi: bool,
     nmi_triggered_countdown: i8,
@@ -123,7 +123,7 @@ impl Emulator {
             cpu_bus_cycle_offset: 0,
             cpu_open_bus: 0,
             irq_sample_deadline: 0,
-            irq_inhibit_one: false,
+            irq_allowed: false,
             should_trigger_nmi: false,
             nmi_triggered_countdown: -1,
             audio: audio,
@@ -365,12 +365,16 @@ impl Emulator {
                 let penultimate = actual_cycles.saturating_sub(2);
                 self.irq_sample_deadline = self.instruction_start_dot + penultimate * 3 + 1;
 
-                if i_flag_before
-                    && !self.cpu.interrupt_flag()
-                    && (opcode == opcodes::CLI || opcode == opcodes::PLP)
-                {
-                    self.irq_inhibit_one = true;
-                }
+                // The 6502 samples the I flag on the penultimate cycle of each instruction.
+                // Most instructions that change I (CLI, SEI, PLP) do so on their last
+                // cycle, so the penultimate-cycle I flag equals the value *before* the
+                // instruction executed. RTI is different: it restores flags early (cycle 4
+                // of 6), so its penultimate-cycle I reflects the *restored* value.
+                self.irq_allowed = if opcode == opcodes::RTI {
+                    !self.cpu.interrupt_flag()
+                } else {
+                    !i_flag_before
+                };
 
                 if self.nmi_triggered_countdown > 0 {
                     self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
@@ -541,27 +545,25 @@ impl Emulator {
     }
 
     fn service_pending_irq(&mut self) -> bool {
-        if self.cpu.interrupt_flag() {
-            return false;
-        }
-
-        if self.irq_inhibit_one {
-            self.irq_inhibit_one = false;
+        if !self.irq_allowed {
             return false;
         }
 
         if self.mem.poll_irq() && self.mem.poll_irq_at_dot(self.irq_sample_deadline) {
             self.trigger_irq();
+            self.irq_allowed = false;
             return true;
         }
 
         if self.apu.frame_irq_at_dot(self.irq_sample_deadline) {
             self.trigger_irq();
+            self.irq_allowed = false;
             return true;
         }
 
         if self.apu.dmc_irq_pending() {
             self.trigger_irq();
+            self.irq_allowed = false;
             return true;
         }
 
@@ -717,37 +719,15 @@ impl Emulator {
             }
 
             opcodes::BRK => {
-                /*
-                In the 7 clock cycles it takes BRK to execute, the padding byte is actually
-                fetched, but the CPU does nothing with it. The diagram below will show the
-                bus operations that take place during the execution of BRK:
-
-                cc	addr	data
-                --	----	----
-                1	PC	00	;BRK opcode
-                2	PC+1	??	;the padding byte, ignored by the CPU
-                3	S	PCH	;high byte of PC
-                4	S-1	PCL	;low byte of PC
-                5	S-2	P	;status flags with B flag set
-                6	FFFE	??	;low byte of target address
-                7	FFFF	??	;high byte of target address
-                */
                 let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
 
-                // BRK without a target gets ignored
                 if addr > 0 {
                     self.push_pc_to_stack(2);
                     self.log_push(addr);
-                    // software instructions BRK & PHP will push the B flag as being 1.
-                    // hardware interrupts IRQ & NMI will push the B flag as being 0.
                     self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
-
-                    // we set the I flag
                     self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-
                     self.cpu.pc = addr;
                 }
-                // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
             }
             opcodes::CLC => {
@@ -1229,7 +1209,7 @@ impl Emulator {
             self.cpu.cycle += 1;
         }
         self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-        self.log_push(self.cpu.pc + 2 as u16);
+        self.log_push(self.cpu.pc.wrapping_add(2));
         // Branch taken is infers a cycle penalty
         self.cpu.cycle += 1;
     }
@@ -1571,7 +1551,6 @@ impl Emulator {
     pub fn trigger_irq(&mut self) {
         let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
         self.push_pc_to_stack(0);
-        // hardware interrupts IRQ & NMI will push the B flag as being 0.
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         self.cpu.pc = addr;

@@ -1249,12 +1249,6 @@ mod tests {
         assert_eq!(0, status, "test status 0x{:02X}", status);
     }
 
-    #[test]
-    #[ignore]
-    fn test_instr_misc_dummy_reads_apu() {
-        run_blargg_apu_rom(test_input!("nes/apu/04-dummy_reads_apu.nes"), "04-dummy_reads_apu");
-    }
-
     // --- PAL APU tests (ignored until PAL support is added) ---
 
     fn run_pal_apu_rom(rom_path: &str, test_name: &str) {

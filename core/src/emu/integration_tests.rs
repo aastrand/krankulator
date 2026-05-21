@@ -426,6 +426,336 @@ mod tests {
         assert_eq!(expected, buf);
     }
 
+    fn run_blargg_test(rom_path: &str, test_name: &str) {
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.run();
+
+        let buf = get_status_str(&mut emu, 0x6004, 300);
+        let status = emu.mem.cpu_read(0x6000);
+        assert_eq!(
+            0, status,
+            "{}: status 0x{:02X}: {}",
+            test_name, status, buf.trim()
+        );
+    }
+
+    // --- cpu_interrupts_v2 ---
+
+    #[test]
+    fn test_cpu_interrupts_cli_latency() {
+        run_blargg_test(
+            test_input!("nes/interrupts/1-cli_latency.nes"),
+            "1-cli_latency",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_cpu_interrupts_nmi_and_brk() {
+        run_blargg_test(
+            test_input!("nes/interrupts/2-nmi_and_brk.nes"),
+            "2-nmi_and_brk",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_cpu_interrupts_nmi_and_irq() {
+        run_blargg_test(
+            test_input!("nes/interrupts/3-nmi_and_irq.nes"),
+            "3-nmi_and_irq",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_cpu_interrupts_irq_and_dma() {
+        run_blargg_test(
+            test_input!("nes/interrupts/4-irq_and_dma.nes"),
+            "4-irq_and_dma",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_cpu_interrupts_branch_delays_irq() {
+        run_blargg_test(
+            test_input!("nes/interrupts/5-branch_delays_irq.nes"),
+            "5-branch_delays_irq",
+        );
+    }
+
+    // --- branch_timing_tests ---
+
+    #[test]
+    fn test_branch_timing_basics() {
+        run_blargg_test(
+            test_input!("nes/branch_timing/1.Branch_Basics.nes"),
+            "1.Branch_Basics",
+        );
+    }
+
+    #[test]
+    fn test_branch_timing_backward() {
+        run_blargg_test(
+            test_input!("nes/branch_timing/2.Backward_Branch.nes"),
+            "2.Backward_Branch",
+        );
+    }
+
+    #[test]
+    fn test_branch_timing_forward() {
+        run_blargg_test(
+            test_input!("nes/branch_timing/3.Forward_Branch.nes"),
+            "3.Forward_Branch",
+        );
+    }
+
+    // --- cpu_timing_test6 ---
+
+    #[test]
+    fn test_cpu_timing() {
+        run_blargg_test(
+            test_input!("nes/cpu_timing_test.nes"),
+            "cpu_timing_test",
+        );
+    }
+
+    // --- instr_misc ---
+
+    #[test]
+    fn test_instr_misc_abs_x_wrap() {
+        run_blargg_test(
+            test_input!("nes/instr_misc/01-abs_x_wrap.nes"),
+            "01-abs_x_wrap",
+        );
+    }
+
+    #[test]
+    fn test_instr_misc_branch_wrap() {
+        run_blargg_test(
+            test_input!("nes/instr_misc/02-branch_wrap.nes"),
+            "02-branch_wrap",
+        );
+    }
+
+    #[test]
+    fn test_instr_misc_dummy_reads() {
+        run_blargg_test(
+            test_input!("nes/instr_misc/03-dummy_reads.nes"),
+            "03-dummy_reads",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_instr_misc_dummy_reads_apu() {
+        run_blargg_test(
+            test_input!("nes/instr_misc/04-dummy_reads_apu.nes"),
+            "04-dummy_reads_apu",
+        );
+    }
+
+    // --- instr_test-v5 ---
+
+    #[test]
+    fn test_instr_test_v5() {
+        run_blargg_test(
+            test_input!("nes/instr_test_v5_official_only.nes"),
+            "instr_test-v5",
+        );
+    }
+
+    // --- instr_timing ---
+
+    #[test]
+    #[ignore]
+    fn test_instr_timing_1() {
+        run_blargg_test(
+            test_input!("nes/instr_timing/1-instr_timing.nes"),
+            "1-instr_timing",
+        );
+    }
+
+    #[test]
+    fn test_instr_timing_2() {
+        run_blargg_test(
+            test_input!("nes/instr_timing/2-branch_timing.nes"),
+            "2-branch_timing",
+        );
+    }
+
+    // --- cpu_exec_space ---
+
+    #[test]
+    #[ignore]
+    fn test_cpu_exec_space_ppuio() {
+        run_blargg_test(
+            test_input!("nes/apu/test_cpu_exec_space_ppuio.nes"),
+            "test_cpu_exec_space_ppuio",
+        );
+    }
+
+    // --- ppu_vbl_nmi (remaining) ---
+
+    #[test]
+    #[ignore]
+    fn test_ppu_vbl_set_time() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/02-vbl_set_time.nes"),
+            "02-vbl_set_time",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_ppu_nmi_timing() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/05-nmi_timing.nes"),
+            "05-nmi_timing",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_ppu_suppression() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/06-suppression.nes"),
+            "06-suppression",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_ppu_nmi_on_timing() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/07-nmi_on_timing.nes"),
+            "07-nmi_on_timing",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_ppu_nmi_off_timing() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/08-nmi_off_timing.nes"),
+            "08-nmi_off_timing",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_ppu_even_odd_timing() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_nmi/10-even_odd_timing.nes"),
+            "10-even_odd_timing",
+        );
+    }
+
+    // --- blargg_ppu_tests_2005 ---
+
+    #[test]
+    fn test_ppu_palette_ram() {
+        run_blargg_test(
+            test_input!("nes/ppu/palette_ram.nes"),
+            "palette_ram",
+        );
+    }
+
+    #[test]
+    fn test_ppu_sprite_ram() {
+        run_blargg_test(
+            test_input!("nes/ppu/sprite_ram.nes"),
+            "sprite_ram",
+        );
+    }
+
+    #[test]
+    fn test_ppu_vram_access() {
+        run_blargg_test(
+            test_input!("nes/ppu/vram_access.nes"),
+            "vram_access",
+        );
+    }
+
+    #[test]
+    fn test_ppu_vbl_clear_time() {
+        run_blargg_test(
+            test_input!("nes/ppu/vbl_clear_time.nes"),
+            "vbl_clear_time",
+        );
+    }
+
+    #[test]
+    fn test_ppu_power_up_palette() {
+        run_blargg_test(
+            test_input!("nes/ppu/power_up_palette.nes"),
+            "power_up_palette",
+        );
+    }
+
+    // --- ppu_open_bus ---
+
+    #[test]
+    #[ignore]
+    fn test_ppu_open_bus() {
+        run_blargg_test(
+            test_input!("nes/ppu/ppu_open_bus.nes"),
+            "ppu_open_bus",
+        );
+    }
+
+    // --- oam_stress ---
+
+    #[test]
+    #[ignore]
+    fn test_ppu_oam_stress() {
+        run_blargg_test(
+            test_input!("nes/ppu/oam_stress.nes"),
+            "oam_stress",
+        );
+    }
+
+    // --- dmc_tests ---
+
+    #[test]
+    fn test_dmc_status() {
+        run_blargg_test(
+            test_input!("nes/apu/status.nes"),
+            "dmc-status",
+        );
+    }
+
+    #[test]
+    fn test_dmc_status_irq() {
+        run_blargg_test(
+            test_input!("nes/apu/status_irq.nes"),
+            "dmc-status_irq",
+        );
+    }
+
+    #[test]
+    fn test_dmc_buffer_retained() {
+        run_blargg_test(
+            test_input!("nes/apu/buffer_retained.nes"),
+            "dmc-buffer_retained",
+        );
+    }
+
+    #[test]
+    fn test_dmc_latency() {
+        run_blargg_test(
+            test_input!("nes/apu/latency.nes"),
+            "dmc-latency",
+        );
+    }
+
     #[test]
     fn test_savestate_roundtrip_simple() {
         let mut emu = emu::Emulator::_new();
