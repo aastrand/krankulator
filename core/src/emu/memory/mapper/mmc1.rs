@@ -212,6 +212,7 @@ impl MMC1Mapper {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             // $2000–$3FFF (mirrored) and I/O: handled by `Emulator` for accuracy.
             0x20 | 0x40 => 0,
+            0x50 => 0,
             0x60 | 0x70 => {
                 if self.mmc_ram_enabled {
                     unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) }
