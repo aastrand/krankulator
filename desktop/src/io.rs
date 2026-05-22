@@ -166,6 +166,62 @@ struct MenuIds {
 struct MenuItems {
     fullscreen: CheckMenuItem,
     scaling: CheckMenuItem,
+    recent_submenu: Submenu,
+    recent_items: Vec<(muda::MenuId, String)>,
+}
+
+const MAX_RECENT_ROMS: usize = 10;
+
+fn recent_roms_path() -> Option<std::path::PathBuf> {
+    crate::config_dir().map(|d| d.join("recent_roms.txt"))
+}
+
+fn load_recent_roms() -> Vec<String> {
+    recent_roms_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| {
+            s.lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn save_recent_roms(roms: &[String]) {
+    if let Some(path) = recent_roms_path() {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(path, roms.join("\n"));
+    }
+}
+
+pub(crate) fn add_recent_rom(path: &str) {
+    let mut roms = load_recent_roms();
+    roms.retain(|r| r != path);
+    roms.insert(0, path.to_string());
+    roms.truncate(MAX_RECENT_ROMS);
+    save_recent_roms(&roms);
+}
+
+fn populate_recent_submenu(submenu: &Submenu) -> Vec<(muda::MenuId, String)> {
+    let roms = load_recent_roms();
+    let mut items = Vec::new();
+    for rom in &roms {
+        let label = std::path::Path::new(rom)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or(rom);
+        let item = MenuItem::new(label, true, None::<Accelerator>);
+        items.push((item.id().clone(), rom.clone()));
+        submenu.append(&item).unwrap();
+    }
+    if roms.is_empty() {
+        let empty = MenuItem::new("No Recent ROMs", false, None::<Accelerator>);
+        submenu.append(&empty).unwrap();
+    }
+    items
 }
 
 fn about_metadata() -> AboutMetadata {
@@ -198,6 +254,9 @@ fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
     );
     let open_rom_id = open_rom.id().clone();
     file_menu.append(&open_rom).unwrap();
+    let recent_submenu = Submenu::new("Recent", true);
+    let recent_items = populate_recent_submenu(&recent_submenu);
+    file_menu.append(&recent_submenu).unwrap();
     file_menu.append(&PredefinedMenuItem::separator()).unwrap();
     file_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
 
@@ -298,6 +357,8 @@ fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
     let items = MenuItems {
         fullscreen,
         scaling,
+        recent_submenu,
+        recent_items,
     };
     (menu, ids, items)
 }
@@ -319,6 +380,7 @@ struct PollHandler<'a> {
     toggle_overlay: bool,
     toasts: Vec<String>,
     open_rom: bool,
+    recent_rom_path: Option<String>,
     menu_ids: &'a MenuIds,
     menu_items: &'a MenuItems,
 }
@@ -501,6 +563,14 @@ impl ApplicationHandler for PollHandler<'_> {
     }
 }
 
+impl WinitPixelsIOHandler {
+    fn refresh_recent_menu(&mut self) {
+        let submenu = &self.menu_items.recent_submenu;
+        while submenu.remove_at(0).is_some() {}
+        self.menu_items.recent_items = populate_recent_submenu(submenu);
+    }
+}
+
 impl IOHandler for WinitPixelsIOHandler {
     fn init(&mut self) -> Result<(), String> {
         Ok(())
@@ -532,6 +602,7 @@ impl IOHandler for WinitPixelsIOHandler {
             toggle_overlay: false,
             toasts: Vec::new(),
             open_rom: false,
+            recent_rom_path: None,
             menu_ids: &self.menu_ids,
             menu_items: &self.menu_items,
         };
@@ -572,6 +643,14 @@ impl IOHandler for WinitPixelsIOHandler {
                     handler.pixels.set_scaling_mode(ScalingMode::Fill);
                     handler.toasts.push("Fill scaling".into());
                 }
+            } else if let Some(path) = self
+                .menu_items
+                .recent_items
+                .iter()
+                .find(|(mid, _)| mid == id)
+                .map(|(_, p)| p.clone())
+            {
+                handler.recent_rom_path = Some(path);
             }
         }
 
@@ -590,7 +669,7 @@ impl IOHandler for WinitPixelsIOHandler {
                 p.to_string_lossy().into_owned()
             })
         } else {
-            None
+            handler.recent_rom_path.take()
         };
 
         let mut result = PollResult {
@@ -603,6 +682,11 @@ impl IOHandler for WinitPixelsIOHandler {
             toasts: handler.toasts,
             open_rom,
         };
+
+        if let Some(ref path) = result.open_rom {
+            add_recent_rom(path);
+            self.refresh_recent_menu();
+        }
 
         let gp = self.gamepads.poll();
         for msg in gp.toasts {

@@ -114,6 +114,7 @@ fn main() -> Result<(), String> {
                     emu.toggle_should_trigger_nmi(true);
                     emu.toggle_should_exit_on_infinite_loop(false);
                     emu.set_rom_path(file);
+                    io::add_recent_rom(file);
 
                     emu
                 }
