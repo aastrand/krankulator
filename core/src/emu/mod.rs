@@ -456,15 +456,17 @@ impl Emulator {
             if result.reset {
                 self.reset();
             }
-            if result.save_state {
-                self.save_state_to_file();
-            }
-            if result.load_state {
-                self.load_state_from_file();
-            }
-            if result.cycle_slot {
-                self.savestate_slot = (self.savestate_slot + 1) % 4;
-                self.overlay.toast(format!("SLOT {}", self.savestate_slot));
+            if self.rom_path.is_some() {
+                if result.save_state {
+                    self.save_state_to_file();
+                }
+                if result.load_state {
+                    self.load_state_from_file();
+                }
+                if result.cycle_slot {
+                    self.savestate_slot = (self.savestate_slot + 1) % 4;
+                    self.overlay.toast(format!("SLOT {}", self.savestate_slot));
+                }
             }
             if result.toggle_overlay {
                 self.overlay.toggle();
