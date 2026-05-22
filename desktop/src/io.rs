@@ -153,6 +153,7 @@ fn set_dock_icon() {}
 #[allow(unused_variables)]
 struct MenuIds {
     open_rom: muda::MenuId,
+    quit: muda::MenuId,
     reset: muda::MenuId,
     save_state: muda::MenuId,
     load_state: muda::MenuId,
@@ -255,8 +256,14 @@ fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
     let recent_submenu = Submenu::new("Recent", true);
     let recent_items = populate_recent_submenu(&recent_submenu);
     file_menu.append(&recent_submenu).unwrap();
+    let quit = MenuItem::new(
+        "Exit",
+        true,
+        Some("CmdOrCtrl+Q".parse::<Accelerator>().unwrap()),
+    );
+    let quit_id = quit.id().clone();
     file_menu.append(&PredefinedMenuItem::separator()).unwrap();
-    file_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    file_menu.append(&quit).unwrap();
 
     let emu_menu = Submenu::new("Emulation", true);
     let reset = MenuItem::new(
@@ -343,6 +350,7 @@ fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
 
     let ids = MenuIds {
         open_rom: open_rom_id,
+        quit: quit_id,
         reset: reset_id,
         save_state: save_state_id,
         load_state: load_state_id,
@@ -616,6 +624,8 @@ impl IOHandler for WinitPixelsIOHandler {
             let id = event.id();
             if *id == handler.menu_ids.open_rom {
                 handler.open_rom = true;
+            } else if *id == handler.menu_ids.quit {
+                handler.exit = true;
             } else if *id == handler.menu_ids.reset {
                 handler.reset = true;
             } else if *id == handler.menu_ids.save_state {
