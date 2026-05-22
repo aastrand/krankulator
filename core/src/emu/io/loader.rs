@@ -297,6 +297,13 @@ fn load_nes_from_bytes_inner(
             combine_prg_banks_32k(&prg_banks),
             chr_banks,
         )),
+        68 => Box::new(mapper::sunsoft4::Sunsoft4Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 

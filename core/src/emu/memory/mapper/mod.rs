@@ -7,6 +7,7 @@ pub mod mmc2;
 pub mod mmc3;
 pub mod mmc5;
 pub mod nrom;
+pub mod sunsoft4;
 pub mod uxrom;
 
 pub const RESET_TARGET_ADDR: u16 = 0xfffc;
