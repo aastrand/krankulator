@@ -9,6 +9,8 @@ pub const RIGHT: u8 = 0b1000_0000;
 
 pub struct Controller {
     status: u8,
+    shift: u8,
+    strobe: bool,
     polls: u64,
 }
 
@@ -16,15 +18,27 @@ impl Controller {
     pub fn new() -> Controller {
         Controller {
             status: 0,
+            shift: 0,
+            strobe: false,
             polls: 0,
         }
     }
 
+    pub fn set_strobe(&mut self, on: bool) {
+        if self.strobe && !on {
+            self.shift = self.status;
+            self.polls = 0;
+        }
+        self.strobe = on;
+    }
+
     pub fn poll(&mut self) -> u8 {
-        let mask = 1 << (self.polls % 8);
-        let value = (self.status & mask) >> (self.polls % 8);
+        if self.strobe {
+            return self.status & 1;
+        }
+        let bit = (self.shift >> (self.polls % 8)) & 1;
         self.polls = self.polls.wrapping_add(1);
-        value
+        bit
     }
 
     pub fn set_pressed(&mut self, button: u8) {
@@ -101,22 +115,34 @@ mod tests {
         let mut c = Controller::new();
         c.set_pressed(A);
         c.set_pressed(SELECT);
-        assert_eq!(c.poll(), 1);
-        assert_eq!(c.poll(), 0);
-        assert_eq!(c.poll(), 1);
-        assert_eq!(c.poll(), 0);
+        c.set_strobe(true);
+        c.set_strobe(false);
+        assert_eq!(c.poll(), 1); // A
+        assert_eq!(c.poll(), 0); // B
+        assert_eq!(c.poll(), 1); // SELECT
+        assert_eq!(c.poll(), 0); // START
         assert_eq!(c.poll(), 0);
         assert_eq!(c.poll(), 0);
         assert_eq!(c.poll(), 0);
         assert_eq!(c.poll(), 0);
 
+        // Re-strobe resets the shift register
+        c.set_strobe(true);
+        c.set_strobe(false);
+        assert_eq!(c.poll(), 1); // A again
+        assert_eq!(c.poll(), 0);
+        assert_eq!(c.poll(), 1); // SELECT again
+    }
+
+    #[test]
+    fn test_poll_during_strobe() {
+        let mut c = Controller::new();
+        c.set_pressed(A);
+        c.set_pressed(START);
+        c.set_strobe(true);
+        // While strobe is high, always returns bit 0 (A button)
         assert_eq!(c.poll(), 1);
-        assert_eq!(c.poll(), 0);
         assert_eq!(c.poll(), 1);
-        assert_eq!(c.poll(), 0);
-        assert_eq!(c.poll(), 0);
-        assert_eq!(c.poll(), 0);
-        assert_eq!(c.poll(), 0);
-        assert_eq!(c.poll(), 0);
+        assert_eq!(c.poll(), 1);
     }
 }

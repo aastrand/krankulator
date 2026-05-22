@@ -1318,7 +1318,11 @@ impl Emulator {
                 let byte = self.mem.cpu_read(base.wrapping_add(i));
                 self.ppu.oam_dma_write(i as u8, byte);
             }
-        } else if (0x4000..=0x4017).contains(&addr) && addr != ppu::OAM_DMA {
+        } else if addr == 0x4016 {
+            let strobe = value & 1 != 0;
+            self.mem.controllers()[0].set_strobe(strobe);
+            self.mem.controllers()[1].set_strobe(strobe);
+        } else if (0x4000..=0x4015).contains(&addr) || addr == 0x4017 {
             let apu_cycle_tag = if addr == 0x4017 {
                 self.cpu
                     .cycle
