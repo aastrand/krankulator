@@ -6,6 +6,7 @@ pub mod mmc1;
 pub mod mmc2;
 pub mod mmc3;
 pub mod mmc5;
+pub mod nes_event;
 pub mod nrom;
 pub mod sunsoft4;
 pub mod sunsoft_fme7;

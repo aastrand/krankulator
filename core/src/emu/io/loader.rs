@@ -311,6 +311,10 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        105 => Box::new(mapper::nes_event::NesEventMapper::new(
+            flags,
+            prg_banks,
+        )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 

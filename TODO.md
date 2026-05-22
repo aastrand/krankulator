@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119)**
-Coverage: 692/695 licensed NTSC US games (99.6%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119)**
+Coverage: 695/695 licensed NTSC US games (100%)
 
 ### Completed: Priority 1 quick wins
 
@@ -36,19 +36,19 @@ Coverage: 692/695 licensed NTSC US games (99.6%)
 - Games (2): High Speed, Pin-Bot
 - MMC3 variant with mixed CHR ROM/RAM. Bit 6 of CHR bank register selects ROM vs RAM.
 
-### Priority 4: Remaining licensed games
+### Completed: Priority 4 — Remaining licensed games
 
-**Mapper 68 — Sunsoft 4** [M]
+**Mapper 68 — Sunsoft 4** [done]
 - Games (1): After Burner
 - CHR/PRG banking plus nametable mapping from CHR ROM.
 
-**Mapper 69 — Sunsoft FME-7 / 5B** [M]
+**Mapper 69 — Sunsoft FME-7 / 5B** [done]
 - Games (1): Batman: Return of the Joker
-- Command/parameter register pair. 8 CHR + 4 PRG banks, CPU cycle-based IRQ counter.
+- Command/parameter register pair. 8 CHR + 4 PRG banks, CPU cycle-based IRQ counter. 5B expansion audio not yet implemented.
 
-**Mapper 105 — NES-EVENT (MMC1 variant)** [M]
+**Mapper 105 — NES-EVENT (MMC1 variant)** [done]
 - Games (1): Nintendo World Championships 1990 (extremely rare)
-- MMC1 variant with timer/IRQ. Skip unless completionist.
+- MMC1 variant with repurposed CHR registers, 30-bit CPU-cycle IRQ timer, init state machine.
 
 ### Priority 5: Unlicensed (optional, ~95 more games)
 
@@ -61,8 +61,7 @@ Coverage: 692/695 licensed NTSC US games (99.6%)
 
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
-| Done | 0,1,2,3,4,5,7,9,34,66,118,119 | 692 | 692/695 (99.6%) |
-| Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
+| Done | 0,1,2,3,4,5,7,9,34,66,68,69,105,118,119 | 695 | 695/695 (100%) |
 | Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
 
 ---

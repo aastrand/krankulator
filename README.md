@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119) — 692/695 licensed NTSC US games (99.6%)
+- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119) — 695/695 licensed NTSC US games (100%)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5 cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -45,6 +45,7 @@ graph TD
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
+    Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
     Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
@@ -70,11 +71,12 @@ library), `desktop/` (native frontend), `web/` (WebAssembly frontend), and `libr
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
 the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU and mapper. Memory mappers
 are trait objects — each cartridge type implements its own bank switching, mirroring, and
-IRQ logic (e.g. MMC3 scanline counter, MMC5 PPU-fetch-based detection). MMC3 variants
-TxSROM (118) and TQROM (119) reuse the MMC3 engine with per-bank mirroring and mixed
-CHR-ROM/RAM respectively. Simple discrete-logic mappers (UxROM, CNROM, AxROM, BNROM,
-GxROM) share PPU bus logic via `PpuBus`; BNROM and GxROM emulate AND-type bus conflicts.
-MMC5 adds expansion audio (two pulse channels) mixed into the APU's nonlinear mixer.
+IRQ logic (e.g. MMC3 scanline counter, MMC5 PPU-fetch-based detection, FME-7 CPU-cycle IRQ). MMC3
+variants TxSROM (118) and TQROM (119) reuse the MMC3 engine with per-bank mirroring and
+mixed CHR-ROM/RAM respectively. Sunsoft 4 can map CHR ROM into nametable space. Simple
+discrete-logic mappers (UxROM, CNROM, AxROM, BNROM, GxROM) share PPU bus logic via
+`PpuBus`; BNROM and GxROM emulate AND-type bus conflicts. MMC5 adds expansion audio
+(two pulse channels) mixed into the APU's nonlinear mixer.
 The IO and audio layers are traits, allowing desktop, web, or headless operation with the
 same emulation core.
 
