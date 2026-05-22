@@ -9,9 +9,9 @@ mod tests {
 
     #[test]
     fn test_instructions() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(
-            test_input!("ascii/instructions"),
-        )));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/instructions"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x84);
@@ -22,8 +22,9 @@ mod tests {
 
     #[test]
     fn test_lda_sta() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/ldasta"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/ldasta"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 8);
@@ -34,8 +35,9 @@ mod tests {
 
     #[test]
     fn test_transfers() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/transfers"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/transfers"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x42);
@@ -48,8 +50,9 @@ mod tests {
 
     #[test]
     fn test_subtract_with_carry() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/sbc"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/sbc"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0xfc);
@@ -59,8 +62,9 @@ mod tests {
 
     #[test]
     fn test_stores() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/stores"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/stores"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -76,8 +80,9 @@ mod tests {
 
     #[test]
     fn test_compares() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/compares"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/compares"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 1);
@@ -91,8 +96,9 @@ mod tests {
 
     #[test]
     fn test_bne() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/bne"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/bne"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.x, 3);
@@ -103,8 +109,9 @@ mod tests {
 
     #[test]
     fn test_beq() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/beq"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/beq"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.x, 1);
@@ -115,9 +122,9 @@ mod tests {
 
     #[test]
     fn test_take_no_branch() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(
-            test_input!("ascii/take_no_branch"),
-        )));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/take_no_branch"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.y, 8);
@@ -125,9 +132,9 @@ mod tests {
 
     #[test]
     fn test_take_all_branches() {
-        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(
-            test_input!("ascii/take_all_branches"),
-        )));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/take_all_branches"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.x, 8);
@@ -135,8 +142,9 @@ mod tests {
 
     #[test]
     fn test_stackloop() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/stackloop"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/stackloop"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
@@ -153,8 +161,9 @@ mod tests {
 
     #[test]
     fn test_jmp() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/jmp"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/jmp"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x03);
@@ -163,8 +172,9 @@ mod tests {
 
     #[test]
     fn test_jsrrts() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!("ascii/jsrtrs"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_ascii(&String::from(test_input!(
+            "ascii/jsrtrs"
+        ))));
         emu.run();
 
         assert_eq!(emu.cpu.x, 0x15);
@@ -190,8 +200,9 @@ mod tests {
 
     #[test]
     fn test_nes_nestest() {
-        let mut emu: emu::Emulator =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!("nes/nestest.nes"))));
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            test_input!("nes/nestest.nes"),
+        )));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
@@ -273,8 +284,9 @@ mod tests {
 
     #[test]
     fn test_nes_registers_after_reset() {
-        let mut emu: emu::Emulator =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!("nes/registers.nes"))));
+        let mut emu: emu::Emulator = emu::Emulator::new_headless(loader::load_nes(&String::from(
+            test_input!("nes/registers.nes"),
+        )));
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
         emu.toggle_should_trigger_nmi(false);
@@ -439,9 +451,12 @@ mod tests {
         let buf = get_status_str(&mut emu, 0x6004, 300);
         let status = emu.mem.cpu_read(0x6000);
         assert_eq!(
-            0, status,
+            0,
+            status,
             "{}: status 0x{:02X}: {}",
-            test_name, status, buf.trim()
+            test_name,
+            status,
+            buf.trim()
         );
     }
 
@@ -521,10 +536,7 @@ mod tests {
 
     #[test]
     fn test_cpu_timing() {
-        run_blargg_test(
-            test_input!("nes/cpu_timing_test.nes"),
-            "cpu_timing_test",
-        );
+        run_blargg_test(test_input!("nes/cpu_timing_test.nes"), "cpu_timing_test");
     }
 
     // --- instr_misc ---
@@ -661,34 +673,22 @@ mod tests {
 
     #[test]
     fn test_ppu_palette_ram() {
-        run_blargg_test(
-            test_input!("nes/ppu/palette_ram.nes"),
-            "palette_ram",
-        );
+        run_blargg_test(test_input!("nes/ppu/palette_ram.nes"), "palette_ram");
     }
 
     #[test]
     fn test_ppu_sprite_ram() {
-        run_blargg_test(
-            test_input!("nes/ppu/sprite_ram.nes"),
-            "sprite_ram",
-        );
+        run_blargg_test(test_input!("nes/ppu/sprite_ram.nes"), "sprite_ram");
     }
 
     #[test]
     fn test_ppu_vram_access() {
-        run_blargg_test(
-            test_input!("nes/ppu/vram_access.nes"),
-            "vram_access",
-        );
+        run_blargg_test(test_input!("nes/ppu/vram_access.nes"), "vram_access");
     }
 
     #[test]
     fn test_ppu_vbl_clear_time() {
-        run_blargg_test(
-            test_input!("nes/ppu/vbl_clear_time.nes"),
-            "vbl_clear_time",
-        );
+        run_blargg_test(test_input!("nes/ppu/vbl_clear_time.nes"), "vbl_clear_time");
     }
 
     #[test]
@@ -704,10 +704,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_ppu_open_bus() {
-        run_blargg_test(
-            test_input!("nes/ppu/ppu_open_bus.nes"),
-            "ppu_open_bus",
-        );
+        run_blargg_test(test_input!("nes/ppu/ppu_open_bus.nes"), "ppu_open_bus");
     }
 
     // --- oam_stress ---
@@ -715,28 +712,19 @@ mod tests {
     #[test]
     #[ignore]
     fn test_ppu_oam_stress() {
-        run_blargg_test(
-            test_input!("nes/ppu/oam_stress.nes"),
-            "oam_stress",
-        );
+        run_blargg_test(test_input!("nes/ppu/oam_stress.nes"), "oam_stress");
     }
 
     // --- dmc_tests ---
 
     #[test]
     fn test_dmc_status() {
-        run_blargg_test(
-            test_input!("nes/apu/status.nes"),
-            "dmc-status",
-        );
+        run_blargg_test(test_input!("nes/apu/status.nes"), "dmc-status");
     }
 
     #[test]
     fn test_dmc_status_irq() {
-        run_blargg_test(
-            test_input!("nes/apu/status_irq.nes"),
-            "dmc-status_irq",
-        );
+        run_blargg_test(test_input!("nes/apu/status_irq.nes"), "dmc-status_irq");
     }
 
     #[test]
@@ -749,10 +737,7 @@ mod tests {
 
     #[test]
     fn test_dmc_latency() {
-        run_blargg_test(
-            test_input!("nes/apu/latency.nes"),
-            "dmc-latency",
-        );
+        run_blargg_test(test_input!("nes/apu/latency.nes"), "dmc-latency");
     }
 
     #[test]
@@ -799,8 +784,9 @@ mod tests {
 
     #[test]
     fn test_savestate_roundtrip_nestest() {
-        let mut emu =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!("nes/nestest.nes"))));
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!(
+            "nes/nestest.nes"
+        ))));
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.cycles = 7;
@@ -846,8 +832,9 @@ mod tests {
             emu.cycle();
         }
 
-        let mut emu2 =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!("nes/nestest.nes"))));
+        let mut emu2 = emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!(
+            "nes/nestest.nes"
+        ))));
         emu2.cpu.pc = 0xc000;
         emu2.cpu.sp = 0xfd;
         emu2.cycles = 7;
@@ -877,8 +864,9 @@ mod tests {
 
     #[test]
     fn test_savestate_mapper_mismatch() {
-        let mut emu1 =
-            emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!("nes/nestest.nes"))));
+        let mut emu1 = emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!(
+            "nes/nestest.nes"
+        ))));
         emu1.toggle_quiet_mode(true);
 
         let saved = emu1.save_state_to_bytes();

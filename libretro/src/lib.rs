@@ -63,11 +63,7 @@ impl emu::io::IOHandler for LibretroIOHandler {
         }
     }
 
-    fn poll(
-        &mut self,
-        _mem: &mut dyn MemoryMapper,
-        _apu: &mut emu::apu::APU,
-    ) -> PollResult {
+    fn poll(&mut self, _mem: &mut dyn MemoryMapper, _apu: &mut emu::apu::APU) -> PollResult {
         PollResult::default()
     }
 
@@ -460,9 +456,4 @@ pub unsafe extern "C" fn retro_set_controller_port_device(_port: c_uint, _device
 pub unsafe extern "C" fn retro_cheat_reset() {}
 
 #[no_mangle]
-pub unsafe extern "C" fn retro_cheat_set(
-    _index: c_uint,
-    _enabled: bool,
-    _code: *const c_char,
-) {
-}
+pub unsafe extern "C" fn retro_cheat_set(_index: c_uint, _enabled: bool, _code: *const c_char) {}

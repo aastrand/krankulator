@@ -107,12 +107,12 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 Currently: bare winit window, no menu, CLI-only file selection.
 
 - [x] App icon (macOS dock icon via NSApplication, web favicon) [XS]
-- [ ] Native menu bar (File, Emulation, Audio, Video, Help) [L]
-  - File: Open ROM, Recent ROMs, Close
-  - Emulation: Pause/Resume, Reset, Save State, Load State
-  - Audio: Mute, Channel toggles
-  - Video: Fullscreen, scaling options
-  - Help: About, keyboard shortcuts
+- [ ] Native menu bar via muda crate (cross-platform: macOS/Windows/Linux) [M]
+  - File: Open ROM (Cmd/Ctrl+O), Recent ROMs, Quit (Cmd/Ctrl+Q)
+  - Emulation: Pause/Resume, Reset, Fast-forward
+  - Options: Fullscreen, Integer/Fill Scaling, Mute, Save Slot (0-3)
+  - Help: About, Keyboard Shortcuts
+  - Linux requires GTK3 (`libgtk-3-dev`) — available on virtually all desktop distros
 - [x] File open dialog (native via rfd crate) [S]
   - Filter for .nes files
 - [x] Remember last opened directory [XS]

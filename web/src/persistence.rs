@@ -109,10 +109,8 @@ thread_local! {
 pub fn setup_beforeunload_sram(rom_hash: String, has_battery: bool, gen: u32) {
     BEFOREUNLOAD_CLOSURE.with(|prev| {
         if let Some(old) = prev.borrow_mut().take() {
-            let _ = window().remove_event_listener_with_callback(
-                "beforeunload",
-                old.as_ref().unchecked_ref(),
-            );
+            let _ = window()
+                .remove_event_listener_with_callback("beforeunload", old.as_ref().unchecked_ref());
         }
     });
 
@@ -132,6 +130,7 @@ pub fn setup_beforeunload_sram(rom_hash: String, has_battery: bool, gen: u32) {
         });
     }) as Box<dyn FnMut(_)>);
 
-    let _ = window().add_event_listener_with_callback("beforeunload", closure.as_ref().unchecked_ref());
+    let _ =
+        window().add_event_listener_with_callback("beforeunload", closure.as_ref().unchecked_ref());
     BEFOREUNLOAD_CLOSURE.with(|prev| *prev.borrow_mut() = Some(closure));
 }

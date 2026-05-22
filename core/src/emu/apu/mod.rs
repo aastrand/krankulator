@@ -656,8 +656,8 @@ impl APU {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_input;
     use crate::emu::memory::MemoryMapper;
+    use crate::test_input;
     struct DummyMemory;
     impl MemoryMapper for DummyMemory {
         fn cpu_read(&mut self, _addr: u16) -> u8 {
@@ -1077,7 +1077,10 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_irq_flag_timing() {
-        run_blargg_apu_rom(test_input!("nes/apu/6-irq_flag_timing.nes"), "6-irq_flag_timing");
+        run_blargg_apu_rom(
+            test_input!("nes/apu/6-irq_flag_timing.nes"),
+            "6-irq_flag_timing",
+        );
     }
 
     #[test]
@@ -1203,7 +1206,10 @@ mod tests {
 
     #[test]
     fn test_apu_reset_4015_cleared() {
-        run_apu_reset_rom(test_input!("nes/apu_reset/4015_cleared.nes"), "4015_cleared");
+        run_apu_reset_rom(
+            test_input!("nes/apu_reset/4015_cleared.nes"),
+            "4015_cleared",
+        );
     }
 
     #[test]
@@ -1213,7 +1219,10 @@ mod tests {
 
     #[test]
     fn test_apu_reset_4017_written() {
-        run_apu_reset_rom(test_input!("nes/apu_reset/4017_written.nes"), "4017_written");
+        run_apu_reset_rom(
+            test_input!("nes/apu_reset/4017_written.nes"),
+            "4017_written",
+        );
     }
 
     #[test]
@@ -1247,9 +1256,9 @@ mod tests {
         use crate::emu;
         use crate::emu::io::loader;
 
-        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(
-            test_input!("nes/apu/test_cpu_exec_space_apu.nes"),
-        )));
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!(
+            "nes/apu/test_cpu_exec_space_apu.nes"
+        ))));
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
         emu.toggle_should_trigger_nmi(true);
@@ -1311,7 +1320,10 @@ mod tests {
     #[test]
     #[ignore]
     fn test_pal_apu_clock_jitter() {
-        run_pal_apu_rom(test_input!("nes/pal_apu/04.clock_jitter.nes"), "04.clock_jitter");
+        run_pal_apu_rom(
+            test_input!("nes/pal_apu/04.clock_jitter.nes"),
+            "04.clock_jitter",
+        );
     }
 
     #[test]
@@ -1344,7 +1356,10 @@ mod tests {
     #[test]
     #[ignore]
     fn test_pal_apu_irq_timing() {
-        run_pal_apu_rom(test_input!("nes/pal_apu/08.irq_timing.nes"), "08.irq_timing");
+        run_pal_apu_rom(
+            test_input!("nes/pal_apu/08.irq_timing.nes"),
+            "08.irq_timing",
+        );
     }
 
     #[test]

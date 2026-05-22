@@ -104,9 +104,7 @@ impl MemoryMapper for MMC2Mapper {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
             0x60 | 0x70 => 0, // no PRG RAM on MMC2
-            0x80 | 0x90 => {
-                self.prg_banks[self.prg_bank_idx][(addr - 0x8000) as usize]
-            }
+            0x80 | 0x90 => self.prg_banks[self.prg_bank_idx][(addr - 0x8000) as usize],
             0xA0 | 0xB0 => {
                 let fixed = self.prg_banks.len() - 3;
                 self.prg_banks[fixed][(addr - 0xA000) as usize]
@@ -133,8 +131,7 @@ impl MemoryMapper for MMC2Mapper {
                 let reg = (addr >> 12) & 0x0F;
                 match reg {
                     0xA => {
-                        self.prg_bank_idx =
-                            (value as usize & 0x0F) % self.prg_banks.len();
+                        self.prg_bank_idx = (value as usize & 0x0F) % self.prg_banks.len();
                     }
                     0xB => {
                         self.chr_regs[0][0] = value as usize & 0x1F;
@@ -207,20 +204,14 @@ impl MemoryMapper for MMC2Mapper {
             0x00 => {
                 let bank = self.active_chr_bank(0);
                 unsafe {
-                    std::ptr::copy(
-                        self.chr_banks[bank].as_ptr().offset(addr as _),
-                        dest,
-                        size,
-                    )
+                    std::ptr::copy(self.chr_banks[bank].as_ptr().offset(addr as _), dest, size)
                 }
             }
             0x10 => {
                 let bank = self.active_chr_bank(1);
                 unsafe {
                     std::ptr::copy(
-                        self.chr_banks[bank]
-                            .as_ptr()
-                            .offset((addr - 0x1000) as _),
+                        self.chr_banks[bank].as_ptr().offset((addr - 0x1000) as _),
                         dest,
                         size,
                     )
@@ -366,8 +357,8 @@ mod tests {
     fn test_chr_register_writes() {
         let mut m = make_mapper(8, 16);
 
-        m.cpu_write(0xB000, 3);  // CHR left/FD
-        m.cpu_write(0xC000, 7);  // CHR left/FE
+        m.cpu_write(0xB000, 3); // CHR left/FD
+        m.cpu_write(0xC000, 7); // CHR left/FE
         m.cpu_write(0xD000, 10); // CHR right/FD
         m.cpu_write(0xE000, 15); // CHR right/FE
 
@@ -407,8 +398,8 @@ mod tests {
     #[test]
     fn test_latch_left_fd_trigger() {
         let mut m = make_mapper(8, 16);
-        m.cpu_write(0xB000, 2);  // FD bank
-        m.cpu_write(0xC000, 5);  // FE bank
+        m.cpu_write(0xB000, 2); // FD bank
+        m.cpu_write(0xC000, 5); // FE bank
 
         // Initial state: latch 0 = FE, so active bank = chr_regs[0][1] = 5
         assert_eq!(m.active_chr_bank(0), 5);
@@ -425,8 +416,8 @@ mod tests {
     #[test]
     fn test_latch_left_fe_trigger() {
         let mut m = make_mapper(8, 16);
-        m.cpu_write(0xB000, 2);  // FD bank
-        m.cpu_write(0xC000, 5);  // FE bank
+        m.cpu_write(0xB000, 2); // FD bank
+        m.cpu_write(0xC000, 5); // FE bank
 
         // Switch to FD first
         m.ppu_fetch(0x0FD8, 0);
@@ -465,7 +456,11 @@ mod tests {
         for addr in 0x1FD8..=0x1FDF {
             m.latches[1] = 1; // reset
             m.ppu_fetch(addr, 0);
-            assert_eq!(m.latches[1], 0, "addr {:#06X} should trigger right FD latch", addr);
+            assert_eq!(
+                m.latches[1], 0,
+                "addr {:#06X} should trigger right FD latch",
+                addr
+            );
         }
 
         // $1FD7 should NOT trigger
@@ -488,7 +483,11 @@ mod tests {
         for addr in 0x1FE8..=0x1FEF {
             m.latches[1] = 0; // reset to FD
             m.ppu_fetch(addr, 0);
-            assert_eq!(m.latches[1], 1, "addr {:#06X} should trigger right FE latch", addr);
+            assert_eq!(
+                m.latches[1], 1,
+                "addr {:#06X} should trigger right FE latch",
+                addr
+            );
         }
     }
 
@@ -500,8 +499,8 @@ mod tests {
         m.chr_banks[2][0x0FD8] = 0xAA;
         m.chr_banks[5][0x0FD8] = 0xBB;
 
-        m.cpu_write(0xB000, 2);  // FD bank = 2
-        m.cpu_write(0xC000, 5);  // FE bank = 5
+        m.cpu_write(0xB000, 2); // FD bank = 2
+        m.cpu_write(0xC000, 5); // FE bank = 5
 
         // Initial latch = FE, so active bank for left half = 5
         let val = m.ppu_fetch(0x0FD8, 0);

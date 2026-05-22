@@ -172,6 +172,7 @@ pub fn setup_visibility_pause() {
     }) as Box<dyn FnMut(_)>);
 
     let doc = super::document();
-    let _ = doc.add_event_listener_with_callback("visibilitychange", closure.as_ref().unchecked_ref());
+    let _ =
+        doc.add_event_listener_with_callback("visibilitychange", closure.as_ref().unchecked_ref());
     closure.forget();
 }

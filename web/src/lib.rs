@@ -92,14 +92,14 @@ fn setup_file_input() {
         let _ = reader.read_as_array_buffer(&file);
     }) as Box<dyn FnMut(_)>);
 
-    input.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref()).unwrap();
+    input
+        .add_event_listener_with_callback("change", closure.as_ref().unchecked_ref())
+        .unwrap();
     closure.forget();
 }
 
 fn setup_lucky_button() {
-    let btn = document()
-        .get_element_by_id("lucky-btn")
-        .unwrap();
+    let btn = document().get_element_by_id("lucky-btn").unwrap();
 
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
         set_status("Fetching ROM...");
@@ -111,14 +111,13 @@ fn setup_lucky_button() {
         });
     }) as Box<dyn FnMut(_)>);
 
-    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+        .unwrap();
     closure.forget();
 }
 
 fn setup_fullscreen_toggle() {
-    let canvas = document()
-        .get_element_by_id("nes-canvas")
-        .unwrap();
+    let canvas = document().get_element_by_id("nes-canvas").unwrap();
 
     let canvas_clone = canvas.clone();
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
@@ -130,12 +129,16 @@ fn setup_fullscreen_toggle() {
         }
     }) as Box<dyn FnMut(_)>);
 
-    canvas.add_event_listener_with_callback("dblclick", closure.as_ref().unchecked_ref()).unwrap();
+    canvas
+        .add_event_listener_with_callback("dblclick", closure.as_ref().unchecked_ref())
+        .unwrap();
     closure.forget();
 }
 
 fn setup_touch_load_button() {
-    let Some(btn) = document().get_element_by_id("touch-load") else { return };
+    let Some(btn) = document().get_element_by_id("touch-load") else {
+        return;
+    };
 
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
         if let Some(input) = document().get_element_by_id("rom-input") {
@@ -144,12 +147,15 @@ fn setup_touch_load_button() {
             }
         }
     }) as Box<dyn FnMut(_)>);
-    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+        .unwrap();
     closure.forget();
 }
 
 fn setup_touch_lucky_button() {
-    let Some(btn) = document().get_element_by_id("touch-lucky") else { return };
+    let Some(btn) = document().get_element_by_id("touch-lucky") else {
+        return;
+    };
 
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
         wasm_bindgen_futures::spawn_local(async {
@@ -159,7 +165,8 @@ fn setup_touch_lucky_button() {
             }
         });
     }) as Box<dyn FnMut(_)>);
-    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+    btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+        .unwrap();
     closure.forget();
 }
 
@@ -173,11 +180,10 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
         return Err(format!("HTTP {}", resp.status()));
     }
 
-    let buf = wasm_bindgen_futures::JsFuture::from(
-        resp.array_buffer().map_err(|_| "no array_buffer")?,
-    )
-    .await
-    .map_err(|e| format!("{:?}", e))?;
+    let buf =
+        wasm_bindgen_futures::JsFuture::from(resp.array_buffer().map_err(|_| "no array_buffer")?)
+            .await
+            .map_err(|e| format!("{:?}", e))?;
 
     let uint8 = js_sys::Uint8Array::new(&buf);
     let mut data = vec![0u8; uint8.length() as usize];
@@ -206,14 +212,19 @@ fn start_emulator(rom_data: Vec<u8>) {
 
     set_status("Starting...");
     if let Some(el) = document().get_element_by_id("lucky-nudge") {
-        let _ = el.dyn_into::<web_sys::HtmlElement>().map(|e| e.style().set_property("display", "none"));
+        let _ = el
+            .dyn_into::<web_sys::HtmlElement>()
+            .map(|e| e.style().set_property("display", "none"));
     }
 
     let keys = KEYS.with(|k| k.clone());
     let audio_port: Rc<RefCell<Option<web_sys::MessagePort>>> = Rc::new(RefCell::new(None));
     let worklet_level: Rc<Cell<u32>> = Rc::new(Cell::new(0));
     let io_handler = Box::new(WebIOHandler::new(keys.clone()));
-    let audio_backend = Box::new(WebAudioBackend::new(audio_port.clone(), worklet_level.clone()));
+    let audio_backend = Box::new(WebAudioBackend::new(
+        audio_port.clone(),
+        worklet_level.clone(),
+    ));
 
     let mut emu = emu::Emulator::new_with(io_handler, mapper, audio_backend);
     emu.cpu.status = 0x34;
@@ -329,7 +340,8 @@ fn run_loop(
                     Err(e) => emu.overlay.toast(format!("LOAD FAILED: {}", e)),
                 }
             } else {
-                emu.overlay.toast(format!("NO SAVE IN SLOT {}", savestate_slot));
+                emu.overlay
+                    .toast(format!("NO SAVE IN SLOT {}", savestate_slot));
             }
         }
         if cycle_held && !prev_cycle {

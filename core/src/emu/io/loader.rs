@@ -234,7 +234,11 @@ fn load_nes_from_bytes_inner(
             Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
         }
         4 => {
-            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            let mmc3_chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
             Box::new(MMC3Mapper::new(
                 flags,
                 prg_banks,
@@ -269,7 +273,11 @@ fn load_nes_from_bytes_inner(
             ))
         }
         118 => {
-            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            let mmc3_chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
             Box::new(MMC3Mapper::new_variant(
                 flags,
                 prg_banks,
@@ -281,7 +289,11 @@ fn load_nes_from_bytes_inner(
             ))
         }
         119 => {
-            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            let mmc3_chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
             Box::new(MMC3Mapper::new_variant(
                 flags,
                 prg_banks,
@@ -311,10 +323,7 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
-        105 => Box::new(mapper::nes_event::NesEventMapper::new(
-            flags,
-            prg_banks,
-        )),
+        105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 

@@ -8,9 +8,9 @@ const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum MMC3Variant {
-    Standard,  // Mapper 4
-    TxSROM,    // Mapper 118: mirroring from CHR bank bit 7
-    TQROM,     // Mapper 119: bit 6 selects CHR-RAM vs CHR-ROM
+    Standard, // Mapper 4
+    TxSROM,   // Mapper 118: mirroring from CHR bank bit 7
+    TQROM,    // Mapper 119: bit 6 selects CHR-RAM vs CHR-ROM
 }
 
 pub struct MMC3Mapper {
@@ -65,7 +65,15 @@ impl MMC3Mapper {
         sram_data: Option<Vec<u8>>,
         submapper: u8,
     ) -> MMC3Mapper {
-        Self::new_variant(flags, prg_banks, chr_banks, has_battery, sram_data, submapper, MMC3Variant::Standard)
+        Self::new_variant(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+            submapper,
+            MMC3Variant::Standard,
+        )
     }
 
     pub fn new_variant(
@@ -102,9 +110,7 @@ impl MMC3Mapper {
         }
 
         let (chr_rom, chr_ram, chr_is_ram) = match variant {
-            MMC3Variant::TQROM => {
-                (chr_rom_banks, vec![[0; CHR_BANK_SIZE]; 8], false)
-            }
+            MMC3Variant::TQROM => (chr_rom_banks, vec![[0; CHR_BANK_SIZE]; 8], false),
             _ => {
                 if chr_rom_banks.is_empty() {
                     (vec![], vec![[0; CHR_BANK_SIZE]; 8], true)
@@ -168,8 +174,16 @@ impl MMC3Mapper {
                 }
             }
             _ => {
-                let chr = if self.chr_is_ram { &self.chr_ram } else { &self.chr_rom };
-                if chr.is_empty() { 0 } else { raw % chr.len() }
+                let chr = if self.chr_is_ram {
+                    &self.chr_ram
+                } else {
+                    &self.chr_rom
+                };
+                if chr.is_empty() {
+                    0
+                } else {
+                    raw % chr.len()
+                }
             }
         }
     }
@@ -225,14 +239,62 @@ impl MMC3Mapper {
 
     fn chr_register_for_addr(&self, addr: u16) -> (usize, bool) {
         match addr {
-            0x0000..=0x03FF => if self.chr_bank_mode == 0 { (0, false) } else { (2, true) },
-            0x0400..=0x07FF => if self.chr_bank_mode == 0 { (0, true) } else { (3, true) },
-            0x0800..=0x0BFF => if self.chr_bank_mode == 0 { (1, false) } else { (4, true) },
-            0x0C00..=0x0FFF => if self.chr_bank_mode == 0 { (1, true) } else { (5, true) },
-            0x1000..=0x13FF => if self.chr_bank_mode == 0 { (2, true) } else { (0, false) },
-            0x1400..=0x17FF => if self.chr_bank_mode == 0 { (3, true) } else { (0, true) },
-            0x1800..=0x1BFF => if self.chr_bank_mode == 0 { (4, true) } else { (1, false) },
-            0x1C00..=0x1FFF => if self.chr_bank_mode == 0 { (5, true) } else { (1, true) },
+            0x0000..=0x03FF => {
+                if self.chr_bank_mode == 0 {
+                    (0, false)
+                } else {
+                    (2, true)
+                }
+            }
+            0x0400..=0x07FF => {
+                if self.chr_bank_mode == 0 {
+                    (0, true)
+                } else {
+                    (3, true)
+                }
+            }
+            0x0800..=0x0BFF => {
+                if self.chr_bank_mode == 0 {
+                    (1, false)
+                } else {
+                    (4, true)
+                }
+            }
+            0x0C00..=0x0FFF => {
+                if self.chr_bank_mode == 0 {
+                    (1, true)
+                } else {
+                    (5, true)
+                }
+            }
+            0x1000..=0x13FF => {
+                if self.chr_bank_mode == 0 {
+                    (2, true)
+                } else {
+                    (0, false)
+                }
+            }
+            0x1400..=0x17FF => {
+                if self.chr_bank_mode == 0 {
+                    (3, true)
+                } else {
+                    (0, true)
+                }
+            }
+            0x1800..=0x1BFF => {
+                if self.chr_bank_mode == 0 {
+                    (4, true)
+                } else {
+                    (1, false)
+                }
+            }
+            0x1C00..=0x1FFF => {
+                if self.chr_bank_mode == 0 {
+                    (5, true)
+                } else {
+                    (1, true)
+                }
+            }
             _ => (0, true),
         }
     }
@@ -258,7 +320,11 @@ impl MMC3Mapper {
             let nt = ((addr >> 10) & 3) as u16;
             let chr_addr = nt * 0x400;
             let (reg, _) = self.chr_register_for_addr(chr_addr);
-            let page = if (self.bank_regs[reg] & 0x80) != 0 { 0x400usize } else { 0 };
+            let page = if (self.bank_regs[reg] & 0x80) != 0 {
+                0x400usize
+            } else {
+                0
+            };
             page + (addr as usize & 0x3FF)
         } else {
             let mirrored = mirror_nametable_addr(addr, self.mirroring);
@@ -589,11 +655,11 @@ impl MemoryMapper for MMC3Mapper {
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use crate::test_input;
     #[allow(unused_imports)]
     use crate::emu;
     #[allow(unused_imports)]
     use crate::emu::io::loader;
+    use crate::test_input;
 
     fn test_mapper() -> MMC3Mapper {
         MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0)
@@ -780,7 +846,11 @@ mod tests {
 
     #[test]
     fn test_mmc3_6_mmc6() {
-        run_mmc3_rom_with_submapper(test_input!("nes/mappers/mmc3/6-MMC6.nes"), "6-MMC6", Some(1));
+        run_mmc3_rom_with_submapper(
+            test_input!("nes/mappers/mmc3/6-MMC6.nes"),
+            "6-MMC6",
+            Some(1),
+        );
     }
 
     #[test]

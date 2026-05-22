@@ -1017,10 +1017,8 @@ impl PPU {
             }
             2 => {
                 // Garbage attribute byte fetch (uses real AT address from V register)
-                let at_addr = 0x23C0
-                    | (self.v & 0x0C00)
-                    | ((self.v >> 4) & 0x38)
-                    | ((self.v >> 2) & 0x07);
+                let at_addr =
+                    0x23C0 | (self.v & 0x0C00) | ((self.v >> 4) & 0x38) | ((self.v >> 2) & 0x07);
                 self.ppu_fetch(mem, at_addr);
             }
             4 => {

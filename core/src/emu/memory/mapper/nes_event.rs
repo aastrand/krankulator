@@ -33,10 +33,7 @@ pub struct NesEventMapper {
 }
 
 impl NesEventMapper {
-    pub fn new(
-        flags: u8,
-        prg_banks: Vec<[u8; PRG_BANK_SIZE]>,
-    ) -> Self {
+    pub fn new(flags: u8, prg_banks: Vec<[u8; PRG_BANK_SIZE]>) -> Self {
         let mirroring = if flags & 1 != 0 {
             NametableMirror::Vertical
         } else {
@@ -125,7 +122,10 @@ impl NesEventMapper {
             if offset < PRG_BANK_SIZE {
                 return self.prg_rom.get(base).map_or(0, |b| b[offset]);
             } else {
-                return self.prg_rom.get(base + 1).map_or(0, |b| b[offset - PRG_BANK_SIZE]);
+                return self
+                    .prg_rom
+                    .get(base + 1)
+                    .map_or(0, |b| b[offset - PRG_BANK_SIZE]);
             }
         }
 
@@ -138,22 +138,26 @@ impl NesEventMapper {
             0x8000..=0xBFFF => {
                 let bank = match prg_mode {
                     0 | 1 => prg_reg & !1, // 32KB mode, even-aligned
-                    2 => first_chip2,       // fixed first bank of chip 2
-                    3 => prg_reg,           // switchable
+                    2 => first_chip2,      // fixed first bank of chip 2
+                    3 => prg_reg,          // switchable
                     _ => unreachable!(),
                 };
                 let bank = bank.min(last_bank);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0x8000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0x8000) as usize])
             }
             0xC000..=0xFFFF => {
                 let bank = match prg_mode {
                     0 | 1 => (prg_reg & !1) + 1, // 32KB mode, odd half
-                    2 => prg_reg,                  // switchable
-                    3 => last_bank,                // fixed last bank
+                    2 => prg_reg,                // switchable
+                    3 => last_bank,              // fixed last bank
                     _ => unreachable!(),
                 };
                 let bank = bank.min(last_bank);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0xC000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xC000) as usize])
             }
             _ => 0,
         }

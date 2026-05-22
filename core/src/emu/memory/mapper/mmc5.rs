@@ -15,8 +15,8 @@ const DUTY_CYCLES: [u8; 4] = [
 ];
 
 const LENGTH_COUNTER_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96,
-    22, 192, 24, 72, 26, 16, 28, 32, 30,
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
+    192, 24, 72, 26, 16, 28, 32, 30,
 ];
 
 struct Mmc5Pulse {
@@ -188,9 +188,9 @@ pub struct MMC5Mapper {
 
     // CHR banking
     chr_mode: u8,
-    chr_bank_a: [u16; 8],  // $5120-$5127
-    chr_bank_b: [u16; 4],  // $5128-$512B
-    chr_upper_bits: u8,    // $5130
+    chr_bank_a: [u16; 8], // $5120-$5127
+    chr_bank_b: [u16; 4], // $5128-$512B
+    chr_upper_bits: u8,   // $5130
     large_sprites: bool,
     last_chr_write_was_b: bool,
 
@@ -205,7 +205,7 @@ pub struct MMC5Mapper {
     exram_mode: u8, // $5104
 
     // Scanline IRQ
-    irq_scanline: u8,  // $5203
+    irq_scanline: u8, // $5203
     irq_enabled: bool,
     irq_pending: bool,
     in_frame: bool,
@@ -414,8 +414,7 @@ impl MMC5Mapper {
                         PrgSource::Ram(ram_bank + offset)
                     }
                 } else {
-                    let bank =
-                        (self.prg_bank_regs[4] & 0x7F) as usize % self.prg_rom.len().max(1);
+                    let bank = (self.prg_bank_regs[4] & 0x7F) as usize % self.prg_rom.len().max(1);
                     let offset = (addr - 0xE000) as usize;
                     PrgSource::Rom(bank, offset)
                 }
@@ -450,8 +449,7 @@ impl MMC5Mapper {
         let use_b = if self.rendering {
             if self.large_sprites {
                 // 8x16: A banks for sprite fetches (tiles 32-39), B for BG
-                !(self.split_tile_number >= 32 && self.split_tile_number < 40)
-                    && self.in_frame
+                !(self.split_tile_number >= 32 && self.split_tile_number < 40) && self.in_frame
             } else {
                 // 8x8: always use A banks for rendering
                 false
@@ -617,9 +615,7 @@ impl MMC5Mapper {
                 self.scanline_counter = 0;
             } else {
                 self.scanline_counter = self.scanline_counter.wrapping_add(1);
-                if self.irq_scanline != 0
-                    && self.irq_scanline == self.scanline_counter
-                {
+                if self.irq_scanline != 0 && self.irq_scanline == self.scanline_counter {
                     self.irq_pending = true;
                 }
             }
@@ -647,9 +643,7 @@ enum PrgSource {
 impl MemoryMapper for MMC5Mapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
-            0x0000..=0x1FFF => {
-                self.internal_ram[(addr & 0x07FF) as usize]
-            }
+            0x0000..=0x1FFF => self.internal_ram[(addr & 0x07FF) as usize],
             0x5010 => {
                 // PCM status: bit 0 = IRQ pending (not implemented)
                 0
@@ -899,8 +893,7 @@ impl MemoryMapper for MMC5Mapper {
 
         // Nametable/attribute range
         if is_nt_range {
-            let is_sprite_fetch =
-                self.split_tile_number >= 32 && self.split_tile_number < 40;
+            let is_sprite_fetch = self.split_tile_number >= 32 && self.split_tile_number < 40;
 
             // Vertical split mode
             if self.vsplit_mode & 0x80 != 0 && !is_sprite_fetch {
@@ -939,11 +932,10 @@ impl MemoryMapper for MMC5Mapper {
                     self.exattr_nt_offset = addr & 0x03FF;
                     self.exattr_fetch_counter = 3;
                 } else if self.exattr_fetch_counter == 3 {
-                    let exram_byte =
-                        self.exram[self.exattr_nt_offset as usize % EXRAM_SIZE];
+                    let exram_byte = self.exram[self.exattr_nt_offset as usize % EXRAM_SIZE];
                     let palette = (exram_byte >> 6) & 3;
-                    self.exattr_chr_bank = ((exram_byte & 0x3F) as u16)
-                        | ((self.chr_upper_bits as u16) << 6);
+                    self.exattr_chr_bank =
+                        ((exram_byte & 0x3F) as u16) | ((self.chr_upper_bits as u16) << 6);
                     self.exattr_fetch_counter = 2;
                     return palette | (palette << 2) | (palette << 4) | (palette << 6);
                 }
@@ -957,9 +949,7 @@ impl MemoryMapper for MMC5Mapper {
             self.exattr_fetch_counter -= 1;
 
             if self.exram_mode == 1 || self.vsplit_mode & 0x80 != 0 {
-                let chr_bank = if self.vsplit_mode & 0x80 != 0
-                    && self.exattr_fetch_counter <= 1
-                {
+                let chr_bank = if self.vsplit_mode & 0x80 != 0 && self.exattr_fetch_counter <= 1 {
                     (self.vsplit_bank as u16) | ((self.chr_upper_bits as u16) << 8)
                 } else {
                     self.exattr_chr_bank
@@ -1309,7 +1299,7 @@ mod tests {
             m.prg_rom[i][0] = i as u8 + 0x20;
         }
         m.cpu_write(0x5100, 0); // 32KB mode
-        // $5117: select 32KB-aligned bank. bits 6:2. bank 0 means first 4 8KB banks.
+                                // $5117: select 32KB-aligned bank. bits 6:2. bank 0 means first 4 8KB banks.
         m.cpu_write(0x5117, 0x80); // bank 0 (ROM bit set)
         assert_eq!(m.cpu_read(0x8000), 0x20);
         assert_eq!(m.cpu_read(0xA000), 0x21);
@@ -1397,10 +1387,10 @@ mod tests {
         let mut m = make_mapper(2, 1);
         m.cpu_write(0x5106, 0x42); // fill tile
         m.cpu_write(0x5107, 0x02); // fill color
-        // Map NT0 to fill mode (source 3)
+                                   // Map NT0 to fill mode (source 3)
         m.cpu_write(0x5105, 0x03);
         assert_eq!(m.ppu_read(0x2000), 0x42); // tile
-        // Attribute area: fill color replicated
+                                              // Attribute area: fill color replicated
         let attr = m.ppu_read(0x23C0);
         assert_eq!(attr, 0xAA); // color 2 in all quadrants = 10_10_10_10
     }
@@ -1791,7 +1781,7 @@ mod tests {
     fn test_exram_nametable_source() {
         let mut m = make_mapper(2, 1);
         m.cpu_write(0x5104, 0); // ExRAM mode 0: nametable data
-        // Map NT0 to ExRAM (source 2)
+                                // Map NT0 to ExRAM (source 2)
         m.cpu_write(0x5105, 0x02);
 
         // Write to ExRAM via $5C00
@@ -1820,12 +1810,12 @@ mod tests {
         let mut m = make_mapper(2, 4);
         m.cpu_write(0x5101, 2); // 2KB mode
         m.rendering = false; // PPUDATA path so we can control use_b
-        // Write B registers: B[0]=$5128, B[1]=$5129, B[2]=$512A, B[3]=$512B
+                             // Write B registers: B[0]=$5128, B[1]=$5129, B[2]=$512A, B[3]=$512B
         m.cpu_write(0x5128, 0); // B[0] — should NOT be used
         m.cpu_write(0x5129, 3); // B[1] — used for slots 0,2
         m.cpu_write(0x512A, 0); // B[2] — should NOT be used
         m.cpu_write(0x512B, 7); // B[3] — used for slots 1,3
-        // last_chr_write_was_b is true after writing $512B
+                                // last_chr_write_was_b is true after writing $512B
 
         // Slot 0 ($0000-$07FF): should use B[1]=3, base = 3*2 = bank 6
         let val = m.ppu_read(0x0000);
@@ -1920,7 +1910,7 @@ mod tests {
 
         m.cpu_write(0x5120, 5); // A bank
         m.cpu_write(0x5128, 10); // B bank (last written)
-        // During rendering in 8x8 mode, A banks are always used
+                                 // During rendering in 8x8 mode, A banks are always used
         let val = m.ppu_read(0x0000);
         assert_eq!(val, 5);
     }
@@ -1933,12 +1923,12 @@ mod tests {
         m.rendering = false; // PPUDATA access
 
         m.cpu_write(0x5120, 5); // A bank
-        // After writing A, PPUDATA should use A banks
+                                // After writing A, PPUDATA should use A banks
         let val = m.ppu_read(0x0000);
         assert_eq!(val, 5);
 
         m.cpu_write(0x5128, 10); // B bank (now last written)
-        // After writing B, PPUDATA should use B banks
+                                 // After writing B, PPUDATA should use B banks
         let val = m.ppu_read(0x0000);
         assert_eq!(val, 10);
     }

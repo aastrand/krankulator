@@ -49,10 +49,8 @@ impl Sunsoft4Mapper {
             }
             for i in 0..8 {
                 chr_rom_1k.push(
-                    <[u8; NT_BANK_SIZE]>::try_from(
-                        &bank[i * NT_BANK_SIZE..(i + 1) * NT_BANK_SIZE],
-                    )
-                    .unwrap(),
+                    <[u8; NT_BANK_SIZE]>::try_from(&bank[i * NT_BANK_SIZE..(i + 1) * NT_BANK_SIZE])
+                        .unwrap(),
                 );
             }
         }
@@ -110,10 +108,22 @@ impl Sunsoft4Mapper {
         if self.use_chr_nametables {
             let nt = (addr >> 10) & 3;
             let nt_reg = match self.mirroring & 3 {
-                0 => if nt & 1 == 0 { 0 } else { 1 }, // vertical
-                1 => if nt < 2 { 0 } else { 1 },       // horizontal
-                2 => 0,                                  // single low
-                3 => 1,                                  // single high
+                0 => {
+                    if nt & 1 == 0 {
+                        0
+                    } else {
+                        1
+                    }
+                } // vertical
+                1 => {
+                    if nt < 2 {
+                        0
+                    } else {
+                        1
+                    }
+                } // horizontal
+                2 => 0, // single low
+                3 => 1, // single high
                 _ => unreachable!(),
             };
             let bank = self.nt_banks[nt_reg] as usize;
@@ -147,11 +157,15 @@ impl MemoryMapper for Sunsoft4Mapper {
             }
             0x8000..=0xBFFF => {
                 let bank = self.prg_bank as usize % self.prg_rom.len().max(1);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0x8000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0x8000) as usize])
             }
             0xC000..=0xFFFF => {
                 let bank = self.prg_rom.len().saturating_sub(1);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0xC000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xC000) as usize])
             }
             _ => 0,
         }
@@ -251,11 +265,19 @@ impl MemoryMapper for Sunsoft4Mapper {
     }
 
     fn sram_data(&self) -> Option<&[u8]> {
-        if self.has_battery { Some(&self.prg_ram[..]) } else { None }
+        if self.has_battery {
+            Some(&self.prg_ram[..])
+        } else {
+            None
+        }
     }
 
     fn sram_data_mut(&mut self) -> Option<&mut [u8]> {
-        if self.has_battery { Some(&mut self.prg_ram[..]) } else { None }
+        if self.has_battery {
+            Some(&mut self.prg_ram[..])
+        } else {
+            None
+        }
     }
 
     fn mapper_id(&self) -> u8 {

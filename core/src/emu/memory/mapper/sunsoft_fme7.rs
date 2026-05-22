@@ -145,24 +145,34 @@ impl MemoryMapper for SunsoftFme7Mapper {
                     }
                 } else {
                     let bank = (v as usize & 0x3F) % self.prg_rom.len().max(1);
-                    self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0x6000) as usize])
+                    self.prg_rom
+                        .get(bank)
+                        .map_or(0, |b| b[(addr - 0x6000) as usize])
                 }
             }
             0x8000..=0x9FFF => {
                 let bank = self.prg_bank_index(1);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0x8000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0x8000) as usize])
             }
             0xA000..=0xBFFF => {
                 let bank = self.prg_bank_index(2);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0xA000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xA000) as usize])
             }
             0xC000..=0xDFFF => {
                 let bank = self.prg_bank_index(3);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0xC000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xC000) as usize])
             }
             0xE000..=0xFFFF => {
                 let bank = self.prg_rom.len().saturating_sub(1);
-                self.prg_rom.get(bank).map_or(0, |b| b[(addr - 0xE000) as usize])
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xE000) as usize])
             }
             _ => 0,
         }
@@ -188,7 +198,9 @@ impl MemoryMapper for SunsoftFme7Mapper {
             0x0000..=0x1FFF => {
                 let slot = (addr >> 10) as usize & 7;
                 let bank = self.chr_banks[slot] as usize % self.chr_rom.len().max(1);
-                self.chr_rom.get(bank).map_or(0, |b| b[addr as usize & 0x3FF])
+                self.chr_rom
+                    .get(bank)
+                    .map_or(0, |b| b[addr as usize & 0x3FF])
             }
             0x2000..=0x3EFF => {
                 let mirrored = mirror_nametable_addr(addr, self.mirroring);
@@ -268,11 +280,19 @@ impl MemoryMapper for SunsoftFme7Mapper {
     }
 
     fn sram_data(&self) -> Option<&[u8]> {
-        if self.has_battery { Some(&self.prg_ram[..]) } else { None }
+        if self.has_battery {
+            Some(&self.prg_ram[..])
+        } else {
+            None
+        }
     }
 
     fn sram_data_mut(&mut self) -> Option<&mut [u8]> {
-        if self.has_battery { Some(&mut self.prg_ram[..]) } else { None }
+        if self.has_battery {
+            Some(&mut self.prg_ram[..])
+        } else {
+            None
+        }
     }
 
     fn mapper_id(&self) -> u8 {
