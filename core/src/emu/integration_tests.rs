@@ -614,7 +614,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_ppu_nmi_timing() {
         run_blargg_test(
             test_input!("nes/ppu/vbl_nmi/05-nmi_timing.nes"),

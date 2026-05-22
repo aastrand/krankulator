@@ -224,77 +224,93 @@ Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes
 | blargg_apu_2005 | all 11 | ✅ | apu/mod.rs |
 | apu_reset | all 6 | ✅ | apu/mod.rs |
 | pal_apu_tests | all 10 | ⏸ ignored (needs PAL) | apu/mod.rs |
-| dmc_tests | status, status_irq | ✅ | integration_tests.rs |
-| dmc_tests | buffer_retained, latency | ❌ ignored | integration_tests.rs |
+| dmc_tests | status, status_irq, buffer_retained, latency | ✅ | integration_tests.rs |
 | oam_read | 1 | ✅ | integration_tests.rs |
-| ppu_vbl_nmi | 01, 03, 04, 09 | ✅ | integration_tests.rs |
-| ppu_vbl_nmi | 02, 05, 06, 07, 08, 10 | ❌ ignored | integration_tests.rs |
+| ppu_vbl_nmi | 01, 03, 04, 05, 09 | ✅ | integration_tests.rs |
+| ppu_vbl_nmi | 02, 06, 07, 08, 10 | ❌ ignored | integration_tests.rs |
 | blargg_ppu_tests_2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ | integration_tests.rs |
 | ppu_open_bus | 1 | ❌ ignored | integration_tests.rs |
 | oam_stress | 1 | ❌ ignored | integration_tests.rs |
 | mmc3_test | all 6 | ✅ | memory/mapper/mmc3.rs |
 | apu_mixer | 4 | ⏸ ignored (release-only) | apu/mod.rs |
 
+### Ignored tests — failure analysis and fix plan
+
+14 tests are wired up but `#[ignore]`d. Grouped by root cause, ordered by recommended attack priority.
+
+| Test | What it tests | Game impact | Root cause | Size |
+|------|--------------|-------------|------------|------|
+| **Priority 1 — PPU VBL/NMI timing** | | | | |
+| `02-vbl_set_time` | Exact PPU dot when VBL flag is set | High — affects all games with frame-sensitive NMI handlers | VBL suppression: reading $2002 at exact VBL dot should suppress flag (line 04 outputs `-V`, expected `--`) | M |
+| ~~`05-nmi_timing`~~ | ~~Exact CPU cycle when NMI fires after VBL~~ | ~~High~~ | **FIXED** — dot-aware NMI countdown compares VBL dot against penultimate cycle | ✅ |
+| `06-suppression` | VBL flag suppression when $2002 read at exact dot | Medium — rare but Battletoads-class edge cases | Same as 02: need to suppress VBL flag + NMI when read hits the set dot | M |
+| `07-nmi_on_timing` | Enabling NMI ($2000 write) near VBL clear | Medium — games that toggle NMI enable near VBL | Off by 1 PPU dot: CPU/PPU phase alignment gives 3-dot resolution but test needs 1-dot | S |
+| `08-nmi_off_timing` | Disabling NMI ($2000 write) near VBL set | Medium — same class of games | Off by 2 PPU dots: same sub-CPU-cycle sync precision issue as 07 | S |
+| **Priority 2 — NMI hijacking + even/odd timing** | | | | |
+| `2-nmi_and_brk` | NMI during BRK redirects to NMI vector | Medium — any game hitting BRK near VBL | Detect NMI edge before vector fetch in BRK | M |
+| `3-nmi_and_irq` | NMI during IRQ redirects to NMI vector | Medium — IRQ-heavy games (MMC3) near VBL | Same mechanism in trigger_irq() | M |
+| `10-even_odd_timing` | Odd-frame clock skip timing vs BG enable | Low — only cycle-exact raster effects | Odd-frame skip happens too late relative to $2001 BG enable | S |
+| **Priority 3 — Small targeted fixes** | | | | |
+| `1-instr_timing` | Cycle counts for unofficial NOP/SBC opcodes | Very low — only unofficial opcodes 82/89/C2/E2/0B/2B fail | Add cycle counts for ~6 unofficial opcodes | XS |
+| `04-dummy_reads_apu` | Dummy reads on indexed ops trigger APU side effects | Low — only if game does indexed write to $40xx | APU registers respond to dummy read at uncorrected address | S |
+| `5-branch_delays_irq` | Branch instruction delays IRQ by 1 cycle | Low — extremely narrow timing window | IRQ sampling during taken branch needs page-cross check | S |
+| **Priority 4 — Deeper plumbing** | | | | |
+| `4-irq_and_dma` | OAM DMA delays IRQ servicing | Low — IRQ-during-DMA is rare in practice | DMA doesn't model per-cycle IRQ polling | L |
+| `ppu_open_bus` | PPU bus bits decay to 0 after ~600ms | Low — very few games rely on decay | Need per-bit decay timer on PPU data bus | M |
+| **Priority 5 — Deprioritize** | | | | |
+| `oam_stress` | OAM address/read/write under stress | Low — test only passes 1/4 on real HW | PPU-CPU alignment jitter, may be unfixable deterministically | S |
+| `cpu_exec_space_ppuio` | Code execution from PPU I/O space | Very low — no real game does this | PPU open bus during instruction fetch | M |
+
+**Attack order rationale:**
+
+1. **PPU VBL/NMI timing (02, 05, 06, 07, 08)** — biggest game compatibility payoff. These are all facets of the same subsystem: exact-dot VBL flag set, NMI propagation delay, suppression, and $2000-triggered NMI edge detection. Many games with flickering or missing frames trace back to NMI timing off by 1-2 PPU dots. Fix them together.
+
+2. **NMI hijacking (nmi_and_brk, nmi_and_irq) + even/odd timing** — second pass on code we attempted and reverted. With correct VBL timing from step 1, the hijacking logic should be straightforward: check for pending NMI edge before the vector fetch on cycle 6 of BRK/IRQ.
+
+3. **Small wins (instr_timing_1, dummy_reads_apu, branch_delays_irq)** — quick targeted fixes. Add cycle counts for 6 unofficial opcodes, wire APU dummy reads, adjust branch IRQ sampling.
+
+4. **PPU open bus + IRQ/DMA** — lower game impact, more plumbing work.
+
+5. **oam_stress + cpu_exec_space_ppuio** — oam_stress is flaky on real hardware; ppuio tests a scenario no game uses.
+
 ### Not yet wired up
 
-All use the blargg $6000 status protocol (0=pass) and run to infinite loop.
-ROMs not yet copied into `input/nes/`.
+ROMs not yet copied into `input/nes/`. Add when relevant accuracy work begins.
 
-**PPU timing**
+| Suite | ROMs | Blocker |
+|-------|------|---------|
+| `vbl_nmi_timing` | 7 | Single-PPU-clock VBL/NMI accuracy (even more precise than ppu_vbl_nmi) |
+| `ppu_read_buffer` | 1 | Thorough $2007 read buffer edge cases (~20s test) |
+| `sprite_hit_tests_2005` | 11 | Needs pixel-overlap sprite 0 hit (currently position-based) |
+| `sprite_overflow_tests` | 5 | Needs buggy diagonal overflow evaluation |
+| `cpu_dummy_reads` | 1 | Indexed addressing dummy read at uncorrected address |
+| `cpu_dummy_writes` | 2 | RMW write-back-original-then-modified with PPU/OAM side effects |
+| `dmc_dma_during_read4` | 5 | DMC DMA interleaving with $2007/$4016 reads |
+| `sprdma_and_dmc_dma` | 2 | OAM DMA + DMC DMA interaction |
+| `mmc3_test_2` | 6 | MMC3 rev A vs rev B edge cases |
 
-1. [ ] `vbl_nmi_timing` — 7 ROMs testing VBL/NMI to single-PPU-clock accuracy. Separate from blargg's ppu_vbl_nmi suite, even more timing-precise.
-2. [ ] `ppu_read_buffer` — thorough PPU $2007 read buffer tests (1 ROM). ~20 second test, mammoth coverage of read buffer edge cases.
+### Not automatable
 
-**Sprite tests (need sprite 0 hit upgrade)**
+Visual demos, interactive tests, or unsupported hardware — cannot use $6000 protocol.
 
-3. [ ] `sprite_hit_tests_2005.10.05` — 11 ROMs testing sprite 0 hit. basics, alignment, corners, flip, left_clip, right_edge, screen_bottom, double_height, timing_basics, timing_order, edge_timing. Currently our sprite 0 hit is position-based, not pixel-overlap — expect failures on 02+ until upgraded.
-4. [ ] `sprite_overflow_tests` — 5 ROMs (Basics, Details, Timing, Obscure, Emulator). Tests the buggy sprite overflow flag evaluation. Basics may pass, later ones test the diagonal evaluation bug.
-
-**CPU dummy reads/writes (may need bus accuracy work)**
-
-5. [ ] `cpu_dummy_reads` — 1 ROM. Tests that indexed addressing does dummy read at uncorrected address. We document this behavior as implemented.
-6. [ ] `cpu_dummy_writes` — 2 ROMs (OAM, PPU mem). Tests RMW instructions write-back-original-then-modified. Requires accurate PPU/OAM side effects from dummy writes.
-
-**DMC/DMA cycle stealing (needs DMA accuracy work)**
-
-7. [ ] `dmc_dma_during_read4` — 5 ROMs testing DMC DMA interleaving with $2007/$4016 reads. Very precise cycle-stealing behavior.
-8. [ ] `sprdma_and_dmc_dma` — 2 ROMs testing OAM DMA + DMC DMA interaction. Cycle-accurate DMA interleaving.
-
-**MMC3 revision tests**
-
-9. [ ] `mmc3_test_2` — 6 ROMs, updated version of mmc3_test. Tests 5 and 6 distinguish MMC3 rev A vs rev B (we pass mmc3_test already, these may differ on edge cases).
-
-### Not automatable (visual, interactive, or needs unsupported hardware)
-
-These cannot be tested with the $6000 protocol — they're visual demos, interactive tests, or require unsupported mappers/peripherals.
-
-| Suite | Why not automatable |
-|-------|-------------------|
+| Suite | Why |
+|-------|-----|
 | 240pee | Interactive menu-driven visual test suite |
-| blargg_litewall | Visual rendering demo |
+| blargg_litewall / scanline / nmi_sync / stomper / window5 | Visual rendering demos |
 | full_palette | Visual (displays palette colors) |
-| scanline / scanline-a1 | Visual scanline rendering demo |
 | scrolltest | Visual + interactive scroll test |
-| nmi_sync | Visual demo (timed-write line drawing) |
-| read_joy3 | Requires precise controller read timing / input |
+| read_joy3 | Requires precise controller read timing |
 | tvpassfail | Interactive TV display test |
 | vaus-test / PaddleTest3 | Requires Vaus/paddle controller hardware |
-| dpcmletterbox | Visual DPCM demo |
-| soundtest | Audio playback demo |
-| volume_tests | Audio volume level demo |
-| stomper | Visual demo |
-| nes15-1.0.0 | Puzzle game |
-| ny2011 / spritecans-2011 / stars_se | Demos |
-| tutor | Tutorial demo |
-| window5 | Visual demo |
+| dpcmletterbox / soundtest / volume_tests | Audio demos |
+| nes15-1.0.0 / ny2011 / spritecans-2011 / stars_se / tutor | Games and demos |
 | stress | Mixed visual + interactive test suite |
 | nrom368 | Needs NROM-368 mapper variant |
-| exram / mmc5test / mmc5test_v2 | Needs mapper 5 (MMC5) — add when MMC5 is implemented |
+| exram / mmc5test / mmc5test_v2 | Needs mapper 5 (MMC5) |
 | m22chrbankingtest | Needs mapper 22 (VRC2a) |
 | MMC1_A12 | Visual/manual MMC1 test |
 | fdsirqtests | Needs FDS mapper |
-| pal_apu_tests | Already wired up but ignored (needs PAL mode) |
-| other/ | Collection of misc demos and homebrew games |
+| pal_apu_tests | Wired up but ignored (needs PAL mode) |
 
 ---
 
@@ -303,8 +319,10 @@ These cannot be tested with the $6000 protocol — they're visual demos, interac
 - [x] APU mixer capture/reference workflow for square, triangle, noise, and DMC channels
   - Headless `CapturingAudioOutput`, WAV export, hardware reference MP3 fixtures, JSON/PNG analysis reports
   - CI runs `cargo test --release test_apu_mixer -- --ignored --nocapture --test-threads=4`
+- [ ] PPU VBL/NMI dot-accurate timing (see ignored test plan above) [M]
+- [ ] NMI hijacking during BRK/IRQ vector fetch [M]
 - [ ] Sprite 0 hit: upgrade from position-based to pixel-overlap accuracy [M]
-- [ ] PPU open bus behavior [M]
+- [ ] PPU open bus decay behavior [M]
 - [ ] CPU unofficial/illegal opcodes (for some unlicensed games and demos) [L]
 - [ ] APU DMC DMA cycle stealing accuracy [L]
 

@@ -358,8 +358,6 @@ impl PPU {
     }
 
     pub fn get_status_reg(&mut self) -> u8 {
-        // Reading on scanline 241 dot 0 occurs one PPU dot before the vblank flag is set; if games poll
-        // $2002 here, suppress the NMI that would otherwise trigger at dot 1.
         if self.scanline == VBLANK_SCANLINE && self.cycle == 0 {
             self.nmi_suppress_next_vblank = true;
         }
@@ -666,8 +664,8 @@ impl PPU {
             self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
             self.ppu_status &= !STATUS_SPRITE_OVERFLOW;
-            self.clear_background_shift_registers();
             self.nmi_suppress_next_vblank = false;
+            self.clear_background_shift_registers();
         }
 
         // Handle scroll register updates during rendering

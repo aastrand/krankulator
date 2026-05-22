@@ -383,7 +383,7 @@ impl Emulator {
         }
 
         let target_dot = self.master_clock + 3;
-        let fire_vblank_nmi = self.sync_ppu_to_dot(target_dot);
+        let vbl_dot = self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
 
         // Cycle the APU
@@ -393,7 +393,13 @@ impl Emulator {
             self.audio.push_samples(samples);
         }
 
-        if self.should_trigger_nmi && (fire_vblank_nmi || self.nmi_triggered_countdown == 0) {
+        if let Some(vbl_dot) = vbl_dot {
+            if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
+                self.nmi_triggered_countdown =
+                    if vbl_dot <= self.irq_sample_deadline { 0 } else { 1 };
+            }
+        }
+        if self.should_trigger_nmi && self.nmi_triggered_countdown == 0 {
             self.trigger_nmi();
             self.nmi_triggered_countdown = -1;
         }
@@ -510,16 +516,18 @@ impl Emulator {
             || (is_write && addr >= 0x4020)
     }
 
-    fn sync_ppu_to_dot(&mut self, target_dot: u64) -> bool {
+    fn sync_ppu_to_dot(&mut self, target_dot: u64) -> Option<u64> {
         let mut cycle_260_scanlines: [u16; 4] = [0; 4];
         let mut cycle_260_count: usize = 0;
-        let mut fire_vblank_nmi = false;
+        let mut vbl_dot: Option<u64> = None;
 
         while self.ppu.last_synced_dot < target_dot {
             let step = self
                 .ppu
                 .step_dot_with_rendering(&mut *self.mem, &mut self.buf);
-            fire_vblank_nmi |= step.fire_vblank_nmi;
+            if step.fire_vblank_nmi && vbl_dot.is_none() {
+                vbl_dot = Some(self.ppu.last_synced_dot);
+            }
             if let Some(scanline) = step.ppu_cycle_260_scanline {
                 if cycle_260_count < cycle_260_scanlines.len() {
                     cycle_260_scanlines[cycle_260_count] = scanline;
@@ -532,14 +540,17 @@ impl Emulator {
             self.mem.ppu_cycle_260(cycle_260_scanlines[i]);
         }
 
-        fire_vblank_nmi
+        vbl_dot
     }
 
     fn sync_for_cpu_access(&mut self, addr: u16, is_write: bool) {
         if self.cpu_access_needs_ppu_sync(addr, is_write) {
             let target_dot = self.cpu_bus_access_dot();
-            if self.sync_ppu_to_dot(target_dot) && self.should_trigger_nmi {
-                self.nmi_triggered_countdown = 0;
+            if let Some(vbl_dot) = self.sync_ppu_to_dot(target_dot) {
+                if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
+                    self.nmi_triggered_countdown =
+                        if vbl_dot <= self.irq_sample_deadline { 1 } else { 2 };
+                }
             }
         }
     }
@@ -1226,11 +1237,13 @@ impl Emulator {
                 return;
             }
             if reg == ppu::CTRL_REG_ADDR {
-                if (value & ppu::STATUS_VERTICAL_BLANK_BIT) == ppu::STATUS_VERTICAL_BLANK_BIT
+                if (value & ppu::STATUS_VERTICAL_BLANK_BIT) != 0
                     && !self.ppu.vblank_nmi_is_enabled()
                     && self.ppu.is_in_vblank()
                 {
-                    self.nmi_triggered_countdown = 2;
+                    let write_dot = self.cpu_bus_access_dot();
+                    self.nmi_triggered_countdown =
+                        if write_dot <= self.irq_sample_deadline { 1 } else { 2 };
                 }
             }
             if let Some((waddr, wval)) = self.ppu.write(reg, value) {

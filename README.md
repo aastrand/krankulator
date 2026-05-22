@@ -201,8 +201,7 @@ waveform, spectrum, and envelope comparisons.
 | Blargg APU 2005 | All 11 tests | ✅ |
 | APU mixer references | Square, triangle, noise, and DMC output compared against hardware recordings | ✅ |
 | APU reset | $4015 cleared, $4017 timing/written, IRQ flag cleared, len ctrs enabled, works immediately | ✅ |
-| DMC tests | status, status_irq | ✅ |
-| DMC tests | buffer_retained, latency | ❌ |
+| DMC tests | status, status_irq, buffer_retained, latency | ✅ |
 | cpu_exec_space | APU register space execution | ✅ |
 | cpu_exec_space | PPU I/O space execution | ❌ |
 | Instruction timing | Branch timing (2-branch_timing) | ✅ |
