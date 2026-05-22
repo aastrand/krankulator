@@ -117,8 +117,10 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 - [x] Remember last opened directory [XS]
 - [x] Fullscreen toggle (F11), integer/fill scaling toggle (I) [S]
 - [x] Window title shows loaded ROM name [XS]
+- [x] Recent ROMs submenu (File > Recent, last 10, persisted in ~/.config/krankulator/recent_roms.txt) [M]
+- [x] No-ROM launch shows black screen with "Open a ROM to play" banner [XS]
+- [x] Unsupported mapper errors toast on-screen [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
-- [ ] Recent ROMs list (persist across sessions in menu) [M]
 
 ---
 

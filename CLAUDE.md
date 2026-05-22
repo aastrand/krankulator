@@ -137,7 +137,7 @@ cargo clippy --workspace
 - Frame buffer (`buf.rs`): 256x240 RGB pixels
 - Palette lookup table (`palette.rs`)
 - Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
-- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes
+- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state
 
 **Audio (`emu/audio/`)**
 - `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
@@ -158,8 +158,8 @@ cargo clippy --workspace
 
 ### Desktop Frontend (`desktop/src/`)
 
-- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; outer loop handles Open ROM by reloading mapper and re-entering `run()`
-- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer, native menu bar via muda crate (File/Emulation/Display/Help), fullscreen (F11/Cmd+F), integer/fill scaling toggle (I), checkmark menu items synced with keyboard state
+- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
+- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer, native menu bar via muda crate (File with Open ROM + Recent submenu / Emulation / Display / Help), fullscreen (F11/Cmd+F), integer/fill scaling toggle (I), checkmark menu items synced with keyboard state; recent ROMs persisted to `~/.config/krankulator/recent_roms.txt` (last 10)
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
 - `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
