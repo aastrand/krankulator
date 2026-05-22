@@ -139,7 +139,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## Video / Rendering
 
-Currently: pixels crate, integer scaling (default) or fill scaling (I key), fullscreen (F11).
+Currently: pixels crate on macOS/Windows, Cairo software rendering on Linux (GTK3). Integer scaling (default) or fill scaling (I key), fullscreen (F11).
 
 - [ ] Shader/filter support [L]
   - CRT scanline filter

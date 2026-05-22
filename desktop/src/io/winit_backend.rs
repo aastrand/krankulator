@@ -1,11 +1,6 @@
 use std::time::{Duration, Instant};
 
-const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
-
-use muda::{
-    accelerator::Accelerator, AboutMetadata, CheckMenuItem, Menu, MenuEvent, MenuItem,
-    PredefinedMenuItem, Submenu,
-};
+use muda::{Menu, MenuEvent};
 use pixels::{Pixels, ScalingMode, SurfaceTexture};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::{
@@ -25,6 +20,10 @@ use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
 use krankulator_core::util;
 
+use super::{
+    add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
+    populate_recent_submenu, MenuIds, MenuItems,
+};
 use crate::gamepad::Gamepads;
 
 pub struct WinitPixelsIOHandler {
@@ -104,7 +103,23 @@ impl WinitPixelsIOHandler {
             p.set_scaling_mode(ScalingMode::PixelPerfect);
         }
 
-        let (menu, menu_ids, menu_items) = build_menu(init.window.unwrap());
+        let window = init.window.unwrap();
+        let (menu, menu_ids, menu_items) = build_menu_contents();
+
+        #[cfg(target_os = "macos")]
+        {
+            menu.init_for_nsapp();
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use raw_window_handle::HasWindowHandle;
+            if let Ok(handle) = window.window_handle() {
+                if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                    unsafe { menu.init_for_hwnd(h.hwnd.get() as _).unwrap() };
+                }
+            }
+        }
 
         Self {
             pixels,
@@ -125,8 +140,7 @@ impl WinitPixelsIOHandler {
 }
 
 fn load_window_icon() -> Option<Icon> {
-    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
-    let img = image::load_from_memory(ICON_PNG).ok()?.into_rgba8();
+    let img = image::load_from_memory(super::ICON_PNG).ok()?.into_rgba8();
     let (w, h) = img.dimensions();
     Icon::from_rgba(img.into_raw(), w, h).ok()
 }
@@ -137,10 +151,9 @@ fn set_dock_icon() {
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::NSData;
 
-    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
     unsafe {
         let mtm = MainThreadMarker::new_unchecked();
-        let data = NSData::with_bytes(ICON_PNG);
+        let data = NSData::with_bytes(super::ICON_PNG);
         if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
             NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image));
         }
@@ -149,223 +162,6 @@ fn set_dock_icon() {
 
 #[cfg(not(target_os = "macos"))]
 fn set_dock_icon() {}
-
-#[allow(unused_variables)]
-struct MenuIds {
-    open_rom: muda::MenuId,
-    quit: muda::MenuId,
-    reset: muda::MenuId,
-    save_state: muda::MenuId,
-    load_state: muda::MenuId,
-    cycle_slot: muda::MenuId,
-    fullscreen: muda::MenuId,
-    scaling: muda::MenuId,
-}
-
-struct MenuItems {
-    fullscreen: CheckMenuItem,
-    scaling: CheckMenuItem,
-    recent_submenu: Submenu,
-    recent_items: Vec<(muda::MenuId, String)>,
-}
-
-const MAX_RECENT_ROMS: usize = 10;
-
-fn recent_roms_path() -> Option<std::path::PathBuf> {
-    crate::config_dir().map(|d| d.join("recent_roms.txt"))
-}
-
-fn load_recent_roms() -> Vec<String> {
-    recent_roms_path()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .map(|s| {
-            s.lines()
-                .filter(|l| !l.is_empty())
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn save_recent_roms(roms: &[String]) {
-    if let Some(path) = recent_roms_path() {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(path, roms.join("\n"));
-    }
-}
-
-pub(crate) fn add_recent_rom(path: &str) {
-    let mut roms = load_recent_roms();
-    roms.retain(|r| r != path);
-    roms.insert(0, path.to_string());
-    roms.truncate(MAX_RECENT_ROMS);
-    save_recent_roms(&roms);
-}
-
-fn populate_recent_submenu(submenu: &Submenu) -> Vec<(muda::MenuId, String)> {
-    let roms = load_recent_roms();
-    let mut items = Vec::new();
-    for rom in &roms {
-        let label = std::path::Path::new(rom)
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or(rom);
-        let item = MenuItem::new(label, true, None::<Accelerator>);
-        items.push((item.id().clone(), rom.clone()));
-        submenu.append(&item).unwrap();
-    }
-    if roms.is_empty() {
-        let empty = MenuItem::new("No Recent ROMs", false, None::<Accelerator>);
-        submenu.append(&empty).unwrap();
-    }
-    items
-}
-
-fn about_metadata() -> AboutMetadata {
-    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
-    let icon = image::load_from_memory(ICON_PNG).ok().map(|img| {
-        let rgba = img.into_rgba8();
-        let (w, h) = rgba.dimensions();
-        muda::Icon::from_rgba(rgba.into_raw(), w, h).unwrap()
-    });
-    AboutMetadata {
-        name: Some("Krankulator".into()),
-        version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("Anders Astrand".into()),
-        comments: Some("A cycle-stepped NES emulator".into()),
-        website: Some("https://github.com/aastrand/krankulator".into()),
-        icon,
-        ..Default::default()
-    }
-}
-
-#[allow(unused_variables)]
-fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
-    let menu = Menu::new();
-
-    let file_menu = Submenu::new("File", true);
-    let open_rom = MenuItem::new(
-        "Open ROM...",
-        true,
-        Some("CmdOrCtrl+O".parse::<Accelerator>().unwrap()),
-    );
-    let open_rom_id = open_rom.id().clone();
-    file_menu.append(&open_rom).unwrap();
-    let recent_submenu = Submenu::new("Recent", true);
-    let recent_items = populate_recent_submenu(&recent_submenu);
-    file_menu.append(&recent_submenu).unwrap();
-    let quit = MenuItem::new(
-        "Exit",
-        true,
-        Some("CmdOrCtrl+Q".parse::<Accelerator>().unwrap()),
-    );
-    let quit_id = quit.id().clone();
-    file_menu.append(&PredefinedMenuItem::separator()).unwrap();
-    file_menu.append(&quit).unwrap();
-
-    let emu_menu = Submenu::new("Emulation", true);
-    let reset = MenuItem::new(
-        "Reset",
-        true,
-        Some("CmdOrCtrl+R".parse::<Accelerator>().unwrap()),
-    );
-    let reset_id = reset.id().clone();
-    let save_state = MenuItem::new(
-        "Save State",
-        true,
-        Some("CmdOrCtrl+S".parse::<Accelerator>().unwrap()),
-    );
-    let save_state_id = save_state.id().clone();
-    let load_state = MenuItem::new(
-        "Load State",
-        true,
-        Some("CmdOrCtrl+L".parse::<Accelerator>().unwrap()),
-    );
-    let load_state_id = load_state.id().clone();
-    let cycle_slot = MenuItem::new(
-        "Cycle Save Slot",
-        true,
-        Some("CmdOrCtrl+Q".parse::<Accelerator>().unwrap()),
-    );
-    let cycle_slot_id = cycle_slot.id().clone();
-    emu_menu.append(&reset).unwrap();
-    emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
-    emu_menu.append(&save_state).unwrap();
-    emu_menu.append(&load_state).unwrap();
-    emu_menu.append(&cycle_slot).unwrap();
-
-    let view_menu = Submenu::new("Display", true);
-    let fullscreen = CheckMenuItem::new(
-        "Fullscreen",
-        true,
-        false,
-        Some("CmdOrCtrl+F".parse::<Accelerator>().unwrap()),
-    );
-    let fullscreen_id = fullscreen.id().clone();
-    let scaling = CheckMenuItem::new("Integer Scaling", true, true, None::<Accelerator>);
-    let scaling_id = scaling.id().clone();
-    view_menu.append(&fullscreen).unwrap();
-    view_menu.append(&scaling).unwrap();
-
-    let help_menu = Submenu::new("Help", true);
-    help_menu
-        .append(&PredefinedMenuItem::about(
-            Some("About Krankulator"),
-            Some(about_metadata()),
-        ))
-        .unwrap();
-
-    #[cfg(target_os = "macos")]
-    {
-        let app_menu = Submenu::new("Krankulator", true);
-        app_menu
-            .append(&PredefinedMenuItem::about(None, Some(about_metadata())))
-            .unwrap();
-        app_menu.append(&PredefinedMenuItem::separator()).unwrap();
-        app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-        menu.append(&app_menu).unwrap();
-    }
-
-    menu.append(&file_menu).unwrap();
-    menu.append(&emu_menu).unwrap();
-    menu.append(&view_menu).unwrap();
-    menu.append(&help_menu).unwrap();
-
-    #[cfg(target_os = "macos")]
-    {
-        menu.init_for_nsapp();
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        use raw_window_handle::HasWindowHandle;
-        if let Ok(handle) = window.window_handle() {
-            if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
-                unsafe { menu.init_for_hwnd(h.hwnd.get() as _).unwrap() };
-            }
-        }
-    }
-
-    let ids = MenuIds {
-        open_rom: open_rom_id,
-        quit: quit_id,
-        reset: reset_id,
-        save_state: save_state_id,
-        load_state: load_state_id,
-        cycle_slot: cycle_slot_id,
-        fullscreen: fullscreen_id,
-        scaling: scaling_id,
-    };
-    let items = MenuItems {
-        fullscreen,
-        scaling,
-        recent_submenu,
-        recent_items,
-    };
-    (menu, ids, items)
-}
 
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
@@ -388,7 +184,7 @@ struct PollHandler<'a> {
     menu_items: &'a MenuItems,
 }
 
-fn toggle_fullscreen(window: &Window, menu_item: &CheckMenuItem, toasts: &mut Vec<String>) {
+fn toggle_fullscreen(window: &Window, menu_item: &muda::CheckMenuItem, toasts: &mut Vec<String>) {
     if window.fullscreen().is_some() {
         window.set_fullscreen(None);
         menu_item.set_checked(false);
@@ -602,7 +398,6 @@ impl IOHandler for WinitPixelsIOHandler {
             apu,
             muted: &mut self.muted,
             pixel_perfect: &mut self.pixel_perfect,
-
             kb_state: &mut self.kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
@@ -663,19 +458,7 @@ impl IOHandler for WinitPixelsIOHandler {
         }
 
         let open_rom = if handler.open_rom {
-            let mut dialog = rfd::FileDialog::new()
-                .set_title("Open NES ROM")
-                .add_filter("NES ROMs", &["nes"])
-                .add_filter("All files", &["*"]);
-            if let Some(dir) = crate::load_last_rom_dir() {
-                dialog = dialog.set_directory(&dir);
-            }
-            dialog.pick_file().map(|p| {
-                if let Some(dir) = p.parent() {
-                    crate::save_last_rom_dir(dir);
-                }
-                p.to_string_lossy().into_owned()
-            })
+            open_rom_dialog()
         } else {
             handler.recent_rom_path.take()
         };
@@ -696,80 +479,7 @@ impl IOHandler for WinitPixelsIOHandler {
             self.refresh_recent_menu();
         }
 
-        let gp = self.gamepads.poll();
-        for msg in gp.toasts {
-            result.toasts.push(msg);
-        }
-
-        // Merge keyboard and gamepad for player 0 (OR logic: either source can press)
-        let mut p0_state = self.kb_state;
-        if let Some(s) = &gp.states[0] {
-            if s.a {
-                p0_state |= controller::A;
-            }
-            if s.b {
-                p0_state |= controller::B;
-            }
-            if s.start {
-                p0_state |= controller::START;
-            }
-            if s.select {
-                p0_state |= controller::SELECT;
-            }
-            if s.up {
-                p0_state |= controller::UP;
-            }
-            if s.down {
-                p0_state |= controller::DOWN;
-            }
-            if s.left {
-                p0_state |= controller::LEFT;
-            }
-            if s.right {
-                p0_state |= controller::RIGHT;
-            }
-            if s.save_state {
-                result.save_state = true;
-            }
-            if s.load_state {
-                result.load_state = true;
-            }
-            if s.cycle_slot {
-                result.cycle_slot = true;
-            }
-        }
-        mem.controllers()[0].load_status(p0_state);
-
-        // Player 2: gamepad only
-        if let Some(s) = &gp.states[1] {
-            let c = &mut mem.controllers()[1];
-            let mut state: u8 = 0;
-            if s.a {
-                state |= controller::A;
-            }
-            if s.b {
-                state |= controller::B;
-            }
-            if s.start {
-                state |= controller::START;
-            }
-            if s.select {
-                state |= controller::SELECT;
-            }
-            if s.up {
-                state |= controller::UP;
-            }
-            if s.down {
-                state |= controller::DOWN;
-            }
-            if s.left {
-                state |= controller::LEFT;
-            }
-            if s.right {
-                state |= controller::RIGHT;
-            }
-            c.load_status(state);
-        }
+        apply_gamepad(&mut self.gamepads, self.kb_state, mem, &mut result);
 
         self.event_loop = Some(event_loop);
         result
@@ -780,18 +490,7 @@ impl IOHandler for WinitPixelsIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        let elapsed = self.last_frame_time.elapsed();
-        self.last_frame_ms = elapsed.as_secs_f64() * 1000.0;
-        if !self.fast_forward && elapsed < NES_FRAME_DURATION {
-            let sleep_duration = NES_FRAME_DURATION - elapsed;
-            if sleep_duration > Duration::from_millis(1) {
-                std::thread::sleep(sleep_duration - Duration::from_millis(1));
-            }
-            while self.last_frame_time.elapsed() < NES_FRAME_DURATION {
-                std::hint::spin_loop();
-            }
-        }
-        self.last_frame_time = Instant::now();
+        self.last_frame_ms = frame_pace(&mut self.last_frame_time, self.fast_forward);
 
         let window = self.window.unwrap();
         let pixels = self.pixels.as_mut().unwrap();

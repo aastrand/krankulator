@@ -17,7 +17,7 @@ The project uses SemVer with auto-incremented patch numbers. The version is `MAJ
 The project is a Cargo workspace with four crates:
 
 - **`core/`** (`krankulator-core`) — Platform-independent emulation library. Compiles to native and wasm32 with zero cfg gates. Only dependency: `hex`.
-- **`desktop/`** (`krankulator-desktop`) — Native frontend using winit, pixels, rodio. Produces the `krankulator` binary.
+- **`desktop/`** (`krankulator-desktop`) — Native frontend. Platform-split IO: winit+pixels on macOS/Windows, GTK3+Cairo on Linux. Produces the `krankulator` binary.
 - **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet, touch controls. Built with `trunk`.
 - **`libretro/`** (`krankulator-libretro`) — RetroArch/libretro core. Raw C FFI, no extra dependencies. Produces `krankulator_libretro.so/.dll/.dylib`.
 
@@ -159,7 +159,9 @@ cargo clippy --workspace
 ### Desktop Frontend (`desktop/src/`)
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
-- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer, native menu bar via muda crate (File with Open ROM + Recent submenu / Emulation / Display / Help), fullscreen (F11/Cmd+F), integer/fill scaling toggle (I), checkmark menu items synced with keyboard state; recent ROMs persisted to `~/.config/krankulator/recent_roms.txt` (last 10)
+- `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`)
+- `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, debug shell (shrust)
+- `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + Cairo software rendering (BGRA `ImageSurface`), muda menu via `init_for_gtk_window()`, native Wayland support. Menu bar visible in fullscreen (GTK3/Wayland limitation)
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
 - `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
@@ -229,7 +231,9 @@ core/               — Platform-independent emulation library
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
-  src/io.rs         — winit + pixels IOHandler (fullscreen, scaling)
+  src/io/mod.rs     — Shared menu, recent ROMs, platform re-export
+  src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels)
+  src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + Cairo)
   src/audio.rs      — rodio AudioBackend
   build.rs          — Windows icon embedding (winresource)
   assets/           — icon.png, icon.ico, Info.plist, krankulator.desktop
