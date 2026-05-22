@@ -37,7 +37,6 @@ pub struct WinitPixelsIOHandler {
     last_frame_ms: f64,
     kb_state: u8,
     fast_forward: bool,
-    fullscreen: bool,
     pixel_perfect: bool,
     _menu: Menu,
     menu_ids: MenuIds,
@@ -117,7 +116,6 @@ impl WinitPixelsIOHandler {
             last_frame_ms: 0.0,
             kb_state: 0,
             fast_forward: false,
-            fullscreen: false,
             pixel_perfect: true,
             _menu: menu,
             menu_ids,
@@ -368,7 +366,6 @@ struct PollHandler<'a> {
     window: &'static Window,
     apu: &'a mut apu::APU,
     muted: &'a mut bool,
-    fullscreen: &'a mut bool,
     pixel_perfect: &'a mut bool,
     kb_state: &'a mut u8,
     fast_forward: &'a mut bool,
@@ -383,6 +380,18 @@ struct PollHandler<'a> {
     recent_rom_path: Option<String>,
     menu_ids: &'a MenuIds,
     menu_items: &'a MenuItems,
+}
+
+fn toggle_fullscreen(window: &Window, menu_item: &CheckMenuItem, toasts: &mut Vec<String>) {
+    if window.fullscreen().is_some() {
+        window.set_fullscreen(None);
+        menu_item.set_checked(false);
+        toasts.push("Windowed".into());
+    } else {
+        window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+        menu_item.set_checked(true);
+        toasts.push("Fullscreen".into());
+    }
 }
 
 impl ApplicationHandler for PollHandler<'_> {
@@ -409,16 +418,11 @@ impl ApplicationHandler for PollHandler<'_> {
                     match key {
                         KeyCode::F11 => {
                             if pressed {
-                                *self.fullscreen = !*self.fullscreen;
-                                self.menu_items.fullscreen.set_checked(*self.fullscreen);
-                                if *self.fullscreen {
-                                    self.window
-                                        .set_fullscreen(Some(Fullscreen::Borderless(None)));
-                                    self.toasts.push("Fullscreen".into());
-                                } else {
-                                    self.window.set_fullscreen(None);
-                                    self.toasts.push("Windowed".into());
-                                }
+                                toggle_fullscreen(
+                                    self.window,
+                                    &self.menu_items.fullscreen,
+                                    &mut self.toasts,
+                                );
                             }
                         }
                         KeyCode::KeyI => {
@@ -432,6 +436,7 @@ impl ApplicationHandler for PollHandler<'_> {
                                     self.pixels.set_scaling_mode(ScalingMode::Fill);
                                     self.toasts.push("Fill scaling".into());
                                 }
+                                self.window.request_redraw();
                             }
                         }
                         KeyCode::KeyM => {
@@ -590,8 +595,8 @@ impl IOHandler for WinitPixelsIOHandler {
             window: self.window.unwrap(),
             apu,
             muted: &mut self.muted,
-            fullscreen: &mut self.fullscreen,
             pixel_perfect: &mut self.pixel_perfect,
+
             kb_state: &mut self.kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
@@ -622,17 +627,11 @@ impl IOHandler for WinitPixelsIOHandler {
             } else if *id == handler.menu_ids.cycle_slot {
                 handler.cycle_slot = true;
             } else if *id == handler.menu_ids.fullscreen {
-                *handler.fullscreen = !*handler.fullscreen;
-                self.menu_items.fullscreen.set_checked(*handler.fullscreen);
-                if *handler.fullscreen {
-                    handler
-                        .window
-                        .set_fullscreen(Some(Fullscreen::Borderless(None)));
-                    handler.toasts.push("Fullscreen".into());
-                } else {
-                    handler.window.set_fullscreen(None);
-                    handler.toasts.push("Windowed".into());
-                }
+                toggle_fullscreen(
+                    handler.window,
+                    &self.menu_items.fullscreen,
+                    &mut handler.toasts,
+                );
             } else if *id == handler.menu_ids.scaling {
                 *handler.pixel_perfect = !*handler.pixel_perfect;
                 self.menu_items.scaling.set_checked(*handler.pixel_perfect);
@@ -643,6 +642,7 @@ impl IOHandler for WinitPixelsIOHandler {
                     handler.pixels.set_scaling_mode(ScalingMode::Fill);
                     handler.toasts.push("Fill scaling".into());
                 }
+                handler.window.request_redraw();
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -785,7 +785,10 @@ impl IOHandler for WinitPixelsIOHandler {
         }
         self.last_frame_time = Instant::now();
 
+        let window = self.window.unwrap();
         let pixels = self.pixels.as_mut().unwrap();
+        let size = window.inner_size();
+        let _ = pixels.resize_surface(size.width, size.height);
         let frame = pixels.frame_mut();
         let pixel_count = buf.data.len() / 3;
         for i in 0..pixel_count {
