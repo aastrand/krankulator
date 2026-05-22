@@ -14,6 +14,7 @@ pub struct Overlay {
     enabled: bool,
     frame_time_text: String,
     toasts: Vec<Toast>,
+    banner: Option<String>,
 }
 
 impl Overlay {
@@ -22,6 +23,7 @@ impl Overlay {
             enabled: false,
             frame_time_text: String::new(),
             toasts: Vec::new(),
+            banner: None,
         }
     }
 
@@ -32,6 +34,10 @@ impl Overlay {
     pub fn set_frame_time(&mut self, emu_ms: f64) {
         let budget_pct = (emu_ms / 16.64) * 100.0;
         self.frame_time_text = format!("{:.1}ms ({:.0}%)", emu_ms, budget_pct);
+    }
+
+    pub fn set_banner(&mut self, text: Option<String>) {
+        self.banner = text;
     }
 
     pub fn toast(&mut self, text: String) {
@@ -54,6 +60,12 @@ impl Overlay {
     pub fn draw(&self, buf: &mut Buffer) {
         if self.enabled && !self.frame_time_text.is_empty() {
             font::draw_string(buf, 2, 2, &self.frame_time_text, FG, OUTLINE);
+        }
+
+        if let Some(ref banner) = self.banner {
+            let x = (buf.width as i32 - banner.len() as i32 * 8) / 2;
+            let y = buf.height as i32 / 2 - 4;
+            font::draw_string(buf, x, y, banner, FG, OUTLINE);
         }
 
         let mut y = buf.height as i32 - 12;

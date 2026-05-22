@@ -166,6 +166,9 @@ impl Emulator {
         self.ppu_register_warmup_until_cpu_cycle = 29_658;
         self.savestate_slot = 0;
         self.last_rendered_frame = 0;
+        self.overlay.set_banner(None);
+        self.should_trigger_nmi = true;
+        self.should_exit_on_infinite_loop = false;
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -189,7 +192,6 @@ impl Emulator {
         self.should_exit_on_infinite_loop = exit;
     }
 
-    #[allow(dead_code)] // only used in tests
     pub fn toggle_should_trigger_nmi(&mut self, trigger: bool) {
         self.should_trigger_nmi = trigger;
     }

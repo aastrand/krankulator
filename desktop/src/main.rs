@@ -51,80 +51,73 @@ struct Args {
 fn main() -> Result<(), String> {
     let args = Args::parse();
 
-    let input = match args.input {
-        Some(path) => path,
-        None => {
-            let path = pick_rom_file();
-            match path {
-                Some(path) => {
-                    if let Some(dir) = path.parent() {
-                        save_last_rom_dir(dir);
+    let mut emu = if let Some(ref input) = args.input {
+        match args.loader.as_str() {
+            "bin" => {
+                let loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
+                match loader.load(input) {
+                    Ok(mapper) => emu::Emulator::new_headless(mapper),
+                    Err(msg) => panic!("{}", msg),
+                }
+            }
+            "ascii" => {
+                let loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
+                match loader.load(input) {
+                    Ok(mapper) => emu::Emulator::new_headless(mapper),
+                    Err(msg) => panic!("{}", msg),
+                }
+            }
+            "nes" => {
+                let l: Box<dyn loader::Loader> = loader::InesLoader::new();
+                match l.load(input) {
+                    Ok(mapper) => {
+                        let mut emu: emu::Emulator = if args.wav_out.is_some() {
+                            emu::Emulator::new_capturing(mapper)
+                        } else if !args.headless {
+                            let audio = Box::new(
+                                audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
+                                    .expect("No audio output device available"),
+                            );
+                            let rom_name = std::path::Path::new(input.as_str())
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(input);
+                            let io = Box::new(io::WinitPixelsIOHandler::new(256, 240, rom_name));
+                            emu::Emulator::new_with(io, mapper, audio)
+                        } else {
+                            emu::Emulator::new_headless(mapper)
+                        };
+
+                        emu.cpu.status = 0x34;
+                        emu.cpu.sp = 0xfd;
+                        emu.toggle_should_trigger_nmi(true);
+                        emu.toggle_should_exit_on_infinite_loop(false);
+                        emu.set_rom_path(input);
+                        io::add_recent_rom(input);
+
+                        emu
                     }
-                    path.to_string_lossy().into_owned()
-                }
-                None => {
-                    println!("No ROM selected");
-                    std::process::exit(0);
+                    Err(msg) => panic!("{}", msg),
                 }
             }
-        }
-    };
-
-    let mut emu = match args.loader.as_str() {
-        "bin" => {
-            let loader: Box<dyn loader::Loader> = Box::new(loader::BinLoader {});
-            let result = loader.load(&input);
-            match result {
-                Ok(mapper) => emu::Emulator::new_headless(mapper),
-                Err(msg) => panic!("{}", msg),
+            _ => {
+                println!("Invalid loader, see --help");
+                std::process::exit(1);
             }
         }
-        "ascii" => {
-            let loader: Box<dyn loader::Loader> = Box::new(loader::AsciiLoader {});
-            let result = loader.load(&input);
-            match result {
-                Ok(mapper) => emu::Emulator::new_headless(mapper),
-                Err(msg) => panic!("{}", msg),
-            }
-        }
-        "nes" => {
-            let loader: Box<dyn loader::Loader> = loader::InesLoader::new();
-            let file = &input;
-            match loader.load(file) {
-                Ok(mapper) => {
-                    let mut emu: emu::Emulator = if args.wav_out.is_some() {
-                        emu::Emulator::new_capturing(mapper)
-                    } else if !args.headless {
-                        let audio = Box::new(
-                            audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
-                                .expect("No audio output device available"),
-                        );
-                        let rom_name = std::path::Path::new(file)
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or(file);
-                        let io = Box::new(io::WinitPixelsIOHandler::new(256, 240, rom_name));
-                        emu::Emulator::new_with(io, mapper, audio)
-                    } else {
-                        emu::Emulator::new_headless(mapper)
-                    };
-
-                    emu.cpu.status = 0x34;
-                    emu.cpu.sp = 0xfd;
-                    emu.toggle_should_trigger_nmi(true);
-                    emu.toggle_should_exit_on_infinite_loop(false);
-                    emu.set_rom_path(file);
-                    io::add_recent_rom(file);
-
-                    emu
-                }
-                Err(msg) => panic!("{}", msg),
-            }
-        }
-        _ => {
-            println!("Invalid loader, see --help");
-            std::process::exit(1);
-        }
+    } else {
+        let mapper: Box<dyn emu::memory::MemoryMapper> =
+            Box::new(emu::memory::IdentityMapper::new(0x600));
+        let audio = Box::new(
+            audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
+                .expect("No audio output device available"),
+        );
+        let io = Box::new(io::WinitPixelsIOHandler::new(256, 240, "krankulator"));
+        let mut emu = emu::Emulator::new_with(io, mapper, audio);
+        emu.toggle_should_exit_on_infinite_loop(false);
+        emu.toggle_should_trigger_nmi(false);
+        emu.overlay.set_banner(Some("Open a ROM to play".into()));
+        emu
     };
 
     for breakpoint in args.breakpoint {
@@ -155,9 +148,11 @@ fn main() -> Result<(), String> {
                 match l.load(&path) {
                     Ok(mapper) => {
                         emu.load_rom(mapper, &path);
+                        io::add_recent_rom(&path);
                     }
                     Err(msg) => {
                         eprintln!("Failed to load ROM: {}", msg);
+                        emu.overlay.toast(msg);
                     }
                 }
             }
@@ -178,49 +173,6 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn pick_rom_file() -> Option<std::path::PathBuf> {
-    let mut script =
-        String::from("POSIX path of (choose file of type {\"nes\"} with prompt \"Open NES ROM\"");
-    if let Some(dir) = load_last_rom_dir() {
-        let dir_str = dir
-            .to_string_lossy()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
-        script = format!(
-            "POSIX path of (choose file of type {{\"nes\"}} default location POSIX file \"{}\" with prompt \"Open NES ROM\"",
-            dir_str
-        );
-    }
-    script.push(')');
-    let output = std::process::Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-        .ok()?;
-    if output.status.success() {
-        let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
-        if path.is_empty() {
-            None
-        } else {
-            Some(std::path::PathBuf::from(path))
-        }
-    } else {
-        None
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn pick_rom_file() -> Option<std::path::PathBuf> {
-    let mut dialog = rfd::FileDialog::new()
-        .set_title("Open NES ROM")
-        .add_filter("NES ROMs", &["nes"])
-        .add_filter("All files", &["*"]);
-    if let Some(dir) = load_last_rom_dir() {
-        dialog = dialog.set_directory(&dir);
-    }
-    dialog.pick_file()
 }
 
 fn config_dir() -> Option<std::path::PathBuf> {
