@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::super::memory;
 use super::super::{super::util, memory::mapper};
-use crate::emu::memory::mapper::mmc3::MMC3Mapper;
+use crate::emu::memory::mapper::mmc3::{MMC3Mapper, MMC3Variant};
 
 extern crate hex;
 
@@ -260,12 +260,36 @@ fn load_nes_from_bytes_inner(
                 combine_prg_banks_32k(&prg_banks),
             ))
         }
+        118 => {
+            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            Box::new(MMC3Mapper::new_variant(
+                flags,
+                prg_banks,
+                mmc3_chr,
+                has_battery,
+                sram_data,
+                submapper,
+                MMC3Variant::TxSROM,
+            ))
+        }
+        119 => {
+            let mmc3_chr = if num_chr_blocks > 0 { chr_banks } else { vec![] };
+            Box::new(MMC3Mapper::new_variant(
+                flags,
+                prg_banks,
+                mmc3_chr,
+                has_battery,
+                sram_data,
+                submapper,
+                MMC3Variant::TQROM,
+            ))
+        }
         66 => Box::new(mapper::gxrom::GxROMMapper::new(
             flags,
             combine_prg_banks_32k(&prg_banks),
             chr_banks,
         )),
-        _ => return Err(format!("Mapper {:X} not implemented", mapper_id)),
+        _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 
     Ok(result)

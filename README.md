@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66) — ~679/695 licensed NTSC US games (97.7%)
+- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119) — 687/695 licensed NTSC US games (98.8%)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3 cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -43,7 +43,7 @@ graph TD
     Mem --> NROM
     Mem --> MMC1
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
-    Mem --> MMC3
+    Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
@@ -69,8 +69,10 @@ library), `desktop/` (native frontend), `web/` (WebAssembly frontend), and `libr
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
 the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU. Memory mappers are trait
 objects — each cartridge type implements its own bank switching, mirroring, and IRQ logic
-(e.g. MMC3 scanline counter). Simple discrete-logic mappers (UxROM, CNROM, AxROM, BNROM,
-GxROM) share PPU bus logic via `PpuBus`; BNROM and GxROM emulate AND-type bus conflicts.
+(e.g. MMC3 scanline counter). MMC3 variants TxSROM (118) and TQROM (119) reuse the MMC3
+engine with per-bank mirroring and mixed CHR-ROM/RAM respectively. Simple discrete-logic
+mappers (UxROM, CNROM, AxROM, BNROM, GxROM) share PPU bus logic via `PpuBus`; BNROM and
+GxROM emulate AND-type bus conflicts.
 The IO and audio layers are traits, allowing desktop, web, or headless operation with the
 same emulation core.
 

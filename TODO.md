@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66)**
-Coverage: ~679/695 licensed NTSC US games (97.7%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119)**
+Coverage: 687/695 licensed NTSC US games (98.8%)
 
 ### Completed: Priority 1 quick wins
 
@@ -25,15 +25,15 @@ Coverage: ~679/695 licensed NTSC US games (97.7%)
 - Games (~8): Castlevania III: Dracula's Curse, Laser Invasion, Uncharted Waters, Romance of the Three Kingdoms II, Nobunaga's Ambition II, Gemfire, L'Empereur
 - The most complex NES mapper. Multiple PRG/CHR banking modes, ExRAM with extended attributes, hardware multiplier, scanline IRQ, fill-mode nametable, split-screen support. Castlevania III is the main test target.
 
-### Priority 3: MMC3 variants (leverage existing code)
+### Completed: Priority 3 — MMC3 variants
 
-**Mapper 118 — TxSROM** [S]
+**Mapper 118 — TxSROM** [done]
 - Games (3): NES Play Action Football, Pro Sport Hockey, Goal! Two
-- MMC3 variant where mirroring is controlled by bit 7 of CHR bank registers instead of the dedicated mirroring register. Flag/mode on existing MMC3 code.
+- MMC3 variant where mirroring is controlled by bit 7 of CHR bank registers instead of the dedicated mirroring register.
 
-**Mapper 119 — TQROM** [S]
+**Mapper 119 — TQROM** [done]
 - Games (2): High Speed, Pin-Bot
-- MMC3 variant with mixed CHR ROM/RAM. Bit 6 of CHR bank register selects ROM vs RAM. Minor modification to existing MMC3.
+- MMC3 variant with mixed CHR ROM/RAM. Bit 6 of CHR bank register selects ROM vs RAM.
 
 ### Priority 4: Remaining licensed games
 
@@ -60,9 +60,8 @@ Coverage: ~679/695 licensed NTSC US games (97.7%)
 
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
-| Done | 0,1,2,3,4,7,9,34,66 | 679 | 679/695 (97.7%) |
-| Priority 2 | 5 | ~8 | 687 (98.8%) |
-| Priority 3 | 118, 119 | 5 | 697 (99.6%) |
+| Done | 0,1,2,3,4,7,9,34,66,118,119 | 687 | 687/695 (98.8%) |
+| Priority 2 | 5 | ~5 | 692 (99.6%) |
 | Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
 | Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
 
