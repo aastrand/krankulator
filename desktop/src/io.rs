@@ -332,15 +332,13 @@ fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
     }
 
     #[cfg(target_os = "windows")]
-    unsafe {
-        use winit::platform::windows::WindowExtWindows;
-        menu.init_for_hwnd(window.hwnd() as _).unwrap();
-    }
-
-    #[cfg(target_os = "linux")]
     {
-        use winit::platform::wayland::WindowExtWayland;
-        let _ = &window;
+        use raw_window_handle::HasWindowHandle;
+        if let Ok(handle) = window.window_handle() {
+            if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                unsafe { menu.init_for_hwnd(h.hwnd.get() as _).unwrap() };
+            }
+        }
     }
 
     let ids = MenuIds {
