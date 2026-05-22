@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119)**
-Coverage: 687/695 licensed NTSC US games (98.8%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), GxROM (66), TxSROM (118), TQROM (119)**
+Coverage: 692/695 licensed NTSC US games (99.6%)
 
 ### Completed: Priority 1 quick wins
 
@@ -21,9 +21,10 @@ Coverage: 687/695 licensed NTSC US games (98.8%)
 - Games (2): Mike Tyson's Punch-Out!!, Punch-Out!!
 - CHR latch-switching via `ppu_fetch()` hook: reading $0FD8/$0FE8 (left) and $1FD8-$1FDF/$1FE8-$1FEF (right) triggers deferred CHR bank switch. PRG: 8KB switchable + 24KB fixed.
 
-**Mapper 5 — MMC5 (ExROM)** [XL]
+**Mapper 5 — MMC5 (ExROM)** [done, known issues]
 - Games (~8): Castlevania III: Dracula's Curse, Laser Invasion, Uncharted Waters, Romance of the Three Kingdoms II, Nobunaga's Ambition II, Gemfire, L'Empereur
-- The most complex NES mapper. Multiple PRG/CHR banking modes, ExRAM with extended attributes, hardware multiplier, scanline IRQ, fill-mode nametable, split-screen support. Castlevania III is the main test target.
+- The most complex NES mapper. Multiple PRG/CHR banking modes (4 PRG modes, 4 CHR modes), ExRAM with nametable mapping, hardware 8×8 multiplier, scanline IRQ via PPU fetch detection, fill-mode nametable, two expansion pulse audio channels mixed into APU.
+- **Known issue:** Scanline IRQ timing is not fully accurate — games boot and are playable but scanline-timed effects (e.g. Castlevania III status bar) may glitch. Likely blocked on core IRQ/NMI timing accuracy (see ignored cpu_interrupts_v2 and ppu_vbl_nmi tests).
 
 ### Completed: Priority 3 — MMC3 variants
 
@@ -60,8 +61,7 @@ Coverage: 687/695 licensed NTSC US games (98.8%)
 
 | Step | Mappers | New games | Cumulative |
 |------|---------|-----------|------------|
-| Done | 0,1,2,3,4,7,9,34,66,118,119 | 687 | 687/695 (98.8%) |
-| Priority 2 | 5 | ~5 | 692 (99.6%) |
+| Done | 0,1,2,3,4,5,7,9,34,66,118,119 | 692 | 692/695 (99.6%) |
 | Priority 4 | 68, 69, 105 | 3 | 695/695 (100%) |
 | Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
 
@@ -81,6 +81,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Two-player support (Joy-Con pair auto-splits into P1/P2)
   - Edge-detected save/load state and slot cycling on P1
   - All platforms: input sources OR-merged so keyboard and gamepad work simultaneously
+- [ ] Inhibit screensaver/suspend while running (D-Bus `org.freedesktop.ScreenSaver.Inhibit`, needs zbus or similar) [S]
 - [ ] Configurable key/button bindings [S]
   - Save bindings to a config file
   - Per-controller profiles

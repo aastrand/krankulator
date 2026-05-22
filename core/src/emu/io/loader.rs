@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use super::super::memory;
 use super::super::{super::util, memory::mapper};
 use crate::emu::memory::mapper::mmc3::{MMC3Mapper, MMC3Variant};
+use crate::emu::memory::mapper::mmc5::MMC5Mapper;
 
 extern crate hex;
 
@@ -246,6 +247,13 @@ fn load_nes_from_bytes_inner(
         7 => Box::new(mapper::axrom::AxROMMapper::new(
             flags,
             combine_prg_banks_32k(&prg_banks),
+        )),
+        5 => Box::new(MMC5Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
         )),
         9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
         34 => {

@@ -386,8 +386,9 @@ impl Emulator {
         let vbl_dot = self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
 
-        // Cycle the APU
+        // Cycle the APU and mapper
         self.apu.cycle(self.master_clock, &mut *self.mem);
+        self.mem.cpu_cycle();
         let samples = self.apu.get_audio_samples();
         if !samples.is_empty() {
             self.audio.push_samples(samples);
@@ -1245,6 +1246,10 @@ impl Emulator {
                     self.nmi_triggered_countdown =
                         if write_dot <= self.irq_sample_deadline { 1 } else { 2 };
                 }
+                self.mem.notify_ppu_ctrl(value);
+            }
+            if reg == ppu::MASK_REG_ADDR {
+                self.mem.notify_ppu_mask(value);
             }
             if let Some((waddr, wval)) = self.ppu.write(reg, value) {
                 self.mem.ppu_write(waddr, wval);

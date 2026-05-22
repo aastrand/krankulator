@@ -1003,17 +1003,25 @@ impl PPU {
     fn sprite_fetch_step(&mut self, mem: &mut dyn memory::MemoryMapper) {
         let slot = ((self.cycle - 257) / 8).min(7) as usize;
         match (self.cycle - 1) % 8 {
-            0 | 2 => {
-                self.ppu_fetch(mem, 0x2000);
-                if (self.cycle - 257) % 8 == 0 {
-                    if slot < self.secondary_oam_count as usize {
-                        let b = slot * 4;
-                        self.sprite_fetch_line[slot].attr = self.secondary_oam[b + 2];
-                        self.sprite_fetch_line[slot].x = self.secondary_oam[b + 3];
-                    } else {
-                        self.sprite_fetch_line[slot] = SpriteLineEntry::default();
-                    }
+            0 => {
+                // Garbage nametable byte fetch (uses real NT address from V register)
+                let nt_addr = 0x2000 | (self.v & 0x0FFF);
+                self.ppu_fetch(mem, nt_addr);
+                if slot < self.secondary_oam_count as usize {
+                    let b = slot * 4;
+                    self.sprite_fetch_line[slot].attr = self.secondary_oam[b + 2];
+                    self.sprite_fetch_line[slot].x = self.secondary_oam[b + 3];
+                } else {
+                    self.sprite_fetch_line[slot] = SpriteLineEntry::default();
                 }
+            }
+            2 => {
+                // Garbage attribute byte fetch (uses real AT address from V register)
+                let at_addr = 0x23C0
+                    | (self.v & 0x0C00)
+                    | ((self.v >> 4) & 0x38)
+                    | ((self.v >> 2) & 0x07);
+                self.ppu_fetch(mem, at_addr);
             }
             4 => {
                 let addr = self.secondary_sprite_pattern_addr(slot);

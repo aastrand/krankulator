@@ -82,6 +82,16 @@ pub trait MemoryMapper {
         // Default implementation does nothing
     }
 
+    fn cpu_cycle(&mut self) {}
+
+    fn notify_ppu_ctrl(&mut self, _value: u8) {}
+
+    fn notify_ppu_mask(&mut self, _value: u8) {}
+
+    fn audio_expansion_output(&self) -> f32 {
+        0.0
+    }
+
     #[allow(dead_code)]
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)
