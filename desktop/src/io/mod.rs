@@ -224,7 +224,7 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
 pub(crate) fn open_rom_dialog() -> Option<String> {
     let mut dialog = rfd::FileDialog::new()
         .set_title("Open NES ROM")
-        .add_filter("NES ROMs", &["nes"])
+        .add_filter("NES ROMs", &["nes", "zip"])
         .add_filter("All files", &["*"]);
     if let Some(dir) = crate::load_last_rom_dir() {
         dialog = dialog.set_directory(&dir);

@@ -2,10 +2,54 @@ mod audio;
 mod gamepad;
 mod io;
 
+use std::io::Read;
+
 use clap::Parser;
 use krankulator_core::emu;
 use krankulator_core::emu::io::loader;
 use krankulator_core::util;
+
+fn extract_nes_from_zip(path: &str) -> Result<Vec<u8>, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open {}: {}", path, e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read ZIP {}: {}", path, e))?;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read ZIP entry: {}", e))?;
+        if let Some(name) = entry.name().to_lowercase().strip_suffix(".nes") {
+            let _ = name;
+            let mut buf = Vec::new();
+            entry
+                .read_to_end(&mut buf)
+                .map_err(|e| format!("Failed to extract from ZIP: {}", e))?;
+            return Ok(buf);
+        }
+    }
+    Err(format!("No .nes file found in {}", path))
+}
+
+fn load_rom_file(path: &str) -> Result<Box<dyn emu::memory::MemoryMapper>, String> {
+    if path.to_lowercase().ends_with(".zip") {
+        let bytes = extract_nes_from_zip(path)?;
+        let sram_data = if loader::rom_has_battery(&bytes) {
+            let mut sav = std::path::PathBuf::from(path);
+            sav.set_extension("sav");
+            std::fs::read(&sav).ok().map(|data| {
+                println!("Loaded save data from {}", sav.display());
+                data
+            })
+        } else {
+            None
+        };
+        let result = loader::load_nes_from_bytes_with_sram(&bytes, sram_data)?;
+        println!("Loaded {} (mapper {})", path, result.mapper_id());
+        Ok(result)
+    } else {
+        let l: Box<dyn loader::Loader> = loader::InesLoader::new();
+        l.load(path)
+    }
+}
 
 /// Krankulator
 #[derive(Parser, Debug)]
@@ -67,39 +111,36 @@ fn main() -> Result<(), String> {
                     Err(msg) => panic!("{}", msg),
                 }
             }
-            "nes" => {
-                let l: Box<dyn loader::Loader> = loader::InesLoader::new();
-                match l.load(input) {
-                    Ok(mapper) => {
-                        let mut emu: emu::Emulator = if args.wav_out.is_some() {
-                            emu::Emulator::new_capturing(mapper)
-                        } else if !args.headless {
-                            let audio = Box::new(
-                                audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
-                                    .expect("No audio output device available"),
-                            );
-                            let rom_name = std::path::Path::new(input.as_str())
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or(input);
-                            let io = Box::new(io::PlatformIOHandler::new(256, 240, rom_name));
-                            emu::Emulator::new_with(io, mapper, audio)
-                        } else {
-                            emu::Emulator::new_headless(mapper)
-                        };
+            "nes" => match load_rom_file(input) {
+                Ok(mapper) => {
+                    let mut emu: emu::Emulator = if args.wav_out.is_some() {
+                        emu::Emulator::new_capturing(mapper)
+                    } else if !args.headless {
+                        let audio = Box::new(
+                            audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
+                                .expect("No audio output device available"),
+                        );
+                        let rom_name = std::path::Path::new(input.as_str())
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(input);
+                        let io = Box::new(io::PlatformIOHandler::new(256, 240, rom_name));
+                        emu::Emulator::new_with(io, mapper, audio)
+                    } else {
+                        emu::Emulator::new_headless(mapper)
+                    };
 
-                        emu.cpu.status = 0x34;
-                        emu.cpu.sp = 0xfd;
-                        emu.toggle_should_trigger_nmi(true);
-                        emu.toggle_should_exit_on_infinite_loop(false);
-                        emu.set_rom_path(input);
-                        io::add_recent_rom(input);
+                    emu.cpu.status = 0x34;
+                    emu.cpu.sp = 0xfd;
+                    emu.toggle_should_trigger_nmi(true);
+                    emu.toggle_should_exit_on_infinite_loop(false);
+                    emu.set_rom_path(input);
+                    io::add_recent_rom(input);
 
-                        emu
-                    }
-                    Err(msg) => panic!("{}", msg),
+                    emu
                 }
-            }
+                Err(msg) => panic!("{}", msg),
+            },
             _ => {
                 println!("Invalid loader, see --help");
                 std::process::exit(1);
@@ -143,19 +184,16 @@ fn main() -> Result<(), String> {
     loop {
         emu.run();
         match emu.take_pending_open_rom() {
-            Some(path) => {
-                let l: Box<dyn loader::Loader> = loader::InesLoader::new();
-                match l.load(&path) {
-                    Ok(mapper) => {
-                        emu.load_rom(mapper, &path);
-                        io::add_recent_rom(&path);
-                    }
-                    Err(msg) => {
-                        eprintln!("Failed to load ROM: {}", msg);
-                        emu.overlay.toast(msg);
-                    }
+            Some(path) => match load_rom_file(&path) {
+                Ok(mapper) => {
+                    emu.load_rom(mapper, &path);
+                    io::add_recent_rom(&path);
                 }
-            }
+                Err(msg) => {
+                    eprintln!("Failed to load ROM: {}", msg);
+                    emu.overlay.toast(msg);
+                }
+            },
             None => break,
         }
     }

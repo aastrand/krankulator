@@ -19,6 +19,7 @@ rfd = "0.15"
 dirs = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 ringbuf = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 shrust = "0.0.7"
 muda = "0.19.2"
 
