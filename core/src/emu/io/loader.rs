@@ -304,6 +304,13 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        69 => Box::new(mapper::sunsoft_fme7::SunsoftFme7Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 
