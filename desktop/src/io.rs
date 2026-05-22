@@ -2,6 +2,10 @@ use std::time::{Duration, Instant};
 
 const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
+use muda::{
+    accelerator::Accelerator, AboutMetadata, CheckMenuItem, Menu, MenuEvent, MenuItem,
+    PredefinedMenuItem, Submenu,
+};
 use pixels::{Pixels, ScalingMode, SurfaceTexture};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::{
@@ -14,11 +18,11 @@ use winit::{
 };
 
 use krankulator_core::emu::apu;
+use krankulator_core::emu::dbg;
 use krankulator_core::emu::gfx;
 use krankulator_core::emu::io::controller;
 use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
-use krankulator_core::emu::dbg;
 use krankulator_core::util;
 
 use crate::gamepad::Gamepads;
@@ -35,6 +39,9 @@ pub struct WinitPixelsIOHandler {
     fast_forward: bool,
     fullscreen: bool,
     pixel_perfect: bool,
+    _menu: Menu,
+    menu_ids: MenuIds,
+    menu_items: MenuItems,
 }
 
 struct InitHandler {
@@ -98,6 +105,8 @@ impl WinitPixelsIOHandler {
             p.set_scaling_mode(ScalingMode::PixelPerfect);
         }
 
+        let (menu, menu_ids, menu_items) = build_menu(init.window.unwrap());
+
         Self {
             pixels,
             event_loop: Some(event_loop),
@@ -110,6 +119,9 @@ impl WinitPixelsIOHandler {
             fast_forward: false,
             fullscreen: false,
             pixel_perfect: true,
+            _menu: menu,
+            menu_ids,
+            menu_items,
         }
     }
 }
@@ -140,6 +152,156 @@ fn set_dock_icon() {
 #[cfg(not(target_os = "macos"))]
 fn set_dock_icon() {}
 
+#[allow(unused_variables)]
+struct MenuIds {
+    open_rom: muda::MenuId,
+    reset: muda::MenuId,
+    save_state: muda::MenuId,
+    load_state: muda::MenuId,
+    cycle_slot: muda::MenuId,
+    fullscreen: muda::MenuId,
+    scaling: muda::MenuId,
+}
+
+struct MenuItems {
+    fullscreen: CheckMenuItem,
+    scaling: CheckMenuItem,
+}
+
+fn about_metadata() -> AboutMetadata {
+    static ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+    let icon = image::load_from_memory(ICON_PNG).ok().map(|img| {
+        let rgba = img.into_rgba8();
+        let (w, h) = rgba.dimensions();
+        muda::Icon::from_rgba(rgba.into_raw(), w, h).unwrap()
+    });
+    AboutMetadata {
+        name: Some("Krankulator".into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        copyright: Some("Anders Astrand".into()),
+        comments: Some("A cycle-stepped NES emulator".into()),
+        website: Some("https://github.com/aastrand/krankulator".into()),
+        icon,
+        ..Default::default()
+    }
+}
+
+#[allow(unused_variables)]
+fn build_menu(window: &Window) -> (Menu, MenuIds, MenuItems) {
+    let menu = Menu::new();
+
+    let file_menu = Submenu::new("File", true);
+    let open_rom = MenuItem::new(
+        "Open ROM...",
+        true,
+        Some("CmdOrCtrl+O".parse::<Accelerator>().unwrap()),
+    );
+    let open_rom_id = open_rom.id().clone();
+    file_menu.append(&open_rom).unwrap();
+    file_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    file_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+
+    let emu_menu = Submenu::new("Emulation", true);
+    let reset = MenuItem::new(
+        "Reset",
+        true,
+        Some("CmdOrCtrl+R".parse::<Accelerator>().unwrap()),
+    );
+    let reset_id = reset.id().clone();
+    let save_state = MenuItem::new(
+        "Save State",
+        true,
+        Some("CmdOrCtrl+S".parse::<Accelerator>().unwrap()),
+    );
+    let save_state_id = save_state.id().clone();
+    let load_state = MenuItem::new(
+        "Load State",
+        true,
+        Some("CmdOrCtrl+L".parse::<Accelerator>().unwrap()),
+    );
+    let load_state_id = load_state.id().clone();
+    let cycle_slot = MenuItem::new(
+        "Cycle Save Slot",
+        true,
+        Some("CmdOrCtrl+Q".parse::<Accelerator>().unwrap()),
+    );
+    let cycle_slot_id = cycle_slot.id().clone();
+    emu_menu.append(&reset).unwrap();
+    emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    emu_menu.append(&save_state).unwrap();
+    emu_menu.append(&load_state).unwrap();
+    emu_menu.append(&cycle_slot).unwrap();
+
+    let view_menu = Submenu::new("Display", true);
+    let fullscreen = CheckMenuItem::new(
+        "Fullscreen",
+        true,
+        false,
+        Some("CmdOrCtrl+F".parse::<Accelerator>().unwrap()),
+    );
+    let fullscreen_id = fullscreen.id().clone();
+    let scaling = CheckMenuItem::new("Integer Scaling", true, true, None::<Accelerator>);
+    let scaling_id = scaling.id().clone();
+    view_menu.append(&fullscreen).unwrap();
+    view_menu.append(&scaling).unwrap();
+
+    let help_menu = Submenu::new("Help", true);
+    help_menu
+        .append(&PredefinedMenuItem::about(
+            Some("About Krankulator"),
+            Some(about_metadata()),
+        ))
+        .unwrap();
+
+    #[cfg(target_os = "macos")]
+    {
+        let app_menu = Submenu::new("Krankulator", true);
+        app_menu
+            .append(&PredefinedMenuItem::about(None, Some(about_metadata())))
+            .unwrap();
+        app_menu.append(&PredefinedMenuItem::separator()).unwrap();
+        app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+        menu.append(&app_menu).unwrap();
+    }
+
+    menu.append(&file_menu).unwrap();
+    menu.append(&emu_menu).unwrap();
+    menu.append(&view_menu).unwrap();
+    menu.append(&help_menu).unwrap();
+
+    #[cfg(target_os = "macos")]
+    {
+        menu.init_for_nsapp();
+    }
+
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use winit::platform::windows::WindowExtWindows;
+        menu.init_for_hwnd(window.hwnd() as _).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use winit::platform::wayland::WindowExtWayland;
+        let _ = &window;
+    }
+
+    let ids = MenuIds {
+        open_rom: open_rom_id,
+        reset: reset_id,
+        save_state: save_state_id,
+        load_state: load_state_id,
+        cycle_slot: cycle_slot_id,
+        fullscreen: fullscreen_id,
+        scaling: scaling_id,
+    };
+    let items = MenuItems {
+        fullscreen,
+        scaling,
+    };
+    (menu, ids, items)
+}
+
 struct PollHandler<'a> {
     pixels: &'a mut Pixels<'static>,
     window: &'static Window,
@@ -156,6 +318,9 @@ struct PollHandler<'a> {
     reset: bool,
     toggle_overlay: bool,
     toasts: Vec<String>,
+    open_rom: bool,
+    menu_ids: &'a MenuIds,
+    menu_items: &'a MenuItems,
 }
 
 impl ApplicationHandler for PollHandler<'_> {
@@ -180,15 +345,13 @@ impl ApplicationHandler for PollHandler<'_> {
                     let pressed = event.state == ElementState::Pressed;
 
                     match key {
-                        KeyCode::Escape => {
-                            self.exit = true;
-                            event_loop.exit();
-                        }
                         KeyCode::F11 => {
                             if pressed {
                                 *self.fullscreen = !*self.fullscreen;
+                                self.menu_items.fullscreen.set_checked(*self.fullscreen);
                                 if *self.fullscreen {
-                                    self.window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                                    self.window
+                                        .set_fullscreen(Some(Fullscreen::Borderless(None)));
                                     self.toasts.push("Fullscreen".into());
                                 } else {
                                     self.window.set_fullscreen(None);
@@ -199,6 +362,7 @@ impl ApplicationHandler for PollHandler<'_> {
                         KeyCode::KeyI => {
                             if pressed {
                                 *self.pixel_perfect = !*self.pixel_perfect;
+                                self.menu_items.scaling.set_checked(*self.pixel_perfect);
                                 if *self.pixel_perfect {
                                     self.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
                                     self.toasts.push("Integer scaling".into());
@@ -367,9 +531,67 @@ impl IOHandler for WinitPixelsIOHandler {
             reset: false,
             toggle_overlay: false,
             toasts: Vec::new(),
+            open_rom: false,
+            menu_ids: &self.menu_ids,
+            menu_items: &self.menu_items,
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
+
+        while let Ok(event) = MenuEvent::receiver().try_recv() {
+            let id = event.id();
+            if *id == handler.menu_ids.open_rom {
+                handler.open_rom = true;
+            } else if *id == handler.menu_ids.reset {
+                handler.reset = true;
+            } else if *id == handler.menu_ids.save_state {
+                handler.save_state = true;
+            } else if *id == handler.menu_ids.load_state {
+                handler.load_state = true;
+            } else if *id == handler.menu_ids.cycle_slot {
+                handler.cycle_slot = true;
+            } else if *id == handler.menu_ids.fullscreen {
+                *handler.fullscreen = !*handler.fullscreen;
+                self.menu_items.fullscreen.set_checked(*handler.fullscreen);
+                if *handler.fullscreen {
+                    handler
+                        .window
+                        .set_fullscreen(Some(Fullscreen::Borderless(None)));
+                    handler.toasts.push("Fullscreen".into());
+                } else {
+                    handler.window.set_fullscreen(None);
+                    handler.toasts.push("Windowed".into());
+                }
+            } else if *id == handler.menu_ids.scaling {
+                *handler.pixel_perfect = !*handler.pixel_perfect;
+                self.menu_items.scaling.set_checked(*handler.pixel_perfect);
+                if *handler.pixel_perfect {
+                    handler.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
+                    handler.toasts.push("Integer scaling".into());
+                } else {
+                    handler.pixels.set_scaling_mode(ScalingMode::Fill);
+                    handler.toasts.push("Fill scaling".into());
+                }
+            }
+        }
+
+        let open_rom = if handler.open_rom {
+            let mut dialog = rfd::FileDialog::new()
+                .set_title("Open NES ROM")
+                .add_filter("NES ROMs", &["nes"])
+                .add_filter("All files", &["*"]);
+            if let Some(dir) = crate::load_last_rom_dir() {
+                dialog = dialog.set_directory(&dir);
+            }
+            dialog.pick_file().map(|p| {
+                if let Some(dir) = p.parent() {
+                    crate::save_last_rom_dir(dir);
+                }
+                p.to_string_lossy().into_owned()
+            })
+        } else {
+            None
+        };
 
         let mut result = PollResult {
             exit: handler.exit,
@@ -379,6 +601,7 @@ impl IOHandler for WinitPixelsIOHandler {
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
             toasts: handler.toasts,
+            open_rom,
         };
 
         let gp = self.gamepads.poll();
@@ -389,17 +612,39 @@ impl IOHandler for WinitPixelsIOHandler {
         // Merge keyboard and gamepad for player 0 (OR logic: either source can press)
         let mut p0_state = self.kb_state;
         if let Some(s) = &gp.states[0] {
-            if s.a { p0_state |= controller::A; }
-            if s.b { p0_state |= controller::B; }
-            if s.start { p0_state |= controller::START; }
-            if s.select { p0_state |= controller::SELECT; }
-            if s.up { p0_state |= controller::UP; }
-            if s.down { p0_state |= controller::DOWN; }
-            if s.left { p0_state |= controller::LEFT; }
-            if s.right { p0_state |= controller::RIGHT; }
-            if s.save_state { result.save_state = true; }
-            if s.load_state { result.load_state = true; }
-            if s.cycle_slot { result.cycle_slot = true; }
+            if s.a {
+                p0_state |= controller::A;
+            }
+            if s.b {
+                p0_state |= controller::B;
+            }
+            if s.start {
+                p0_state |= controller::START;
+            }
+            if s.select {
+                p0_state |= controller::SELECT;
+            }
+            if s.up {
+                p0_state |= controller::UP;
+            }
+            if s.down {
+                p0_state |= controller::DOWN;
+            }
+            if s.left {
+                p0_state |= controller::LEFT;
+            }
+            if s.right {
+                p0_state |= controller::RIGHT;
+            }
+            if s.save_state {
+                result.save_state = true;
+            }
+            if s.load_state {
+                result.load_state = true;
+            }
+            if s.cycle_slot {
+                result.cycle_slot = true;
+            }
         }
         mem.controllers()[0].load_status(p0_state);
 
@@ -407,14 +652,30 @@ impl IOHandler for WinitPixelsIOHandler {
         if let Some(s) = &gp.states[1] {
             let c = &mut mem.controllers()[1];
             let mut state: u8 = 0;
-            if s.a { state |= controller::A; }
-            if s.b { state |= controller::B; }
-            if s.start { state |= controller::START; }
-            if s.select { state |= controller::SELECT; }
-            if s.up { state |= controller::UP; }
-            if s.down { state |= controller::DOWN; }
-            if s.left { state |= controller::LEFT; }
-            if s.right { state |= controller::RIGHT; }
+            if s.a {
+                state |= controller::A;
+            }
+            if s.b {
+                state |= controller::B;
+            }
+            if s.start {
+                state |= controller::START;
+            }
+            if s.select {
+                state |= controller::SELECT;
+            }
+            if s.up {
+                state |= controller::UP;
+            }
+            if s.down {
+                state |= controller::DOWN;
+            }
+            if s.left {
+                state |= controller::LEFT;
+            }
+            if s.right {
+                state |= controller::RIGHT;
+            }
             c.load_status(state);
         }
 
@@ -471,45 +732,85 @@ impl IOHandler for WinitPixelsIOHandler {
         shell.new_command("m", "mem read/write: m <addr> [value]", 1, |io, ctx, w| {
             match util::hex_str_to_u16(w[0]) {
                 Ok(addr) => {
-                    writeln!(io, "mem[0x{:x}] == 0x{:x}", addr, ctx.mem.cpu_read(addr as _))?;
+                    writeln!(
+                        io,
+                        "mem[0x{:x}] == 0x{:x}",
+                        addr,
+                        ctx.mem.cpu_read(addr as _)
+                    )?;
                     if w.len() > 1 {
                         match util::hex_str_to_u8(w[1]) {
                             Ok(v) => {
                                 ctx.mem.cpu_write(addr as _, v);
                                 writeln!(io, "mem[0x{:x}] = 0x{:x}", addr, v)?;
                             }
-                            _ => { writeln!(io, "invalid value: {}", w[1])?; }
+                            _ => {
+                                writeln!(io, "invalid value: {}", w[1])?;
+                            }
                         }
                     }
                 }
-                _ => { writeln!(io, "invalid address: {}", w[0])?; }
+                _ => {
+                    writeln!(io, "invalid address: {}", w[0])?;
+                }
             }
             Ok(())
         });
 
         shell.new_command("o", "opcode lookup", 1, |io, ctx, w| {
             match util::hex_str_to_u8(w[0]) {
-                Ok(o) => { writeln!(io, "0x{:x} => {}", o, ctx.lookup.name(o))?; }
-                _ => { writeln!(io, "invalid opcode: {}", w[0])?; }
+                Ok(o) => {
+                    writeln!(io, "0x{:x} => {}", o, ctx.lookup.name(o))?;
+                }
+                _ => {
+                    writeln!(io, "invalid opcode: {}", w[0])?;
+                }
             };
             Ok(())
         });
 
-        shell.new_command("cpu", "edit cpu register: cpu <reg> <value>", 2, |io, ctx, w| {
-            match util::hex_str_to_u16(w[1]) {
-                Ok(v) => match w[0] {
-                    "a" => { ctx.cpu.a = (v & 0xff) as u8; writeln!(io, "cpu.a = 0x{:x}", ctx.cpu.a)?; }
-                    "x" => { ctx.cpu.x = (v & 0xff) as u8; writeln!(io, "cpu.x = 0x{:x}", ctx.cpu.x)?; }
-                    "y" => { ctx.cpu.y = (v & 0xff) as u8; writeln!(io, "cpu.y = 0x{:x}", ctx.cpu.y)?; }
-                    "sp" => { ctx.cpu.sp = (v & 0xff) as u8; writeln!(io, "cpu.sp = 0x{:x}", ctx.cpu.sp)?; }
-                    "status" => { ctx.cpu.status = (v & 0xff) as u8; writeln!(io, "cpu.status = 0x{:x}", ctx.cpu.status)?; }
-                    "pc" => { ctx.cpu.pc = v; writeln!(io, "cpu.pc = 0x{:x}", v)?; }
-                    _ => { writeln!(io, "invalid register: {}", w[0])?; }
-                },
-                _ => { writeln!(io, "invalid value: {}", w[1])?; }
-            };
-            Ok(())
-        });
+        shell.new_command(
+            "cpu",
+            "edit cpu register: cpu <reg> <value>",
+            2,
+            |io, ctx, w| {
+                match util::hex_str_to_u16(w[1]) {
+                    Ok(v) => match w[0] {
+                        "a" => {
+                            ctx.cpu.a = (v & 0xff) as u8;
+                            writeln!(io, "cpu.a = 0x{:x}", ctx.cpu.a)?;
+                        }
+                        "x" => {
+                            ctx.cpu.x = (v & 0xff) as u8;
+                            writeln!(io, "cpu.x = 0x{:x}", ctx.cpu.x)?;
+                        }
+                        "y" => {
+                            ctx.cpu.y = (v & 0xff) as u8;
+                            writeln!(io, "cpu.y = 0x{:x}", ctx.cpu.y)?;
+                        }
+                        "sp" => {
+                            ctx.cpu.sp = (v & 0xff) as u8;
+                            writeln!(io, "cpu.sp = 0x{:x}", ctx.cpu.sp)?;
+                        }
+                        "status" => {
+                            ctx.cpu.status = (v & 0xff) as u8;
+                            writeln!(io, "cpu.status = 0x{:x}", ctx.cpu.status)?;
+                        }
+                        "pc" => {
+                            ctx.cpu.pc = v;
+                            writeln!(io, "cpu.pc = 0x{:x}", v)?;
+                        }
+                        _ => {
+                            writeln!(io, "invalid register: {}", w[0])?;
+                        }
+                    },
+                    _ => {
+                        writeln!(io, "invalid value: {}", w[1])?;
+                    }
+                };
+                Ok(())
+            },
+        );
 
         shell.new_command("b", "add/remove breakpoint", 0, |io, ctx, w| {
             if !w.is_empty() {
@@ -517,7 +818,12 @@ impl IOHandler for WinitPixelsIOHandler {
             }
             writeln!(io, "breakpoints:")?;
             for b in ctx.breakpoints.iter() {
-                writeln!(io, "  0x{:x}: {}", b, ctx.lookup.name(ctx.mem.cpu_read(*b as _)))?;
+                writeln!(
+                    io,
+                    "  0x{:x}: {}",
+                    b,
+                    ctx.lookup.name(ctx.mem.cpu_read(*b as _))
+                )?;
             }
             Ok(())
         });
@@ -544,7 +850,9 @@ impl IOHandler for WinitPixelsIOHandler {
             *ctx.stepping = false;
             Err(ExecError::Quit)
         });
-        shell.new_command_noargs("q", "quit", |_, _| { std::process::exit(0); });
+        shell.new_command_noargs("q", "quit", |_, _| {
+            std::process::exit(0);
+        });
 
         shell.run_loop(&mut ShellIO::default());
     }

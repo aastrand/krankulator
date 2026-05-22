@@ -19,6 +19,7 @@ pub struct PollResult {
     pub reset: bool,
     pub toggle_overlay: bool,
     pub toasts: Vec<String>,
+    pub open_rom: Option<String>,
 }
 
 pub struct DebugContext<'a> {

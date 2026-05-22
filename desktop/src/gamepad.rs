@@ -131,8 +131,7 @@ mod platform {
                     continue;
                 };
 
-                let vendor = unsafe { controller.vendorName() }
-                    .map(|n| n.to_string());
+                let vendor = unsafe { controller.vendorName() }.map(|n| n.to_string());
                 let is_joycon_pair = vendor.as_deref().map_or(false, |n| n.contains("Joy-Con"));
 
                 if is_joycon_pair && slot == 0 {
@@ -227,7 +226,8 @@ mod platform {
             let gilrs = Gilrs::new().unwrap();
             let mut players = [None; 2];
             for (id, gamepad) in gilrs.gamepads() {
-                if gamepad.is_connected() && gamepad.mapping_source() == MappingSource::SdlMappings {
+                if gamepad.is_connected() && gamepad.mapping_source() == MappingSource::SdlMappings
+                {
                     if players[0].is_none() {
                         players[0] = Some(id);
                     } else if players[1].is_none() {

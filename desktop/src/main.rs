@@ -7,7 +7,6 @@ use krankulator_core::emu;
 use krankulator_core::emu::io::loader;
 use krankulator_core::util;
 
-
 /// Krankulator
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -96,8 +95,10 @@ fn main() -> Result<(), String> {
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {
                         emu::Emulator::new_capturing(mapper)
                     } else if !args.headless {
-                        let audio = Box::new(audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
-                            .expect("No audio output device available"));
+                        let audio = Box::new(
+                            audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
+                                .expect("No audio output device available"),
+                        );
                         let rom_name = std::path::Path::new(file)
                             .file_stem()
                             .and_then(|s| s.to_str())
@@ -145,7 +146,23 @@ fn main() -> Result<(), String> {
     emu.toggle_quiet_mode(args.quiet);
     emu.toggle_debug_on_infinite_loop(args.debug);
 
-    emu.run();
+    loop {
+        emu.run();
+        match emu.take_pending_open_rom() {
+            Some(path) => {
+                let l: Box<dyn loader::Loader> = loader::InesLoader::new();
+                match l.load(&path) {
+                    Ok(mapper) => {
+                        emu.load_rom(mapper, &path);
+                    }
+                    Err(msg) => {
+                        eprintln!("Failed to load ROM: {}", msg);
+                    }
+                }
+            }
+            None => break,
+        }
+    }
 
     if let Some(wav_path) = &args.wav_out {
         let samples = emu.drain_captured_audio();
@@ -164,9 +181,13 @@ fn main() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn pick_rom_file() -> Option<std::path::PathBuf> {
-    let mut script = String::from("POSIX path of (choose file of type {\"nes\"} with prompt \"Open NES ROM\"");
+    let mut script =
+        String::from("POSIX path of (choose file of type {\"nes\"} with prompt \"Open NES ROM\"");
     if let Some(dir) = load_last_rom_dir() {
-        let dir_str = dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let dir_str = dir
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
         script = format!(
             "POSIX path of (choose file of type {{\"nes\"}} default location POSIX file \"{}\" with prompt \"Open NES ROM\"",
             dir_str
@@ -179,7 +200,11 @@ fn pick_rom_file() -> Option<std::path::PathBuf> {
         .ok()?;
     if output.status.success() {
         let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
-        if path.is_empty() { None } else { Some(std::path::PathBuf::from(path)) }
+        if path.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(path))
+        }
     } else {
         None
     }
@@ -201,17 +226,20 @@ fn config_dir() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("krankulator"))
 }
 
-fn load_last_rom_dir() -> Option<std::path::PathBuf> {
+pub(crate) fn load_last_rom_dir() -> Option<std::path::PathBuf> {
     let path = config_dir()?.join("last_rom_dir");
     let dir = std::fs::read_to_string(path).ok()?;
     let dir = std::path::PathBuf::from(dir.trim());
     dir.is_dir().then_some(dir)
 }
 
-fn save_last_rom_dir(dir: &std::path::Path) {
+pub(crate) fn save_last_rom_dir(dir: &std::path::Path) {
     if let Some(config) = config_dir() {
         let _ = std::fs::create_dir_all(&config);
-        let _ = std::fs::write(config.join("last_rom_dir"), dir.to_string_lossy().as_bytes());
+        let _ = std::fs::write(
+            config.join("last_rom_dir"),
+            dir.to_string_lossy().as_bytes(),
+        );
     }
 }
 
@@ -231,11 +259,8 @@ mod tests {
                 }
             };
         let mapper = loader::load_nes(&String::from(test_input!("nes/nestest.nes")));
-        let mut emu = emu::Emulator::new_with(
-            Box::new(emu::io::HeadlessIOHandler {}),
-            mapper,
-            audio,
-        );
+        let mut emu =
+            emu::Emulator::new_with(Box::new(emu::io::HeadlessIOHandler {}), mapper, audio);
         emu.cpu.pc = 0xc000;
         emu.cpu.sp = 0xfd;
         emu.toggle_quiet_mode(true);
@@ -244,4 +269,3 @@ mod tests {
         }
     }
 }
-

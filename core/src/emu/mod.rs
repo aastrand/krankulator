@@ -63,6 +63,7 @@ pub struct Emulator {
     savestate_slot: u8,
     last_rendered_frame: u64,
     pub overlay: gfx::overlay::Overlay,
+    pending_open_rom: Option<String>,
 }
 
 impl Emulator {
@@ -133,11 +134,38 @@ impl Emulator {
             savestate_slot: 0,
             last_rendered_frame: 0,
             overlay: gfx::overlay::Overlay::new(),
+            pending_open_rom: None,
         }
     }
 
     pub fn set_rom_path(&mut self, path: &str) {
         self.rom_path = Some(path.to_string());
+    }
+
+    pub fn take_pending_open_rom(&mut self) -> Option<String> {
+        self.pending_open_rom.take()
+    }
+
+    pub fn load_rom(&mut self, mapper: Box<dyn memory::MemoryMapper>, path: &str) {
+        self.mem = mapper;
+        self.rom_path = Some(path.to_string());
+        self.cpu.pc = self.mem.code_start();
+        self.cpu.sp = 0xfd;
+        self.cpu.status = 0x34;
+        self.cpu.a = 0;
+        self.cpu.x = 0;
+        self.cpu.y = 0;
+        self.cpu.cycle = 0;
+        self.cycles = 0;
+        self.master_clock = 0;
+        self.instructions = 0;
+        self.ppu = ppu::PPU::new();
+        self.apu.reset();
+        self.audio.clear();
+        self.nmi_triggered_countdown = -1;
+        self.ppu_register_warmup_until_cpu_cycle = 29_658;
+        self.savestate_slot = 0;
+        self.last_rendered_frame = 0;
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -396,8 +424,11 @@ impl Emulator {
 
         if let Some(vbl_dot) = vbl_dot {
             if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
-                self.nmi_triggered_countdown =
-                    if vbl_dot <= self.irq_sample_deadline { 0 } else { 1 };
+                self.nmi_triggered_countdown = if vbl_dot <= self.irq_sample_deadline {
+                    0
+                } else {
+                    1
+                };
             }
         }
         if self.should_trigger_nmi && self.nmi_triggered_countdown == 0 {
@@ -435,6 +466,10 @@ impl Emulator {
             }
             if result.toggle_overlay {
                 self.overlay.toggle();
+            }
+            if result.open_rom.is_some() {
+                self.pending_open_rom = result.open_rom;
+                state = CycleState::Exiting;
             }
             for msg in result.toasts {
                 self.overlay.toast(msg);
@@ -549,8 +584,11 @@ impl Emulator {
             let target_dot = self.cpu_bus_access_dot();
             if let Some(vbl_dot) = self.sync_ppu_to_dot(target_dot) {
                 if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
-                    self.nmi_triggered_countdown =
-                        if vbl_dot <= self.irq_sample_deadline { 1 } else { 2 };
+                    self.nmi_triggered_countdown = if vbl_dot <= self.irq_sample_deadline {
+                        1
+                    } else {
+                        2
+                    };
                 }
             }
         }
@@ -1243,8 +1281,11 @@ impl Emulator {
                     && self.ppu.is_in_vblank()
                 {
                     let write_dot = self.cpu_bus_access_dot();
-                    self.nmi_triggered_countdown =
-                        if write_dot <= self.irq_sample_deadline { 1 } else { 2 };
+                    self.nmi_triggered_countdown = if write_dot <= self.irq_sample_deadline {
+                        1
+                    } else {
+                        2
+                    };
                 }
                 self.mem.notify_ppu_ctrl(value);
             }
