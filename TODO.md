@@ -104,14 +104,13 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## UI / Desktop App Polish
 
-Currently: bare winit window, no menu, CLI-only file selection.
-
 - [x] App icon (macOS dock icon via NSApplication, web favicon) [XS]
-- [ ] Native menu bar via muda crate (cross-platform: macOS/Windows/Linux) [M]
-  - File: Open ROM (Cmd/Ctrl+O), Recent ROMs, Quit (Cmd/Ctrl+Q)
-  - Emulation: Pause/Resume, Reset, Fast-forward
-  - Options: Fullscreen, Integer/Fill Scaling, Mute, Save Slot (0-3)
-  - Help: About, Keyboard Shortcuts
+- [x] Native menu bar via muda crate (cross-platform: macOS/Windows/Linux) [M]
+  - File: Open ROM (Cmd+O), Quit
+  - Emulation: Reset (Cmd+R), Save State (Cmd+S), Load State (Cmd+L), Cycle Save Slot (Cmd+Q)
+  - Display: Fullscreen (Cmd+F), Integer Scaling — checkmarks synced with keyboard shortcuts
+  - Help: About (with app icon, version, website)
+  - Open ROM triggers rfd file dialog and hot-swaps the mapper mid-emulation
   - Linux requires GTK3 (`libgtk-3-dev`) — available on virtually all desktop distros
 - [x] File open dialog (native via rfd crate) [S]
   - Filter for .nes files
@@ -119,7 +118,7 @@ Currently: bare winit window, no menu, CLI-only file selection.
 - [x] Fullscreen toggle (F11), integer/fill scaling toggle (I) [S]
 - [x] Window title shows loaded ROM name [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
-- [ ] Recent ROMs list (persist across sessions) [M]
+- [ ] Recent ROMs list (persist across sessions in menu) [M]
 
 ---
 

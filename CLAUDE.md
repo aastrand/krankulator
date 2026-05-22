@@ -107,6 +107,8 @@ cargo clippy --workspace
 - Handles cycle-accurate timing between components
 - `run()` — blocking loop for desktop; `run_one_frame()` — single-frame step for web/rAF
 - `new_with(io, mapper, audio)` — constructor taking trait objects for any frontend
+- `load_rom(mapper, path)` — hot-swap mapper for loading a new ROM mid-emulation (resets CPU/PPU/APU)
+- `take_pending_open_rom()` — returns path from menu Open ROM action; desktop main loop re-enters `run()` after loading
 
 **CPU (`emu/cpu/mod.rs`)**
 - MOS 6502 CPU implementation with all official opcodes
@@ -156,8 +158,8 @@ cargo clippy --workspace
 
 ### Desktop Frontend (`desktop/src/`)
 
-- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core
-- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer, fullscreen (F11), integer/fill scaling toggle (I)
+- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; outer loop handles Open ROM by reloading mapper and re-entering `run()`
+- `io.rs` — `WinitPixelsIOHandler`: winit 0.30 window + pixels framebuffer, native menu bar via muda crate (File/Emulation/Display/Help), fullscreen (F11/Cmd+F), integer/fill scaling toggle (I), checkmark menu items synced with keyboard state
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
 - `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
