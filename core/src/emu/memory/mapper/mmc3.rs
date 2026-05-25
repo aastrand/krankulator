@@ -1,5 +1,8 @@
 use super::super::super::io;
-use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
+use super::{
+    mirror_nametable_addr, NametableMirror, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
+    PALETTE_MIRROR_MASK, PALETTE_SIZE, PALETTE_START, PRG_RAM_8K, RESET_TARGET_ADDR, VRAM_SIZE,
+};
 use crate::emu::memory::MemoryMapper;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
@@ -20,7 +23,7 @@ pub struct MMC3Mapper {
     chr_rom: Vec<[u8; CHR_BANK_SIZE]>,
     chr_ram: Vec<[u8; CHR_BANK_SIZE]>,
     chr_is_ram: bool,
-    prg_ram: Box<[u8; 0x2000]>,
+    prg_ram: Box<[u8; PRG_RAM_8K]>,
     has_battery: bool,
     variant: MMC3Variant,
 
@@ -44,13 +47,13 @@ pub struct MMC3Mapper {
     mirroring: NametableMirror,
 
     // VRAM for nametables
-    vram: Box<[u8; 0x800]>,
+    vram: Box<[u8; VRAM_SIZE as usize]>,
 
     // CPU RAM (0x0000-0x07FF, mirrored to 0x1FFF)
-    cpu_ram: Box<[u8; 0x800]>,
+    cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
 
     // Palette RAM for colors
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 
     // iNES 2.0 submapper (0 = standard MMC3, 1 = MMC6, etc.)
     submapper: u8,
@@ -130,9 +133,9 @@ impl MMC3Mapper {
             chr_ram,
             chr_is_ram,
             prg_ram: {
-                let mut ram = Box::new([0; 0x2000]);
+                let mut ram = Box::new([0; PRG_RAM_8K]);
                 if let Some(data) = sram_data {
-                    let len = data.len().min(0x2000);
+                    let len = data.len().min(PRG_RAM_8K);
                     ram[..len].copy_from_slice(&data[..len]);
                 }
                 ram
@@ -151,9 +154,9 @@ impl MMC3Mapper {
             irq_pending_since_dot: 0,
             last_a12_low_dot: 0,
             mirroring: super::mirroring_from_flags(flags),
-            vram: Box::new([0; 0x800]),
-            cpu_ram: Box::new([0; 0x800]),
-            palette_ram: [0x0F; 32],
+            vram: Box::new([0; VRAM_SIZE as usize]),
+            cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
+            palette_ram: [0x0F; PALETTE_SIZE],
             submapper,
         }
     }
@@ -470,10 +473,10 @@ impl MemoryMapper for MMC3Mapper {
             }
             0x3F00..=0x3FFF => {
                 // Palette RAM access with proper mirroring
-                let mut palette_addr = (addr as usize - 0x3F00) % 32;
+                let mut palette_addr = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
                 // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
-                if palette_addr & 0x13 == 0x10 {
-                    palette_addr &= !0x10;
+                if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    palette_addr &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[palette_addr]
             }
@@ -495,7 +498,7 @@ impl MemoryMapper for MMC3Mapper {
             }
             0x2000..=0x3EFF => {
                 let vram_addr = self.map_nametable(addr);
-                let copy_size = std::cmp::min(size, 0x800 - vram_addr);
+                let copy_size = std::cmp::min(size, VRAM_SIZE as usize - vram_addr);
                 unsafe {
                     std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size);
                 }
@@ -520,10 +523,10 @@ impl MemoryMapper for MMC3Mapper {
             }
             0x3F00..=0x3FFF => {
                 // Palette RAM write with proper mirroring
-                let mut palette_addr = (addr as usize - 0x3F00) % 32;
+                let mut palette_addr = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
                 // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
-                if palette_addr & 0x13 == 0x10 {
-                    palette_addr &= !0x10;
+                if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    palette_addr &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[palette_addr] = value;
             }

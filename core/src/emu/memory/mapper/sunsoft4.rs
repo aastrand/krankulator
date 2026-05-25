@@ -1,5 +1,8 @@
 use super::super::super::io;
-use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
+use super::{
+    mirror_nametable_addr, NametableMirror, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
+    PALETTE_MIRROR_MASK, PALETTE_SIZE, PALETTE_START, PRG_RAM_8K, RESET_TARGET_ADDR, VRAM_SIZE,
+};
 use crate::emu::memory::MemoryMapper;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
@@ -13,7 +16,7 @@ pub struct Sunsoft4Mapper {
     prg_rom: Vec<[u8; PRG_BANK_SIZE]>,
     chr_rom: Vec<[u8; CHR_BANK_SIZE]>,
     chr_rom_1k: Vec<[u8; NT_BANK_SIZE]>,
-    prg_ram: Box<[u8; 0x2000]>,
+    prg_ram: Box<[u8; PRG_RAM_8K]>,
     prg_ram_enabled: bool,
     has_battery: bool,
 
@@ -23,9 +26,9 @@ pub struct Sunsoft4Mapper {
     mirroring: u8,
     use_chr_nametables: bool,
 
-    vram: Box<[u8; 0x800]>,
-    cpu_ram: Box<[u8; 0x800]>,
-    palette_ram: [u8; 32],
+    vram: Box<[u8; VRAM_SIZE as usize]>,
+    cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
+    palette_ram: [u8; PALETTE_SIZE],
 }
 
 impl Sunsoft4Mapper {
@@ -66,9 +69,9 @@ impl Sunsoft4Mapper {
             chr_rom,
             chr_rom_1k,
             prg_ram: {
-                let mut ram = Box::new([0; 0x2000]);
+                let mut ram = Box::new([0; PRG_RAM_8K]);
                 if let Some(data) = sram_data {
-                    let len = data.len().min(0x2000);
+                    let len = data.len().min(PRG_RAM_8K);
                     ram[..len].copy_from_slice(&data[..len]);
                 }
                 ram
@@ -80,9 +83,9 @@ impl Sunsoft4Mapper {
             prg_bank: 0,
             mirroring: mirroring_mode,
             use_chr_nametables: false,
-            vram: Box::new([0; 0x800]),
-            cpu_ram: Box::new([0; 0x800]),
-            palette_ram: [0x0F; 32],
+            vram: Box::new([0; VRAM_SIZE as usize]),
+            cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
+            palette_ram: [0x0F; PALETTE_SIZE],
         }
     }
 
@@ -202,9 +205,9 @@ impl MemoryMapper for Sunsoft4Mapper {
             0x0000..=0x1FFF => self.read_chr(addr),
             0x2000..=0x3EFF => self.read_nametable(addr),
             0x3F00..=0x3FFF => {
-                let mut idx = (addr as usize - 0x3F00) % 32;
-                if idx & 0x13 == 0x10 {
-                    idx &= !0x10;
+                let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+                if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    idx &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[idx]
             }
@@ -227,7 +230,7 @@ impl MemoryMapper for Sunsoft4Mapper {
                 if !self.use_chr_nametables {
                     let mirrored = mirror_nametable_addr(addr, self.mirroring_mode());
                     let vram_addr = (mirrored & 0x7FF) as usize;
-                    let copy_size = size.min(0x800 - vram_addr);
+                    let copy_size = size.min(VRAM_SIZE as usize - vram_addr);
                     unsafe { std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size) }
                 }
             }
@@ -240,9 +243,9 @@ impl MemoryMapper for Sunsoft4Mapper {
             0x0000..=0x1FFF => {}
             0x2000..=0x3EFF => self.write_nametable(addr, value),
             0x3F00..=0x3FFF => {
-                let mut idx = (addr as usize - 0x3F00) % 32;
-                if idx & 0x13 == 0x10 {
-                    idx &= !0x10;
+                let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+                if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    idx &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[idx] = value;
             }

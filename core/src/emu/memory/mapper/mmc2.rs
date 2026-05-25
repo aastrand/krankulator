@@ -5,11 +5,9 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 const PRG_BANK_SIZE: usize = 8 * 1024;
 const CHR_BANK_SIZE: u16 = 4 * 1024;
-const CPU_RAM_SIZE: usize = 2 * 1024;
-const VRAM_SIZE: u16 = 2 * 1024;
 
 pub struct MMC2Mapper {
-    _cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
+    _cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
     cpu_ram_ptr: *mut u8,
 
     prg_banks: Vec<[u8; PRG_BANK_SIZE]>,
@@ -25,7 +23,7 @@ pub struct MMC2Mapper {
 
     _vram: Box<[u8; VRAM_SIZE as usize]>,
     vram_ptr: *mut u8,
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 
     pub controllers: [controller::Controller; 2],
 }
@@ -56,7 +54,7 @@ impl MMC2Mapper {
             chr_banks.push(hi);
         }
 
-        let mut cpu_ram = Box::new([0u8; CPU_RAM_SIZE]);
+        let mut cpu_ram = Box::new([0u8; CPU_RAM_SIZE as usize]);
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
         let mut vram = Box::new([0u8; VRAM_SIZE as usize]);
@@ -75,7 +73,7 @@ impl MMC2Mapper {
             mirroring,
             _vram: vram,
             vram_ptr,
-            palette_ram: [0x0F; 32],
+            palette_ram: [0x0F; PALETTE_SIZE],
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
     }
@@ -161,10 +159,10 @@ impl MemoryMapper for MMC2Mapper {
 
     fn ppu_read(&self, addr: u16) -> u8 {
         let addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if addr >= PALETTE_START {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             return self.palette_ram[idx];
         }
@@ -227,10 +225,10 @@ impl MemoryMapper for MMC2Mapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         let addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if addr >= PALETTE_START {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             self.palette_ram[idx] = value;
             return;
@@ -263,7 +261,7 @@ impl MemoryMapper for MMC2Mapper {
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
-        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         w.write_bytes(cpu_ram);
         w.write_u8(self.prg_bank_idx as u8);
         for half in 0..2 {
@@ -281,7 +279,8 @@ impl MemoryMapper for MMC2Mapper {
     }
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
-        let cpu_ram = unsafe { std::slice::from_raw_parts_mut(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        let cpu_ram =
+            unsafe { std::slice::from_raw_parts_mut(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         r.read_bytes_into(cpu_ram)?;
         self.prg_bank_idx = r.read_u8()? as usize;
         for half in 0..2 {

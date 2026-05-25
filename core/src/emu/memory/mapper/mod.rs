@@ -15,6 +15,22 @@ pub mod uxrom;
 pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 pub const NAMETABLE_ALIGNMENT_BIT: u8 = 0b0000_0001;
 
+// CPU memory map regions
+pub const CPU_RAM_SIZE: u16 = 0x0800; // 2KB, mirrored to $1FFF
+
+// PPU memory map regions
+pub const PALETTE_START: u16 = 0x3F00;
+pub const PALETTE_SIZE: usize = 32;
+pub const PALETTE_MIRROR_MASK: usize = 0x13;
+pub const PALETTE_MIRROR_CLEAR: usize = 0x10;
+
+// Common memory sizes
+pub const VRAM_SIZE: u16 = 0x0800; // 2KB nametable VRAM
+pub const PRG_RAM_8K: usize = 0x2000; // 8KB PRG RAM
+
+// PPU register mirror count (8 registers mirrored through $2000-$3FFF)
+pub const PPU_REG_COUNT: u16 = 0x8;
+
 use crate::emu::io::controller::Controller;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
@@ -64,9 +80,9 @@ pub const MAX_VRAM_ADDR: u16 = 0x4000;
 
 pub fn mirror_addr(addr: u16) -> u16 {
     if addr < 0x2000 {
-        addr % 0x800
+        addr % CPU_RAM_SIZE
     } else if addr < 0x4000 {
-        0x2000 + (addr % 0x8)
+        0x2000 + (addr % PPU_REG_COUNT)
     } else {
         addr
     }
@@ -89,14 +105,12 @@ fn mirror_nametable_addr(addr: u16, mirroring: NametableMirror) -> u16 {
     }
 }
 
-const VRAM_SIZE: u16 = 2 * 1024;
-
 pub struct PpuBus {
     chr: Vec<u8>,
     chr_writable: bool,
     vram: Box<[u8; VRAM_SIZE as usize]>,
     pub mirroring: NametableMirror,
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 }
 
 impl PpuBus {
@@ -106,7 +120,7 @@ impl PpuBus {
             chr_writable: true,
             vram: Box::new([0; VRAM_SIZE as usize]),
             mirroring,
-            palette_ram: [0x0F; 32],
+            palette_ram: [0x0F; PALETTE_SIZE],
         }
     }
 
@@ -116,7 +130,7 @@ impl PpuBus {
             chr_writable: false,
             vram: Box::new([0; VRAM_SIZE as usize]),
             mirroring,
-            palette_ram: [0x0F; 32],
+            palette_ram: [0x0F; PALETTE_SIZE],
         }
     }
 
@@ -131,10 +145,10 @@ impl PpuBus {
 
     pub fn read(&self, addr: u16) -> u8 {
         let addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if (PALETTE_START..MAX_VRAM_ADDR).contains(&addr) {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             return self.palette_ram[idx];
         }
@@ -152,10 +166,10 @@ impl PpuBus {
 
     pub fn write(&mut self, addr: u16, value: u8) {
         let addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if (PALETTE_START..MAX_VRAM_ADDR).contains(&addr) {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             self.palette_ram[idx] = value;
             return;

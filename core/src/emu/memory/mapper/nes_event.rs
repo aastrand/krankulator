@@ -1,5 +1,8 @@
 use super::super::super::io;
-use super::{mirror_nametable_addr, NametableMirror, RESET_TARGET_ADDR};
+use super::{
+    mirror_nametable_addr, NametableMirror, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
+    PALETTE_MIRROR_MASK, PALETTE_SIZE, PALETTE_START, PRG_RAM_8K, RESET_TARGET_ADDR, VRAM_SIZE,
+};
 use crate::emu::memory::MemoryMapper;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
@@ -9,8 +12,8 @@ pub struct NesEventMapper {
     controllers: [io::controller::Controller; 2],
 
     prg_rom: Vec<[u8; PRG_BANK_SIZE]>,
-    chr_ram: Box<[u8; 0x2000]>,
-    wram: Box<[u8; 0x2000]>,
+    chr_ram: Box<[u8; PRG_RAM_8K]>,
+    wram: Box<[u8; PRG_RAM_8K]>,
     wram_enabled: bool,
 
     shift_register: u8,
@@ -27,9 +30,9 @@ pub struct NesEventMapper {
     irq_pending: bool,
 
     mirroring: NametableMirror,
-    vram: Box<[u8; 0x800]>,
-    cpu_ram: Box<[u8; 0x800]>,
-    palette_ram: [u8; 32],
+    vram: Box<[u8; VRAM_SIZE as usize]>,
+    cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
+    palette_ram: [u8; PALETTE_SIZE],
 }
 
 impl NesEventMapper {
@@ -46,8 +49,8 @@ impl NesEventMapper {
                 io::controller::Controller::new(),
             ],
             prg_rom: prg_banks,
-            chr_ram: Box::new([0; 0x2000]),
-            wram: Box::new([0; 0x2000]),
+            chr_ram: Box::new([0; PRG_RAM_8K]),
+            wram: Box::new([0; PRG_RAM_8K]),
             wram_enabled: true,
             shift_register: 0b10000,
             shift_count: 0,
@@ -59,9 +62,9 @@ impl NesEventMapper {
             irq_enabled: false,
             irq_pending: false,
             mirroring,
-            vram: Box::new([0; 0x800]),
-            cpu_ram: Box::new([0; 0x800]),
-            palette_ram: [0x0F; 32],
+            vram: Box::new([0; VRAM_SIZE as usize]),
+            cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
+            palette_ram: [0x0F; PALETTE_SIZE],
         }
     }
 
@@ -229,9 +232,9 @@ impl MemoryMapper for NesEventMapper {
                 self.vram[(mirrored & 0x7FF) as usize]
             }
             0x3F00..=0x3FFF => {
-                let mut idx = (addr as usize - 0x3F00) % 32;
-                if idx & 0x13 == 0x10 {
-                    idx &= !0x10;
+                let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+                if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    idx &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[idx]
             }
@@ -247,7 +250,7 @@ impl MemoryMapper for NesEventMapper {
             0x2000..=0x3EFF => {
                 let mirrored = mirror_nametable_addr(addr, self.mirroring);
                 let vram_addr = (mirrored & 0x7FF) as usize;
-                let copy_size = size.min(0x800 - vram_addr);
+                let copy_size = size.min(VRAM_SIZE as usize - vram_addr);
                 unsafe { std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size) }
             }
             _ => {}
@@ -262,9 +265,9 @@ impl MemoryMapper for NesEventMapper {
                 self.vram[(mirrored & 0x7FF) as usize] = value;
             }
             0x3F00..=0x3FFF => {
-                let mut idx = (addr as usize - 0x3F00) % 32;
-                if idx & 0x13 == 0x10 {
-                    idx &= !0x10;
+                let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+                if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    idx &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[idx] = value;
             }

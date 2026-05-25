@@ -12,7 +12,6 @@ CPU $C000-$FFFF: Last 16 KB of ROM (NROM-256) or mirror of $8000-$BFFF (NROM-128
 
 const NROM_PRG_BANK_SIZE: usize = 16 * 1024;
 const NROM_CHR_BANK_SIZE: usize = 8 * 1024;
-const VRAM_SIZE: u16 = 2 * 1024;
 
 const BANK_ONE_ADDR: usize = 0x8000;
 const BANK_TWO_ADDR: usize = 0xC000;
@@ -32,7 +31,7 @@ pub struct NROMMapper {
     nametable_alignment: NametableMirror,
 
     pub controllers: [controller::Controller; 2],
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 }
 
 impl NROMMapper {
@@ -83,7 +82,7 @@ impl NROMMapper {
             nametable_alignment: nametable_alignment,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
-            palette_ram: [0x0F; 32],
+            palette_ram: [0x0F; PALETTE_SIZE],
         }
     }
 }
@@ -108,10 +107,10 @@ impl MemoryMapper for NROMMapper {
     fn ppu_read(&self, addr: u16) -> u8 {
         let mut addr = addr;
         let page = addr_to_page(addr);
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut palette_addr = (addr as usize - 0x3F00) % 32;
-            if palette_addr & 0x13 == 0x10 {
-                palette_addr &= !0x10;
+        if (PALETTE_START..MAX_VRAM_ADDR).contains(&addr) {
+            let mut palette_addr = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                palette_addr &= !PALETTE_MIRROR_CLEAR;
             }
             return self.palette_ram[palette_addr];
         }
@@ -151,10 +150,10 @@ impl MemoryMapper for NROMMapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         let mut addr = addr % MAX_VRAM_ADDR;
-        if addr >= 0x3F00 && addr < 0x4000 {
-            let mut palette_addr = (addr as usize - 0x3F00) % 32;
-            if palette_addr & 0x13 == 0x10 {
-                palette_addr &= !0x10;
+        if (PALETTE_START..MAX_VRAM_ADDR).contains(&addr) {
+            let mut palette_addr = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                palette_addr &= !PALETTE_MIRROR_CLEAR;
             }
             self.palette_ram[palette_addr] = value;
             return;

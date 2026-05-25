@@ -5,9 +5,7 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
 const BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: u16 = 4 * 1024;
-const CPU_RAM_SIZE: usize = 2 * 1024;
-const MMC_RAM_SIZE: usize = 8 * 1024;
-const VRAM_SIZE: u16 = 2 * 1024;
+const MMC_RAM_SIZE: usize = PRG_RAM_8K;
 
 const MMC_RAM_ADDR: u16 = 0x6000;
 const LOW_BANK_ADDR: u16 = 0x8000;
@@ -16,7 +14,7 @@ const HIGH_BANK_ADDR: u16 = 0xc000;
 const SR_INITIAL_VALUE: u8 = 0b10000;
 
 pub struct MMC1Mapper {
-    _cpu_ram: Box<[u8; CPU_RAM_SIZE]>,
+    _cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
     cpu_ram_ptr: *mut u8,
 
     _mmc_ram: Box<[u8; MMC_RAM_SIZE]>,
@@ -46,7 +44,7 @@ pub struct MMC1Mapper {
     reg3: u8,
 
     pub controllers: [controller::Controller; 2],
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 }
 
 impl MMC1Mapper {
@@ -65,7 +63,7 @@ impl MMC1Mapper {
                 panic!("Expected at least one PRG bank");
             }
         }
-        let mut cpu_ram = Box::new([0; CPU_RAM_SIZE]);
+        let mut cpu_ram = Box::new([0; CPU_RAM_SIZE as usize]);
         let cpu_ram_ptr = cpu_ram.as_mut_ptr();
 
         let mut mmc_ram = Box::new([0; MMC_RAM_SIZE]);
@@ -121,7 +119,7 @@ impl MMC1Mapper {
             reg3: 0,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
-            palette_ram: [0; 32],
+            palette_ram: [0; PALETTE_SIZE],
         };
 
         mapper.high_bank_idx = mapper.banks.len() - 1;
@@ -261,11 +259,11 @@ impl MMC1Mapper {
             }
             0x30 => {
                 // $3F00–$3FFF: Palette RAM, 32 bytes, mirrored every 32 bytes
-                let mut palette_addr = (addr.wrapping_sub(0x3F00) as usize) % 32;
+                let mut palette_addr = (addr.wrapping_sub(PALETTE_START) as usize) % PALETTE_SIZE;
                 // NESDev-correct mirroring: $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
                 palette_addr &= 0x1F;
-                if palette_addr & 0x13 == 0x10 {
-                    palette_addr &= !0x10;
+                if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    palette_addr &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[palette_addr]
             }
@@ -325,10 +323,10 @@ impl MMC1Mapper {
             }
             0x30 => {
                 // $3F00–$3FFF: Palette RAM, 32 bytes, mirrored every 32 bytes
-                let mut palette_addr = (addr.wrapping_sub(0x3F00) as usize) % 32;
+                let mut palette_addr = (addr.wrapping_sub(PALETTE_START) as usize) % PALETTE_SIZE;
                 palette_addr &= 0x1F;
-                if palette_addr & 0x13 == 0x10 {
-                    palette_addr &= !0x10;
+                if palette_addr & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                    palette_addr &= !PALETTE_MIRROR_CLEAR;
                 }
                 self.palette_ram[palette_addr] = value;
             }
@@ -409,7 +407,7 @@ impl MemoryMapper for MMC1Mapper {
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
-        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         w.write_bytes(cpu_ram);
         let mmc_ram = unsafe { std::slice::from_raw_parts(self.mmc_ram_ptr, MMC_RAM_SIZE) };
         w.write_bytes(mmc_ram);
@@ -434,7 +432,8 @@ impl MemoryMapper for MMC1Mapper {
     }
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
-        let cpu_ram = unsafe { std::slice::from_raw_parts_mut(self.cpu_ram_ptr, CPU_RAM_SIZE) };
+        let cpu_ram =
+            unsafe { std::slice::from_raw_parts_mut(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         r.read_bytes_into(cpu_ram)?;
         let mmc_ram = unsafe { std::slice::from_raw_parts_mut(self.mmc_ram_ptr, MMC_RAM_SIZE) };
         r.read_bytes_into(mmc_ram)?;

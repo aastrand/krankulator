@@ -2,7 +2,10 @@ use crate::emu::io::controller::Controller;
 use crate::emu::memory::MemoryMapper;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
-use super::{load_controllers, save_controllers, RESET_TARGET_ADDR};
+use super::{
+    load_controllers, save_controllers, PALETTE_MIRROR_CLEAR, PALETTE_MIRROR_MASK, PALETTE_SIZE,
+    PALETTE_START, RESET_TARGET_ADDR, VRAM_SIZE,
+};
 
 const PRG_RAM_SIZE: usize = 64 * 1024;
 const EXRAM_SIZE: usize = 1024;
@@ -176,9 +179,9 @@ pub struct MMC5Mapper {
     chr_rom: Vec<[u8; 1024]>,
     chr_ram: Option<Vec<u8>>,
 
-    vram: Box<[u8; 2048]>,
+    vram: Box<[u8; VRAM_SIZE as usize]>,
     exram: Box<[u8; EXRAM_SIZE]>,
-    palette_ram: [u8; 32],
+    palette_ram: [u8; PALETTE_SIZE],
 
     // PRG banking
     prg_mode: u8,
@@ -305,9 +308,9 @@ impl MMC5Mapper {
             prg_ram,
             chr_rom,
             chr_ram,
-            vram: Box::new([0u8; 2048]),
+            vram: Box::new([0u8; VRAM_SIZE as usize]),
             exram: Box::new([0u8; EXRAM_SIZE]),
-            palette_ram: [0x0F; 32],
+            palette_ram: [0x0F; PALETTE_SIZE],
             prg_mode: 3,
             prg_bank_regs: [0, 0, 0, 0, last_prg_bank | 0x80],
             ram_protect_1: 0,
@@ -856,10 +859,10 @@ impl MemoryMapper for MMC5Mapper {
 
     fn ppu_read(&self, addr: u16) -> u8 {
         let addr = addr % 0x4000;
-        if addr >= 0x3F00 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if addr >= PALETTE_START {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             return self.palette_ram[idx];
         }
@@ -983,10 +986,10 @@ impl MemoryMapper for MMC5Mapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         let addr = addr % 0x4000;
-        if addr >= 0x3F00 {
-            let mut idx = (addr as usize - 0x3F00) % 32;
-            if idx & 0x13 == 0x10 {
-                idx &= !0x10;
+        if addr >= PALETTE_START {
+            let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
+            if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
+                idx &= !PALETTE_MIRROR_CLEAR;
             }
             self.palette_ram[idx] = value;
             return;
