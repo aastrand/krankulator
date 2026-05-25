@@ -1,5 +1,14 @@
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
+const TIMER_HIGH_MASK: u8 = 0x07;
+const LENGTH_INDEX_MASK: u8 = 0x1F;
+const LENGTH_INDEX_SHIFT: u8 = 3;
+const VOLUME_MASK: u8 = 0x0F;
+const DUTY_STEPS: u8 = 8;
+const ENVELOPE_MAX: u8 = 15;
+const SWEEP_MUTE_MIN_PERIOD: u16 = 8;
+const SWEEP_MUTE_MAX_PERIOD: u16 = 0x7FF;
+
 pub struct PulseChannel {
     channel_index: u8, // 0 for pulse 1, 1 for pulse 2
     duty_cycle: u8,
@@ -159,7 +168,7 @@ impl PulseChannel {
         self.duty_cycle = (value >> 6) & 3;
         self.length_counter_halt = (value >> 5) & 1 != 0;
         self.constant_volume = (value >> 4) & 1 != 0;
-        self.volume = value & 0x0F;
+        self.volume = value & VOLUME_MASK;
     }
 
     pub fn set_sweep(&mut self, value: u8) {
@@ -175,10 +184,10 @@ impl PulseChannel {
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
-        self.timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
+        self.timer = (self.timer & 0x00FF) | ((value & TIMER_HIGH_MASK) as u16) << 8;
         self.timer_value = self.timer;
 
-        let length_index = ((value >> 3) & 0x1F) as usize;
+        let length_index = ((value >> LENGTH_INDEX_SHIFT) & LENGTH_INDEX_MASK) as usize;
         let length_value = LENGTH_COUNTER_TABLE[length_index];
 
         if self.enabled {
@@ -204,7 +213,7 @@ impl PulseChannel {
         // Timer countdown and duty step advancement
         if self.timer_value == 0 {
             self.timer_value = self.timer;
-            self.duty_step = (self.duty_step + 1) % 8;
+            self.duty_step = (self.duty_step + 1) % DUTY_STEPS;
         } else {
             self.timer_value -= 1;
         }
@@ -250,13 +259,15 @@ impl PulseChannel {
     }
 
     fn is_sweep_muting(&self) -> bool {
-        // Channel is muted if current period < 8 OR target period > 0x7FF
-        self.timer < 8 || self.calculate_target_period() > 0x7FF
+        self.timer < SWEEP_MUTE_MIN_PERIOD || self.calculate_target_period() > SWEEP_MUTE_MAX_PERIOD
     }
 
     fn generate_output(&mut self) {
-        // Channel is silenced if: not enabled, length counter = 0, timer < 8, or sweep muting
-        if !self.enabled || self.length_counter == 0 || self.timer < 8 || self.is_sweep_muting() {
+        if !self.enabled
+            || self.length_counter == 0
+            || self.timer < SWEEP_MUTE_MIN_PERIOD
+            || self.is_sweep_muting()
+        {
             self.output = 0.0;
             return;
         }
@@ -280,14 +291,14 @@ impl PulseChannel {
     pub fn clock_envelope(&mut self) {
         if self.envelope_start {
             self.envelope_start = false;
-            self.envelope_decay_level = 15;
-            self.envelope_divider = self.volume; // Divider reloads with volume parameter
+            self.envelope_decay_level = ENVELOPE_MAX;
+            self.envelope_divider = self.volume;
         } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.volume; // Divider reloads with volume parameter
+            self.envelope_divider = self.volume;
             if self.envelope_decay_level > 0 {
                 self.envelope_decay_level -= 1;
             } else if self.length_counter_halt {
-                self.envelope_decay_level = 15; // Loop flag causes reload to 15
+                self.envelope_decay_level = ENVELOPE_MAX;
             }
         } else {
             self.envelope_divider -= 1;

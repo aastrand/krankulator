@@ -1,5 +1,11 @@
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
+const TIMER_HIGH_MASK: u8 = 0x07;
+const LENGTH_INDEX_SHIFT: u8 = 3;
+const LENGTH_INDEX_MASK: u8 = 0x1F;
+const LINEAR_COUNTER_MASK: u8 = 0x7F;
+const TRIANGLE_STEPS: u8 = 32;
+
 pub struct TriangleChannel {
     control: u8,
     linear_counter: u8,
@@ -93,7 +99,7 @@ impl TriangleChannel {
     pub fn set_control(&mut self, value: u8) {
         self.control = value;
         self.length_counter_halt = (value >> 7) & 1 != 0;
-        self.linear_counter_reload = value & 0x7F;
+        self.linear_counter_reload = value & LINEAR_COUNTER_MASK;
     }
 
     pub fn set_timer_low(&mut self, value: u8) {
@@ -101,11 +107,12 @@ impl TriangleChannel {
     }
 
     pub fn set_timer_high(&mut self, value: u8) {
-        let new_timer = (self.timer & 0x00FF) | ((value & 0x07) as u16) << 8;
+        let new_timer = (self.timer & 0x00FF) | ((value & TIMER_HIGH_MASK) as u16) << 8;
         self.timer = new_timer;
 
         if self.enabled {
-            self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
+            self.length_counter =
+                LENGTH_COUNTER_TABLE[((value >> LENGTH_INDEX_SHIFT) & LENGTH_INDEX_MASK) as usize];
         }
 
         self.linear_counter_reload_flag = true;
@@ -128,7 +135,7 @@ impl TriangleChannel {
         if self.timer_value == 0 {
             self.timer_value = self.timer;
             if self.enabled && self.length_counter > 0 && self.linear_counter > 0 {
-                self.step = (self.step + 1) % 32;
+                self.step = (self.step + 1) % TRIANGLE_STEPS;
                 self.generate_output();
             }
         } else {

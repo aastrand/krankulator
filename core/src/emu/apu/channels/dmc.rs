@@ -1,6 +1,18 @@
 use crate::emu::memory::MemoryMapper;
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
+const PERIOD_INDEX_MASK: u8 = 0x0F;
+const DIRECT_LOAD_MASK: u8 = 0x7F;
+const SAMPLE_ADDR_BASE: u16 = 0xC000;
+const SAMPLE_ADDR_SHIFT: u16 = 6;
+const SAMPLE_LEN_SHIFT: u16 = 4;
+const LOOP_BIT: u8 = 0x40;
+const ADDR_WRAP_TARGET: u16 = 0x8000;
+const OUTPUT_LEVEL_MAX: u8 = 125;
+const OUTPUT_LEVEL_MIN: u8 = 2;
+const DMC_DELTA_STEP: u8 = 2;
+const BITS_PER_SAMPLE: u8 = 8;
+
 pub struct DmcChannel {
     control: u8,
     direct_load: u8,
@@ -133,20 +145,20 @@ impl DmcChannel {
         self.control = value;
         let irq_enable = (value >> 7) & 1 != 0;
         self.irq_enabled = irq_enable;
-        self.timer = DMC_PERIODS[(value & 0x0F) as usize];
+        self.timer = DMC_PERIODS[(value & PERIOD_INDEX_MASK) as usize];
         if !irq_enable {
             self.irq_pending = false;
         }
     }
 
     pub fn set_direct_load(&mut self, value: u8) {
-        self.direct_load = value & 0x7F;
+        self.direct_load = value & DIRECT_LOAD_MASK;
         self.output_level = self.direct_load;
     }
 
     pub fn set_sample_address(&mut self, value: u8) {
         self.sample_address = value;
-        self.current_address = 0xC000 | ((value as u16) << 6);
+        self.current_address = SAMPLE_ADDR_BASE | ((value as u16) << SAMPLE_ADDR_SHIFT);
     }
 
     pub fn set_sample_length(&mut self, value: u8) {
@@ -182,7 +194,7 @@ impl DmcChannel {
 
     fn clock_output(&mut self) {
         if self.bits_remaining == 0 {
-            self.bits_remaining = 8;
+            self.bits_remaining = BITS_PER_SAMPLE;
             if self.sample_buffer_empty {
                 self.silence = true;
             } else {
@@ -194,13 +206,11 @@ impl DmcChannel {
 
         if !self.silence {
             if self.shift_register & 1 == 1 {
-                if self.output_level <= 125 {
-                    self.output_level += 2;
+                if self.output_level <= OUTPUT_LEVEL_MAX {
+                    self.output_level += DMC_DELTA_STEP;
                 }
-            } else {
-                if self.output_level >= 2 {
-                    self.output_level -= 2;
-                }
+            } else if self.output_level >= OUTPUT_LEVEL_MIN {
+                self.output_level -= DMC_DELTA_STEP;
             }
             self.shift_register >>= 1;
         }
@@ -219,16 +229,14 @@ impl DmcChannel {
         self.bytes_remaining -= 1;
         self.current_address = self.current_address.wrapping_add(1);
         if self.current_address == 0x0000 {
-            self.current_address = 0x8000;
+            self.current_address = ADDR_WRAP_TARGET;
         }
 
         if self.bytes_remaining == 0 {
-            // Only set IRQ if IRQ is enabled and loop is NOT enabled
-            let loop_enabled = (self.control & 0x40) != 0;
+            let loop_enabled = (self.control & LOOP_BIT) != 0;
             if self.irq_enabled && !loop_enabled {
                 self.irq_pending = true;
             }
-            // Only restart if loop bit (bit 6) is set
             if self.enabled && loop_enabled {
                 self.restart_sample();
             }
@@ -236,8 +244,8 @@ impl DmcChannel {
     }
 
     fn restart_sample(&mut self) {
-        self.current_address = 0xC000 | ((self.sample_address as u16) << 6);
-        self.bytes_remaining = ((self.sample_length as u16) << 4) | 1;
+        self.current_address = SAMPLE_ADDR_BASE | ((self.sample_address as u16) << SAMPLE_ADDR_SHIFT);
+        self.bytes_remaining = ((self.sample_length as u16) << SAMPLE_LEN_SHIFT) | 1;
     }
 
     fn generate_output(&mut self) {

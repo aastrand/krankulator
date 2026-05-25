@@ -2,7 +2,52 @@ pub mod channels;
 pub mod frame_counter;
 
 pub const SAMPLE_RATE: u32 = 44100;
-pub const CYCLES_PER_SAMPLE: f64 = 1_789_773.0 / SAMPLE_RATE as f64;
+pub const CPU_CLOCK_RATE: f64 = 1_789_773.0;
+pub const CYCLES_PER_SAMPLE: f64 = CPU_CLOCK_RATE / SAMPLE_RATE as f64;
+
+// --- APU register addresses ---
+
+const PULSE1_CTRL: u16 = 0x4000;
+const PULSE1_SWEEP: u16 = 0x4001;
+const PULSE1_TIMER_LO: u16 = 0x4002;
+const PULSE1_TIMER_HI: u16 = 0x4003;
+const PULSE2_CTRL: u16 = 0x4004;
+const PULSE2_SWEEP: u16 = 0x4005;
+const PULSE2_TIMER_LO: u16 = 0x4006;
+const PULSE2_TIMER_HI: u16 = 0x4007;
+const TRIANGLE_CTRL: u16 = 0x4008;
+const TRIANGLE_TIMER_LO: u16 = 0x400A;
+const TRIANGLE_TIMER_HI: u16 = 0x400B;
+const NOISE_CTRL: u16 = 0x400C;
+const NOISE_PERIOD: u16 = 0x400E;
+const NOISE_LENGTH: u16 = 0x400F;
+const DMC_CTRL: u16 = 0x4010;
+const DMC_DIRECT_LOAD: u16 = 0x4011;
+const DMC_SAMPLE_ADDR: u16 = 0x4012;
+const DMC_SAMPLE_LEN: u16 = 0x4013;
+const APU_STATUS: u16 = 0x4015;
+const APU_FRAME_COUNTER: u16 = 0x4017;
+
+// --- Status register ($4015) bits ---
+
+const STATUS_PULSE1: u8 = 0x01;
+const STATUS_PULSE2: u8 = 0x02;
+const STATUS_TRIANGLE: u8 = 0x04;
+const STATUS_NOISE: u8 = 0x08;
+const STATUS_DMC: u8 = 0x10;
+const STATUS_FRAME_IRQ: u8 = 0x40;
+const STATUS_DMC_IRQ: u8 = 0x80;
+
+// --- Mute mask bits (debug channel mute) ---
+
+const MUTE_ALL: u8 = 0x1F;
+
+// --- Frame counter ($4017) bits ---
+
+const FRAME_COUNTER_IRQ_INHIBIT: u8 = 0x40;
+
+const SAMPLE_BUFFER_SIZE: usize = 4096;
+const IRQ_NOTIFICATION_DELAY: u64 = 7;
 
 /// First-order IIR chain at `SAMPLE_RATE`: HPF ~37 Hz, HPF ~440 Hz, LPF ~14 kHz.
 struct AudioFilter {
@@ -125,7 +170,7 @@ impl APU {
             dmc: DmcChannel::new(),
             frame_counter: FrameCounter::new(),
 
-            sample_buffer: vec![0.0; 4096],
+            sample_buffer: vec![0.0; SAMPLE_BUFFER_SIZE],
             sample_index: 0,
             cycles_since_sample: 0.0,
             sample_accumulator: 0.0,
@@ -189,12 +234,11 @@ impl APU {
 
     // Public API for UI to control per-channel mute without touching $4015
     pub fn set_master_mute(&mut self, muted: bool) {
-        self.mute_mask = if muted { 0x1F } else { 0x00 };
-        // println!("APU: MASTER {}", if muted { "MUTED" } else { "ENABLED" });
+        self.mute_mask = if muted { MUTE_ALL } else { 0x00 };
     }
 
     pub fn get_master_mute(&self) -> bool {
-        self.mute_mask == 0x1F
+        self.mute_mask == MUTE_ALL
     }
 
     pub fn toggle_mute_bit(&mut self, bit: u8, label: &str) {
@@ -212,29 +256,28 @@ impl APU {
 
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
-            0x4015 => {
+            APU_STATUS => {
                 let mut status = 0;
                 if self.pulse1.get_length_counter() > 0 {
-                    status |= 0x01;
+                    status |= STATUS_PULSE1;
                 }
                 if self.pulse2.get_length_counter() > 0 {
-                    status |= 0x02;
+                    status |= STATUS_PULSE2;
                 }
                 if self.triangle.get_length_counter() > 0 {
-                    status |= 0x04;
+                    status |= STATUS_TRIANGLE;
                 }
                 if self.noise.get_length_counter() > 0 {
-                    status |= 0x08;
+                    status |= STATUS_NOISE;
                 }
                 if self.dmc.is_active() {
-                    status |= 0x10;
+                    status |= STATUS_DMC;
                 }
-                // Set DMC IRQ flag (bit 7) if pending
                 if self.dmc.get_irq_pending() {
-                    status |= 0x80;
+                    status |= STATUS_DMC_IRQ;
                 }
-                status |= self.status & 0x40; // Only frame IRQ bit (bit 6)
-                self.clear_irq(); // Clear frame IRQ on read (do not clear DMC IRQ)
+                status |= self.status & STATUS_FRAME_IRQ;
+                self.clear_irq();
                 status
             }
             _ => 0,
@@ -242,184 +285,44 @@ impl APU {
     }
 
     pub fn write(&mut self, addr: u16, value: u8, emu_cycle: u64) {
-        // Debug: log all APU register writes
-        // println!("APU write: ${:04X} = {:02X}", addr, value);
-
         match addr {
-            // Pulse 1
-            0x4000 => {
-                /*
-                println!(
-                    "  Pulse1 control: duty={}, constant_volume={}, volume={}",
-                    (value >> 6) & 3,
-                    (value >> 4) & 1,
-                    value & 0xF
-                );
-                */
-                self.pulse1.set_control(value)
-            }
-            0x4001 => {
-                /*
-                println!(
-                    "  Pulse1 sweep: enabled={}, period={}, shift={}, negate={}",
-                    (value >> 7) & 1,
-                    (value >> 4) & 7,
-                    (value >> 0) & 7,
-                    (value >> 3) & 1
-                );
-                */
-                self.pulse1.set_sweep(value)
-            }
-            0x4002 => {
-                //println!("  Pulse1 timer low: {:02X}", value);
-                self.pulse1.set_timer_low(value)
-            }
-            0x4003 => {
-                /*
-                println!(
-                    "  Pulse1 timer high: {:02X}, length counter: {}",
-                    value,
-                    (value >> 3) & 0x1F
-                );
-                */
-                self.pulse1.set_timer_high(value)
-            }
+            PULSE1_CTRL => self.pulse1.set_control(value),
+            PULSE1_SWEEP => self.pulse1.set_sweep(value),
+            PULSE1_TIMER_LO => self.pulse1.set_timer_low(value),
+            PULSE1_TIMER_HI => self.pulse1.set_timer_high(value),
 
-            // Pulse 2
-            0x4004 => {
-                /*
-                println!(
-                    "  Pulse2 control: duty={}, constant_volume={}, volume={}",
-                    (value >> 6) & 3,
-                    (value >> 4) & 1,
-                    value & 0xF
-                );
-                */
-                self.pulse2.set_control(value)
-            }
-            0x4005 => {
-                /*
-                println!(
-                    "  Pulse2 sweep: enabled={}, period={}, shift={}, negate={}",
-                    (value >> 7) & 1,
-                    (value >> 4) & 7,
-                    (value >> 0) & 7,
-                    (value >> 3) & 1
-                );
-                */
-                self.pulse2.set_sweep(value)
-            }
-            0x4006 => {
-                //println!("  Pulse2 timer low: {:02X}", value);
-                self.pulse2.set_timer_low(value)
-            }
-            0x4007 => {
-                /*
-                println!(
-                    "  Pulse2 timer high: {:02X}, length counter: {}",
-                    value,
-                    (value >> 3) & 0x1F
-                );
-                */
-                self.pulse2.set_timer_high(value)
-            }
+            PULSE2_CTRL => self.pulse2.set_control(value),
+            PULSE2_SWEEP => self.pulse2.set_sweep(value),
+            PULSE2_TIMER_LO => self.pulse2.set_timer_low(value),
+            PULSE2_TIMER_HI => self.pulse2.set_timer_high(value),
 
-            // Triangle
-            0x4008 => {
-                /*
-                println!(
-                    "  Triangle control: linear_counter={}, control_flag={}",
-                    value & 0x7F,
-                    (value >> 7) & 1
-                );
-                */
-                self.triangle.set_control(value)
-            }
-            0x4009 => {} // Unused
-            0x400A => {
-                //println!("  Triangle timer low: {:02X}", value);
-                self.triangle.set_timer_low(value)
-            }
-            0x400B => {
-                /*
-                println!(
-                    "  Triangle timer high: {:02X}, length counter: {}",
-                    value,
-                    (value >> 3) & 0x1F
-                );
-                */
-                self.triangle.set_timer_high(value)
-            }
+            TRIANGLE_CTRL => self.triangle.set_control(value),
+            0x4009 => {}
+            TRIANGLE_TIMER_LO => self.triangle.set_timer_low(value),
+            TRIANGLE_TIMER_HI => self.triangle.set_timer_high(value),
 
-            // Noise
-            0x400C => {
-                /*
-                println!(
-                    "  Noise control: constant_volume={}, volume={}",
-                    (value >> 4) & 1,
-                    value & 0xF
-                );
-                */
-                self.noise.set_control(value)
-            }
-            0x400D => {} // Unused
-            0x400E => {
-                /*
-                println!(
-                    "  Noise period: mode={}, period={}",
-                    (value >> 7) & 1,
-                    value & 0xF
-                );
-                */
-                self.noise.set_period(value)
-            }
-            0x400F => {
-                //println!("  Noise length counter: {}", (value >> 3) & 0x1F);
-                self.noise.set_length_counter(value)
-            }
+            NOISE_CTRL => self.noise.set_control(value),
+            0x400D => {}
+            NOISE_PERIOD => self.noise.set_period(value),
+            NOISE_LENGTH => self.noise.set_length_counter(value),
 
-            // DMC
-            0x4010 => {
-                /*
-                println!(
-                    "  DMC control: irq_enable={}, loop={}, rate={}",
-                    (value >> 7) & 1,
-                    (value >> 6) & 1,
-                    value & 0xF
-                );
-                */
-                self.dmc.set_control(value)
-            }
-            0x4011 => {
-                //println!("  DMC direct load: {:02X}", value);
-                self.dmc.set_direct_load(value)
-            }
-            0x4012 => {
-                //println!("  DMC sample address: {:02X}", value);
-                self.dmc.set_sample_address(value)
-            }
-            0x4013 => {
-                //println!("  DMC sample length: {:02X}", value);
-                self.dmc.set_sample_length(value)
-            }
+            DMC_CTRL => self.dmc.set_control(value),
+            DMC_DIRECT_LOAD => self.dmc.set_direct_load(value),
+            DMC_SAMPLE_ADDR => self.dmc.set_sample_address(value),
+            DMC_SAMPLE_LEN => self.dmc.set_sample_length(value),
 
-            // Status
-            0x4015 => {
+            APU_STATUS => {
                 self.enabled_channels = value;
-
-                self.pulse1.set_enabled(value & 0x01 != 0);
-                self.pulse2.set_enabled(value & 0x02 != 0);
-                self.triangle.set_enabled(value & 0x04 != 0);
-                self.noise.set_enabled(value & 0x08 != 0);
-                self.dmc.set_enabled(value & 0x10 != 0);
-
-                // Clear DMC IRQ on $4015 write (as per NES APU)
+                self.pulse1.set_enabled(value & STATUS_PULSE1 != 0);
+                self.pulse2.set_enabled(value & STATUS_PULSE2 != 0);
+                self.triangle.set_enabled(value & STATUS_TRIANGLE != 0);
+                self.noise.set_enabled(value & STATUS_NOISE != 0);
+                self.dmc.set_enabled(value & STATUS_DMC != 0);
                 self.dmc.clear_irq();
             }
 
-            // Frame Counter
-            0x4017 => {
-                if value & 0x40 != 0 {
+            APU_FRAME_COUNTER => {
+                if value & FRAME_COUNTER_IRQ_INHIBIT != 0 {
                     self.clear_irq();
                 }
                 self.last_4017_write = Some(value);
@@ -448,19 +351,17 @@ impl APU {
             }
             FrameStep::Irq => {
                 if !self.frame_counter.irq_inhibit() {
-                    self.status |= 0x40;
-                    // +7 dots: APU cycle runs after master_clock advances, so compensate
-                    // for the delay between assertion and CPU penultimate-cycle sampling.
+                    self.status |= STATUS_FRAME_IRQ;
                     if self.frame_irq_since_dot == u64::MAX {
-                        self.frame_irq_since_dot = dot + 7;
+                        self.frame_irq_since_dot = dot + IRQ_NOTIFICATION_DELAY;
                     }
                 }
             }
             FrameStep::IrqHalfFrame => {
                 if !self.frame_counter.irq_inhibit() {
-                    self.status |= 0x40;
+                    self.status |= STATUS_FRAME_IRQ;
                     if self.frame_irq_since_dot == u64::MAX {
-                        self.frame_irq_since_dot = dot + 7;
+                        self.frame_irq_since_dot = dot + IRQ_NOTIFICATION_DELAY;
                     }
                 }
                 self.clock_half_frame();
@@ -515,19 +416,19 @@ impl APU {
         let mut noise_sample = self.noise.get_sample();
         let mut dmc_sample = self.dmc.get_sample();
 
-        if self.mute_mask & 0x01 != 0 {
+        if self.mute_mask & STATUS_PULSE1 != 0 {
             pulse1_sample = 0.0;
         }
-        if self.mute_mask & 0x02 != 0 {
+        if self.mute_mask & STATUS_PULSE2 != 0 {
             pulse2_sample = 0.0;
         }
-        if self.mute_mask & 0x04 != 0 {
+        if self.mute_mask & STATUS_TRIANGLE != 0 {
             triangle_sample = 0.0;
         }
-        if self.mute_mask & 0x08 != 0 {
+        if self.mute_mask & STATUS_NOISE != 0 {
             noise_sample = 0.0;
         }
-        if self.mute_mask & 0x10 != 0 {
+        if self.mute_mask & STATUS_DMC != 0 {
             dmc_sample = 0.0;
         }
 
@@ -625,7 +526,7 @@ impl APU {
         if r.version() >= 3 {
             self.frame_irq_since_dot = r.read_u64()?;
         } else {
-            self.frame_irq_since_dot = if self.status & 0x40 != 0 { 0 } else { u64::MAX };
+            self.frame_irq_since_dot = if self.status & STATUS_FRAME_IRQ != 0 { 0 } else { u64::MAX };
         }
         if r.version() >= 4 {
             let val = r.read_u8()?;
@@ -648,7 +549,7 @@ impl APU {
 
     #[allow(dead_code)]
     pub fn clear_irq(&mut self) {
-        self.status &= 0xBF;
+        self.status &= !STATUS_FRAME_IRQ;
         self.frame_irq_since_dot = u64::MAX;
     }
 }

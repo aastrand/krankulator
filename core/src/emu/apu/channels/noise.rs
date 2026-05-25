@@ -1,5 +1,14 @@
 use crate::emu::savestate::{SavestateReader, SavestateWriter};
 
+const VOLUME_MASK: u8 = 0x0F;
+const PERIOD_INDEX_MASK: u8 = 0x0F;
+const MODE_BIT: u8 = 0x80;
+const LENGTH_INDEX_SHIFT: u8 = 3;
+const LENGTH_INDEX_MASK: u8 = 0x1F;
+const LFSR_FEEDBACK_BIT: u16 = 14;
+const LFSR_INITIAL: u16 = 1;
+const ENVELOPE_MAX: u8 = 15;
+
 pub struct NoiseChannel {
     control: u8,
     volume: u8,
@@ -46,7 +55,7 @@ impl NoiseChannel {
 
             enabled: false,
 
-            shift_register: 1, // Initialize to 1
+            shift_register: LFSR_INITIAL,
             output: 0.0,
         }
     }
@@ -64,7 +73,7 @@ impl NoiseChannel {
         self.length_counter = 0;
         self.length_counter_halt = false;
         self.enabled = false;
-        self.shift_register = 1;
+        self.shift_register = LFSR_INITIAL;
         self.output = 0.0;
     }
 
@@ -107,24 +116,20 @@ impl NoiseChannel {
         self.control = value;
         self.length_counter_halt = (value >> 5) & 1 != 0;
         self.constant_volume = (value >> 4) & 1 != 0;
-        self.volume = value & 0x0F;
+        self.volume = value & VOLUME_MASK;
     }
 
     pub fn set_period(&mut self, value: u8) {
-        // Bit 7: Mode (0 = 1-bit feedback, 1 = 6-bit feedback)
-        // Bits 3-0: Period index
-        self.period = value & 0x0F;
+        self.period = value & PERIOD_INDEX_MASK;
         self.timer = NOISE_PERIODS[self.period as usize];
         self.timer_value = self.timer;
-
-        // Update the control register's mode bit based on the period register
-        // This ensures the feedback mode is properly set
-        self.control = (self.control & 0x7F) | (value & 0x80);
+        self.control = (self.control & !MODE_BIT) | (value & MODE_BIT);
     }
 
     pub fn set_length_counter(&mut self, value: u8) {
         if self.enabled {
-            self.length_counter = LENGTH_COUNTER_TABLE[((value >> 3) & 0x1F) as usize] as u8;
+            self.length_counter =
+                LENGTH_COUNTER_TABLE[((value >> LENGTH_INDEX_SHIFT) & LENGTH_INDEX_MASK) as usize];
         }
         self.envelope_start = true;
     }
@@ -149,17 +154,14 @@ impl NoiseChannel {
     }
 
     fn clock_shift_register(&mut self) {
-        let feedback = if (self.control & 0x80) != 0 {
-            // Mode 1: bit 0 XOR bit 6 (short period / "metal" noise)
+        let feedback = if (self.control & MODE_BIT) != 0 {
             (self.shift_register & 1) ^ ((self.shift_register >> 6) & 1)
         } else {
-            // Mode 0: 1-bit feedback (bit 1 XOR bit 0)
             ((self.shift_register >> 1) & 1) ^ (self.shift_register & 1)
         };
 
-        // Shift right by 1 and insert feedback at bit 14
         self.shift_register >>= 1;
-        self.shift_register |= feedback << 14;
+        self.shift_register |= feedback << LFSR_FEEDBACK_BIT;
     }
 
     fn generate_output(&mut self) {
@@ -184,14 +186,14 @@ impl NoiseChannel {
     pub fn clock_envelope(&mut self) {
         if self.envelope_start {
             self.envelope_start = false;
-            self.envelope_decay_level = 15;
+            self.envelope_decay_level = ENVELOPE_MAX;
             self.envelope_divider = self.volume;
         } else if self.envelope_divider == 0 {
             self.envelope_divider = self.volume;
             if self.envelope_decay_level > 0 {
                 self.envelope_decay_level -= 1;
             } else if self.length_counter_halt {
-                self.envelope_decay_level = 15;
+                self.envelope_decay_level = ENVELOPE_MAX;
             }
         } else {
             self.envelope_divider -= 1;
