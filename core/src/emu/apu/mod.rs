@@ -1300,7 +1300,7 @@ mod tests {
             );
             return;
         }
-        let venv_python = "scripts/.venv/bin/python3";
+        let venv_python = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/.venv/bin/python3");
         if !std::path::Path::new(venv_python).exists() {
             eprintln!(
                 "SKIP {}: python venv not found. Run: cd scripts && uv venv && uv pip install -r requirements.txt",
@@ -1333,9 +1333,11 @@ mod tests {
             wav_path
         );
 
+        let analyze_script =
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/analyze_audio.py");
         let output = std::process::Command::new(venv_python)
             .args([
-                "scripts/analyze_audio.py",
+                analyze_script,
                 &wav_path,
                 "--reference",
                 reference_mp3,
