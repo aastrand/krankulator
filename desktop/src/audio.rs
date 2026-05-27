@@ -9,6 +9,8 @@ use rodio::{OutputStream, Sink, Source};
 
 use krankulator_core::emu::audio::AudioBackend;
 
+const RING_BUFFER_SIZE: usize = 8192;
+
 pub struct AudioOutput {
     producer: HeapProd<f32>,
     mute: Arc<AtomicBool>,
@@ -19,7 +21,7 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     pub fn try_new(sample_rate: u32) -> Option<Self> {
-        let rb = HeapRb::<f32>::new(8192);
+        let rb = HeapRb::<f32>::new(RING_BUFFER_SIZE);
         let (producer, consumer) = rb.split();
         let mute = Arc::new(AtomicBool::new(false));
 

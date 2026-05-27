@@ -2,6 +2,8 @@ use super::buf::Buffer;
 use super::font;
 
 const TOAST_DURATION: u32 = 120;
+const TOAST_LINE_SPACING: i32 = 10;
+const NTSC_FRAME_MS: f64 = 16.64;
 const FG: (u8, u8, u8) = (255, 255, 255);
 const OUTLINE: (u8, u8, u8) = (0, 0, 0);
 
@@ -32,7 +34,7 @@ impl Overlay {
     }
 
     pub fn set_frame_time(&mut self, emu_ms: f64) {
-        let budget_pct = (emu_ms / 16.64) * 100.0;
+        let budget_pct = (emu_ms / NTSC_FRAME_MS) * 100.0;
         self.frame_time_text = format!("{:.1}ms ({:.0}%)", emu_ms, budget_pct);
     }
 
@@ -72,7 +74,7 @@ impl Overlay {
         for toast in self.toasts.iter().rev() {
             let x = (buf.width as i32 - toast.text.len() as i32 * 8) / 2;
             font::draw_string(buf, x, y, &toast.text, FG, OUTLINE);
-            y -= 10;
+            y -= TOAST_LINE_SPACING;
         }
     }
 }

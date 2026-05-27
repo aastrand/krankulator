@@ -71,20 +71,28 @@ impl InesLoader {
 }
 
 const INES_HEADER_SIZE: usize = 16;
+const INES_MAGIC: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A];
+const NES2_DETECT_MASK: u8 = 0b0000_1100;
+const NES2_DETECT_VALUE: u8 = 0b0000_1000;
+const FLAG_BATTERY: u8 = 0x02;
+const FLAG_TRAINER: u8 = 0b0000_0100;
+const TRAINER_SIZE: usize = 512;
+
 const PRG_BANK_SIZE: usize = 16384;
 pub const CHR_BANK_SIZE: usize = 8192;
+const PRG_BANK_32K: usize = 32 * 1024;
 
-fn combine_prg_banks_32k(prg_banks: &[[u8; PRG_BANK_SIZE]]) -> Vec<[u8; 32 * 1024]> {
+fn combine_prg_banks_32k(prg_banks: &[[u8; PRG_BANK_SIZE]]) -> Vec<[u8; PRG_BANK_32K]> {
     let mut banks = Vec::new();
 
     for i in (0..prg_banks.len()).step_by(2) {
-        let mut bank_32k = [0; 32 * 1024];
+        let mut bank_32k = [0; PRG_BANK_32K];
         if i + 1 < prg_banks.len() {
             bank_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[i]);
-            bank_32k[PRG_BANK_SIZE..32 * 1024].copy_from_slice(&prg_banks[i + 1]);
+            bank_32k[PRG_BANK_SIZE..PRG_BANK_32K].copy_from_slice(&prg_banks[i + 1]);
         } else {
             bank_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[i]);
-            bank_32k[PRG_BANK_SIZE..32 * 1024].copy_from_slice(&prg_banks[i]);
+            bank_32k[PRG_BANK_SIZE..PRG_BANK_32K].copy_from_slice(&prg_banks[i]);
         }
         banks.push(bank_32k);
     }
@@ -104,7 +112,7 @@ impl Loader for InesLoader {
 
         let sram_data = {
             let flags = bytes[6];
-            let has_battery = (flags & 0x02) != 0;
+            let has_battery = (flags & FLAG_BATTERY) != 0;
             if has_battery {
                 let sav = sav_path(path);
                 match std::fs::read(&sav) {
@@ -137,7 +145,7 @@ pub fn load_nes_from_bytes_with_sram(
 }
 
 pub fn rom_has_battery(bytes: &[u8]) -> bool {
-    bytes.len() > 6 && (bytes[6] & 0x02) != 0
+    bytes.len() > 6 && (bytes[6] & FLAG_BATTERY) != 0
 }
 
 fn load_nes_from_bytes_inner(
@@ -148,11 +156,11 @@ fn load_nes_from_bytes_inner(
         return Err("File too small for iNES header".to_string());
     }
 
-    if bytes[0] != 0x4E || bytes[1] != 0x45 || bytes[2] != 0x53 || bytes[3] != 0x1a {
+    if bytes[0..4] != INES_MAGIC {
         return Err("Missing iNES header magic numbers".to_string());
     }
 
-    let is_nes2_header = bytes[7] & 0b0000_1100 == 0b0000_1000;
+    let is_nes2_header = bytes[7] & NES2_DETECT_MASK == NES2_DETECT_VALUE;
 
     let num_prg_blocks = bytes[4];
     let num_chr_blocks = bytes[5];
@@ -165,13 +173,14 @@ fn load_nes_from_bytes_inner(
             ines_mapper
         }
     };
-    let has_battery = (flags & 0x02) != 0;
+    let has_battery = (flags & FLAG_BATTERY) != 0;
     let submapper = if is_nes2_header {
         (bytes[8] >> 4) & 0x0F
     } else {
         0
     };
-    let prg_offset: usize = INES_HEADER_SIZE + (flags & 0b0000_0100) as usize * 512;
+    let has_trainer = (flags & FLAG_TRAINER) != 0;
+    let prg_offset: usize = INES_HEADER_SIZE + if has_trainer { TRAINER_SIZE } else { 0 };
     let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
     let chr_ram_size = if is_nes2_header {
@@ -221,13 +230,13 @@ fn load_nes_from_bytes_inner(
         )),
         2 => Box::new(mapper::uxrom::UxROMMapper::new(flags, prg_banks)),
         3 => {
-            let mut prg_32k = [0; 32 * 1024];
+            let mut prg_32k = [0; PRG_BANK_32K];
             if prg_banks.len() >= 2 {
-                prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
-                prg_32k[16384..32768].copy_from_slice(&prg_banks[1]);
+                prg_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[0]);
+                prg_32k[PRG_BANK_SIZE..PRG_BANK_32K].copy_from_slice(&prg_banks[1]);
             } else if prg_banks.len() == 1 {
-                prg_32k[0..16384].copy_from_slice(&prg_banks[0]);
-                prg_32k[16384..32768].copy_from_slice(&prg_banks[0]);
+                prg_32k[0..PRG_BANK_SIZE].copy_from_slice(&prg_banks[0]);
+                prg_32k[PRG_BANK_SIZE..PRG_BANK_32K].copy_from_slice(&prg_banks[0]);
             } else {
                 return Err("CNROM requires at least one PRG bank".to_string());
             }

@@ -17,6 +17,32 @@ use std::collections::HashSet;
 
 use self::audio::{AudioBackend, CapturingAudioOutput, SilentAudioOutput};
 
+// CPU initialization values (per NES power-on state)
+const CPU_INIT_SP: u8 = 0xFD;
+const CPU_INIT_STATUS: u8 = 0x34;
+
+// PPU register warmup period — writes to PPU registers are ignored for this many CPU cycles after power-on/reset
+const PPU_WARMUP_CPU_CYCLES: u64 = 29_658;
+
+// Input polling interval (~1000 Hz: 1,789,773 CPU Hz / 1790 ≈ 1ms)
+const INPUT_POLL_INTERVAL: u64 = 1790;
+
+// NES memory-mapped I/O addresses
+const APU_STATUS_ADDR: u16 = 0x4015;
+const CONTROLLER1_ADDR: u16 = 0x4016;
+const CONTROLLER2_ADDR: u16 = 0x4017;
+const APU_REG_START: u16 = 0x4000;
+const IO_EXPANSION_START: u16 = 0x4018;
+const IO_EXPANSION_END: u16 = 0x4100;
+const MAPPER_START: u16 = 0x4020;
+
+// Controller open bus behavior
+const OPEN_BUS_UPPER_MASK: u8 = 0xE0;
+const CONTROLLER_DATA_MASK: u8 = 0x1F;
+
+// Save state slot count
+const SAVESTATE_SLOT_COUNT: u8 = 4;
+
 #[derive(PartialEq)]
 pub enum CycleState {
     CpuAhead,
@@ -129,7 +155,7 @@ impl Emulator {
             nmi_triggered_countdown: -1,
             audio: audio,
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
-            ppu_register_warmup_until_cpu_cycle: 29_658,
+            ppu_register_warmup_until_cpu_cycle: PPU_WARMUP_CPU_CYCLES,
             rom_path: None,
             savestate_slot: 0,
             last_rendered_frame: 0,
@@ -150,8 +176,8 @@ impl Emulator {
         self.mem = mapper;
         self.rom_path = Some(path.to_string());
         self.cpu.pc = self.mem.code_start();
-        self.cpu.sp = 0xfd;
-        self.cpu.status = 0x34;
+        self.cpu.sp = CPU_INIT_SP;
+        self.cpu.status = CPU_INIT_STATUS;
         self.cpu.a = 0;
         self.cpu.x = 0;
         self.cpu.y = 0;
@@ -205,7 +231,7 @@ impl Emulator {
         // Also reset the APU and clear any pending audio to avoid residual noise
         self.apu.reset();
         self.audio.clear();
-        self.ppu_register_warmup_until_cpu_cycle = self.cpu.cycle.wrapping_add(29_658);
+        self.ppu_register_warmup_until_cpu_cycle = self.cpu.cycle.wrapping_add(PPU_WARMUP_CPU_CYCLES);
     }
 
     pub fn save_state_to_bytes(&self) -> Vec<u8> {
@@ -448,7 +474,7 @@ impl Emulator {
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
-        if self.cycles % 1790 == 0 {
+        if self.cycles % INPUT_POLL_INTERVAL == 0 {
             let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
             if result.exit {
                 state = CycleState::Exiting;
@@ -464,7 +490,7 @@ impl Emulator {
                     self.load_state_from_file();
                 }
                 if result.cycle_slot {
-                    self.savestate_slot = (self.savestate_slot + 1) % 4;
+                    self.savestate_slot = (self.savestate_slot + 1) % SAVESTATE_SLOT_COUNT;
                     self.overlay.toast(format!("SLOT {}", self.savestate_slot));
                 }
             }
@@ -541,10 +567,12 @@ impl Emulator {
         if !self.mem.cpu_maps_ppu_registers() {
             return None;
         }
-        if (0x2000..=0x2007).contains(&addr) {
+        if (ppu::REG_BASE..=ppu::REG_LAST).contains(&addr) {
             Some(addr)
-        } else if (0x2008..=0x3FFF).contains(&addr) && self.mem.cpu_maps_ppu_register_mirrors() {
-            Some(0x2000 + (addr % 8))
+        } else if (ppu::REG_MIRROR_START..=ppu::REG_MIRROR_END).contains(&addr)
+            && self.mem.cpu_maps_ppu_register_mirrors()
+        {
+            Some(ppu::REG_BASE + (addr % 8))
         } else {
             None
         }
@@ -553,7 +581,7 @@ impl Emulator {
     fn cpu_access_needs_ppu_sync(&self, addr: u16, is_write: bool) -> bool {
         self.ppu_reg_cpu_addr(addr).is_some()
             || addr == ppu::OAM_DMA
-            || (is_write && addr >= 0x4020)
+            || (is_write && addr >= MAPPER_START)
     }
 
     fn sync_ppu_to_dot(&mut self, target_dot: u64) -> Option<u64> {
@@ -634,13 +662,17 @@ impl Emulator {
                 self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
             }
             v
-        } else if addr == 0x4015 {
+        } else if addr == APU_STATUS_ADDR {
             self.apu.read(addr)
-        } else if addr == 0x4016 {
-            (self.cpu_open_bus & 0xE0) | (self.mem.controllers()[0].poll() & 0x1F)
-        } else if addr == 0x4017 {
-            (self.cpu_open_bus & 0xE0) | (self.mem.controllers()[1].poll() & 0x1F)
-        } else if (0x4000..0x4015).contains(&addr) || (0x4018..0x4100).contains(&addr) {
+        } else if addr == CONTROLLER1_ADDR {
+            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[0].poll() & CONTROLLER_DATA_MASK)
+        } else if addr == CONTROLLER2_ADDR {
+            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[1].poll() & CONTROLLER_DATA_MASK)
+        } else if (APU_REG_START..APU_STATUS_ADDR).contains(&addr)
+            || (IO_EXPANSION_START..IO_EXPANSION_END).contains(&addr)
+        {
             self.cpu_open_bus
         } else {
             self.mem.cpu_read(addr)
@@ -1318,12 +1350,12 @@ impl Emulator {
                 let byte = self.mem.cpu_read(base.wrapping_add(i));
                 self.ppu.oam_dma_write(i as u8, byte);
             }
-        } else if addr == 0x4016 {
+        } else if addr == CONTROLLER1_ADDR {
             let strobe = value & 1 != 0;
             self.mem.controllers()[0].set_strobe(strobe);
             self.mem.controllers()[1].set_strobe(strobe);
-        } else if (0x4000..=0x4015).contains(&addr) || addr == 0x4017 {
-            let apu_cycle_tag = if addr == 0x4017 {
+        } else if (APU_REG_START..=APU_STATUS_ADDR).contains(&addr) || addr == CONTROLLER2_ADDR {
+            let apu_cycle_tag = if addr == CONTROLLER2_ADDR {
                 self.cpu
                     .cycle
                     .wrapping_add(u64::from(self.cpu_bus_cycle_offset))

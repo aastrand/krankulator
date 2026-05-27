@@ -1,5 +1,8 @@
 pub mod wav;
 
+const SAMPLE_RATE: usize = 44100;
+const CAPTURE_DURATION_SECS: usize = 30;
+
 pub trait AudioBackend {
     fn push_samples(&mut self, samples: &[f32]);
     fn clear(&mut self);
@@ -29,7 +32,7 @@ pub struct CapturingAudioOutput {
 impl CapturingAudioOutput {
     pub fn new() -> Self {
         Self {
-            buf: Vec::with_capacity(44100 * 30),
+            buf: Vec::with_capacity(SAMPLE_RATE * CAPTURE_DURATION_SECS),
         }
     }
 }

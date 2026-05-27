@@ -12,6 +12,10 @@ pub const OAM_DATA_ADDR: u16 = 0x2004;
 pub const SCROLL_ADDR: u16 = 0x2005;
 pub const ADDR_ADDR: u16 = 0x2006;
 pub const DATA_ADDR: u16 = 0x2007;
+pub const REG_BASE: u16 = CTRL_REG_ADDR;
+pub const REG_LAST: u16 = DATA_ADDR;
+pub const REG_MIRROR_START: u16 = 0x2008;
+pub const REG_MIRROR_END: u16 = 0x3FFF;
 pub const OAM_DMA: u16 = 0x4014;
 
 // --- PPUCTRL ($2000) bits ---
