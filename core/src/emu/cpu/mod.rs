@@ -37,7 +37,7 @@ impl Cpu {
             x: 0,
             y: 0,
             sp: memory::STACK_START_ADDR as u8,
-            status: 0b0010_0000, // ignored bits set,
+            status: IGNORE_BIT,
             last_instruction: 0xffff,
             cycle: 0,
         }
@@ -74,7 +74,7 @@ impl Cpu {
 
     pub fn bit(&mut self, operand: u8) {
         // Bits 7 and 6 of operand are transfered to bit 7 and 6 of SR (N,V);
-        let mask: u8 = 0b1100_0000;
+        let mask: u8 = NEGATIVE_BIT | OVERFLOW_BIT;
         self.status = (self.status & !mask) | (operand & mask);
         // The zeroflag is set to the result of operand AND accumulator.
         self.check_zero(self.a & operand);
@@ -127,7 +127,7 @@ impl Cpu {
         };
 
         // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        if (operand ^ value) & (self.a ^ value) & 0x80 != 0 {
+        if (operand ^ value) & (self.a ^ value) & NEGATIVE_BIT != 0 {
             self.set_status_flag(OVERFLOW_BIT);
         } else {
             self.clear_status_flag(OVERFLOW_BIT);
@@ -185,10 +185,10 @@ impl Cpu {
         // Arithmetic Shift Left
         // ASL shifts all bits left one position.
         // 0 is shifted into bit 0 and the original bit 7 is shifted into the Carry.
-        let b7: u8 = value & 0b1000_0000;
+        let b7: u8 = value & NEGATIVE_BIT;
         let value = value << 1;
 
-        if b7 == 128 {
+        if b7 != 0 {
             self.set_status_flag(CARRY_BIT);
         } else {
             self.clear_status_flag(CARRY_BIT);
@@ -204,7 +204,7 @@ impl Cpu {
         // Logical Shift Right
         // LSR shifts all bits right one position.
         // 0 is shifted into bit 7 and the original bit 0 is shifted into the Carry.
-        let b0: u8 = value & 0b0000_0001;
+        let b0: u8 = value & CARRY_BIT;
         let value = value >> 1;
 
         if b0 == 1 {
@@ -229,17 +229,17 @@ impl Cpu {
         // ROtate Left
         // ROL shifts all bits left one position.
         // The Carry is shifted into bit 0 and the original bit 7 is shifted into the Carry.
-        let b7: u8 = value & 0b1000_0000;
+        let b7: u8 = value & NEGATIVE_BIT;
         let value = value << 1;
 
         let b0 = self.status & CARRY_BIT;
 
-        if b7 == 128 {
+        if b7 != 0 {
             self.set_status_flag(CARRY_BIT);
         } else {
             self.clear_status_flag(CARRY_BIT);
         }
-        let value = (value & !0b0000_0001) | (b0 & 0b0000_0001);
+        let value = (value & !CARRY_BIT) | (b0 & CARRY_BIT);
 
         self.check_negative(value);
         self.check_zero(value);
@@ -251,7 +251,7 @@ impl Cpu {
         // ROtate Right
         // ROR shifts all bits right one position.
         // The Carry is shifted into bit 7 and the original bit 0 is shifted into the Carry.
-        let b0: u8 = value & 0b0000_0001;
+        let b0: u8 = value & CARRY_BIT;
         let value = value >> 1;
 
         let b7 = (self.status & CARRY_BIT) << 7;
@@ -261,7 +261,7 @@ impl Cpu {
         } else {
             self.clear_status_flag(CARRY_BIT);
         }
-        let value = (value & !0b1000_0000) | (b7 & 0b1000_0000);
+        let value = (value & !NEGATIVE_BIT) | (b7 & NEGATIVE_BIT);
 
         self.check_negative(value);
         self.check_zero(value);
