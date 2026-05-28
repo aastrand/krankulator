@@ -194,9 +194,9 @@ Currently: GitHub Actions runs `cargo build`, `cargo test`, APU mixer reference 
 
 ## Test ROMs
 
-Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes-test-roms/` (66 test suites).
+Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms](https://github.com/christopherpow/nes-test-roms)). Two macros: `test_input!` for `input/` (ascii, bin), `test_rom!` for `test-roms/` (NES ROMs).
 
-- [ ] Add nes-test-roms as a git submodule (replace copied files in `input/nes/`) [M]
+- [x] Add nes-test-roms as a git submodule (replace copied files in `input/nes/`) [M]
   - Update all test paths in source code to point at submodule location
   - Remove duplicated ROM files from repo
   - CI: init submodule in GitHub Actions workflow
@@ -206,9 +206,7 @@ Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes
 
 | Suite | ROMs | Status | Location |
 |-------|------|--------|----------|
-| instr_test-v3 | official_only, all_instrs | ✅ | integration_tests.rs |
-| instr_test-v5 | official_only | ✅ | integration_tests.rs |
-| blargg_nes_cpu_test5 | official | ✅ | (same ROM as instr_test) |
+| instr_test-v5 | official_only, all_instrs | ✅ | integration_tests.rs |
 | cpu_reset | ram_after_reset, registers | ✅ | integration_tests.rs |
 | cpu_exec_space | APU test | ✅ | apu/mod.rs |
 | cpu_exec_space | PPU I/O test | ❌ ignored | integration_tests.rs |
@@ -232,7 +230,16 @@ Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes
 | ppu_open_bus | 1 | ❌ ignored | integration_tests.rs |
 | oam_stress | 1 | ❌ ignored | integration_tests.rs |
 | mmc3_test | all 6 | ✅ | memory/mapper/mmc3.rs |
+| mmc3_test_2 | 5 of 6 (6-MMC3_alt fails) | ✅ (1 ignored) | memory/mapper/mmc3.rs |
 | apu_mixer | 4 | ⏸ ignored (release-only) | apu/mod.rs |
+| vbl_nmi_timing | all 7 | ✅ | integration_tests.rs |
+| sprite_hit_tests_2005 | all 11 | ✅ | integration_tests.rs |
+| sprite_overflow_tests | all 5 | ✅ | integration_tests.rs |
+| ppu_read_buffer | 1 | ❌ ignored | integration_tests.rs |
+| cpu_dummy_reads | 1 | ❌ ignored (hangs) | integration_tests.rs |
+| cpu_dummy_writes | all 2 | ❌ ignored | integration_tests.rs |
+| dmc_dma_during_read4 | all 5 | ❌ ignored (hangs) | integration_tests.rs |
+| sprdma_and_dmc_dma | all 2 | ❌ ignored | integration_tests.rs |
 
 ### Ignored tests — failure analysis and fix plan
 
@@ -273,22 +280,6 @@ Currently: copies of test ROMs checked into `input/nes/`. Source repo at `../nes
 
 5. **oam_stress + cpu_exec_space_ppuio** — oam_stress is flaky on real hardware; ppuio tests a scenario no game uses.
 
-### Not yet wired up
-
-ROMs not yet copied into `input/nes/`. Add when relevant accuracy work begins.
-
-| Suite | ROMs | Blocker |
-|-------|------|---------|
-| `vbl_nmi_timing` | 7 | Single-PPU-clock VBL/NMI accuracy (even more precise than ppu_vbl_nmi) |
-| `ppu_read_buffer` | 1 | Thorough $2007 read buffer edge cases (~20s test) |
-| `sprite_hit_tests_2005` | 11 | Needs pixel-overlap sprite 0 hit (currently position-based) |
-| `sprite_overflow_tests` | 5 | Needs buggy diagonal overflow evaluation |
-| `cpu_dummy_reads` | 1 | Indexed addressing dummy read at uncorrected address |
-| `cpu_dummy_writes` | 2 | RMW write-back-original-then-modified with PPU/OAM side effects |
-| `dmc_dma_during_read4` | 5 | DMC DMA interleaving with $2007/$4016 reads |
-| `sprdma_and_dmc_dma` | 2 | OAM DMA + DMC DMA interaction |
-| `mmc3_test_2` | 6 | MMC3 rev A vs rev B edge cases |
-
 ### Not automatable
 
 Visual demos, interactive tests, or unsupported hardware — cannot use $6000 protocol.
@@ -306,7 +297,7 @@ Visual demos, interactive tests, or unsupported hardware — cannot use $6000 pr
 | nes15-1.0.0 / ny2011 / spritecans-2011 / stars_se / tutor | Games and demos |
 | stress | Mixed visual + interactive test suite |
 | nrom368 | Needs NROM-368 mapper variant |
-| exram / mmc5test / mmc5test_v2 | Needs mapper 5 (MMC5) |
+| exram / mmc5test / mmc5test_v2 | Visual/manual MMC5 tests (no $6000 protocol) |
 | m22chrbankingtest | Needs mapper 22 (VRC2a) |
 | MMC1_A12 | Visual/manual MMC1 test |
 | fdsirqtests | Needs FDS mapper |

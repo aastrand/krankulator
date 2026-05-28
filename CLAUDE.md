@@ -33,19 +33,19 @@ Key traits defined in core that frontends implement:
 cargo build --workspace
 
 # Run desktop with a NES ROM file
-cargo run -- input/nes/nestest.nes
+cargo run -- test-roms/other/nestest.nes
 
 # Run in headless mode (no graphics)
-cargo run -- --headless input/nes/nestest.nes
+cargo run -- --headless test-roms/other/nestest.nes
 
 # Capture headless audio to a WAV file
-cargo run -- --wav-out /tmp/krankulator.wav input/nes/apu/square.nes
+cargo run -- --wav-out /tmp/krankulator.wav test-roms/apu_mixer/square.nes
 
 # Run with debugging enabled
-cargo run -- --debug --verbose input/nes/nestest.nes
+cargo run -- --debug --verbose test-roms/other/nestest.nes
 
 # Add breakpoints
-cargo run -- --breakpoint 0xC000 input/nes/nestest.nes
+cargo run -- --breakpoint 0xC000 test-roms/other/nestest.nes
 
 # Specify loader type (nes, ascii, bin)
 cargo run -- --loader ascii input/ascii/instructions
@@ -187,7 +187,9 @@ cargo clippy --workspace
 
 ### Test paths
 
-Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path via `CARGO_MANIFEST_DIR`. No symlinks.
+Two macros in `core/src/lib.rs`:
+- `test_input!("ascii/foo")` — expands to `$CARGO_MANIFEST_DIR/../input/` (for ascii and bin test inputs)
+- `test_rom!("suite/foo.nes")` — expands to `$CARGO_MANIFEST_DIR/../test-roms/` (NES test ROM submodule)
 
 ### Key Design Patterns
 
@@ -226,7 +228,7 @@ Tests use `test_input!("nes/foo.nes")` macro which expands to an absolute path v
 ```
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
-  src/lib.rs        — Crate root, exports test_input! macro
+  src/lib.rs        — Crate root, exports test_input! and test_rom! macros
   src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio)
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
@@ -250,8 +252,8 @@ libretro/           — RetroArch / libretro core
   src/lib.rs        — FFI exports, LibretroIOHandler, LibretroAudioBackend
   src/libretro_sys.rs — C type definitions (structs, constants, callbacks)
   krankulator_libretro.info — Core metadata for RetroArch
-input/              — Test ROMs and data files
-  nes/              — NES ROM files for testing
+test-roms/          — NES test ROM submodule (christopherpow/nes-test-roms)
+input/              — Non-NES test data files
   ascii/            — ASCII assembly test files
   bin/              — Binary test files
 scripts/            — APU mixer test scripts (Python)
@@ -260,7 +262,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (458 tests, 29 ignored). Desktop has 1 smoke test verifying audio backend wiring.
+All emulation tests live in `core/` (503 tests, 40 ignored). Desktop has 1 smoke test verifying audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -277,7 +279,7 @@ All emulation tests live in `core/` (458 tests, 29 ignored). Desktop has 1 smoke
 **APU Mixer Tests**
 - Compare emulator WAV output against hardware reference MP3 recordings
 - Requires Python venv: `cd scripts && uv venv && uv pip install -r requirements.txt`
-- Reference recordings in `input/nes/apu/mixer_reference/`
+- Reference recordings in `test-roms/apu_mixer_recordings/`
 - CI runs the 4 ignored mixer tests separately in release mode
 
 ## Important Implementation Details

@@ -360,7 +360,7 @@ pub fn load_nes(path: &str) -> Box<dyn memory::MemoryMapper> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_input;
+    use crate::test_rom;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn write_test_rom(mapper_id: u8, prg_blocks: u8, chr_blocks: u8) -> PathBuf {
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_load_ines() {
         let l: Box<dyn Loader> = InesLoader::new();
-        let result = l.load(test_input!("nes/all_instrs.nes"));
+        let result = l.load(test_rom!("instr_test-v5/all_instrs.nes"));
         assert_eq!(result.is_ok(), true);
         assert_eq!(result.ok().unwrap().code_start(), 0xea71);
     }
@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn test_load_ines_header() {
         let l: Box<dyn Loader> = InesLoader::new();
-        let result = l.load(test_input!("nes/nestest.log"));
+        let result = l.load(test_rom!("other/nestest.log"));
         assert_eq!(result.is_ok(), false);
         assert_eq!(
             result.err(),

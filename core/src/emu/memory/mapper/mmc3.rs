@@ -662,7 +662,7 @@ mod tests {
     use crate::emu;
     #[allow(unused_imports)]
     use crate::emu::io::loader;
-    use crate::test_input;
+    use crate::test_rom;
 
     fn test_mapper() -> MMC3Mapper {
         MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0)
@@ -818,18 +818,18 @@ mod tests {
 
     #[test]
     fn test_mmc3_1_clocking() {
-        run_mmc3_rom(test_input!("nes/mappers/mmc3/1-clocking.nes"), "1-clocking");
+        run_mmc3_rom(test_rom!("mmc3_test/1-clocking.nes"), "1-clocking");
     }
 
     #[test]
     fn test_mmc3_2_details() {
-        run_mmc3_rom(test_input!("nes/mappers/mmc3/2-details.nes"), "2-details");
+        run_mmc3_rom(test_rom!("mmc3_test/2-details.nes"), "2-details");
     }
 
     #[test]
     fn test_mmc3_3_a12_clocking() {
         run_mmc3_rom(
-            test_input!("nes/mappers/mmc3/3-A12_clocking.nes"),
+            test_rom!("mmc3_test/3-A12_clocking.nes"),
             "3-A12_clocking",
         );
     }
@@ -837,23 +837,62 @@ mod tests {
     #[test]
     fn test_mmc3_4_scanline_timing() {
         run_mmc3_rom(
-            test_input!("nes/mappers/mmc3/4-scanline_timing.nes"),
+            test_rom!("mmc3_test/4-scanline_timing.nes"),
             "4-scanline_timing",
         );
     }
 
     #[test]
     fn test_mmc3_5_mmc3() {
-        run_mmc3_rom(test_input!("nes/mappers/mmc3/5-MMC3.nes"), "5-MMC3");
+        run_mmc3_rom(test_rom!("mmc3_test/5-MMC3.nes"), "5-MMC3");
     }
 
     #[test]
     fn test_mmc3_6_mmc6() {
         run_mmc3_rom_with_submapper(
-            test_input!("nes/mappers/mmc3/6-MMC6.nes"),
+            test_rom!("mmc3_test/6-MMC6.nes"),
             "6-MMC6",
             Some(1),
         );
+    }
+
+    // --- mmc3_test_2 ---
+
+    #[test]
+    fn test_mmc3_v2_1_clocking() {
+        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/1-clocking.nes"), "1-clocking");
+    }
+
+    #[test]
+    fn test_mmc3_v2_2_details() {
+        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/2-details.nes"), "2-details");
+    }
+
+    #[test]
+    fn test_mmc3_v2_3_a12_clocking() {
+        run_mmc3_rom(
+            test_rom!("mmc3_test_2/rom_singles/3-A12_clocking.nes"),
+            "3-A12_clocking",
+        );
+    }
+
+    #[test]
+    fn test_mmc3_v2_4_scanline_timing() {
+        run_mmc3_rom(
+            test_rom!("mmc3_test_2/rom_singles/4-scanline_timing.nes"),
+            "4-scanline_timing",
+        );
+    }
+
+    #[test]
+    fn test_mmc3_v2_5_mmc3() {
+        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/5-MMC3.nes"), "5-MMC3");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_mmc3_v2_6_mmc3_alt() {
+        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/6-MMC3_alt.nes"), "6-MMC3_alt");
     }
 
     #[test]

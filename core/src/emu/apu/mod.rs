@@ -558,7 +558,7 @@ impl APU {
 mod tests {
     use super::*;
     use crate::emu::memory::MemoryMapper;
-    use crate::test_input;
+    use crate::test_rom;
     struct DummyMemory;
     impl MemoryMapper for DummyMemory {
         fn cpu_read(&mut self, _addr: u16) -> u8 {
@@ -953,45 +953,45 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_len_ctr() {
-        run_blargg_apu_rom(test_input!("nes/apu/1-len_ctr.nes"), "1-len_ctr");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/1-len_ctr.nes"), "1-len_ctr");
     }
 
     #[test]
     fn test_blargg_apu_len_table() {
-        run_blargg_apu_rom(test_input!("nes/apu/2-len_table.nes"), "2-len_table");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/2-len_table.nes"), "2-len_table");
     }
 
     #[test]
     fn test_blargg_apu_irq_flag() {
-        run_blargg_apu_rom(test_input!("nes/apu/3-irq_flag.nes"), "3-irq_flag");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/3-irq_flag.nes"), "3-irq_flag");
     }
 
     #[test]
     fn test_blargg_apu_jitter() {
-        run_blargg_apu_rom(test_input!("nes/apu/4-jitter.nes"), "4-jitter");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/4-jitter.nes"), "4-jitter");
     }
 
     #[test]
     fn test_blargg_apu_len_timing() {
-        run_blargg_apu_rom(test_input!("nes/apu/5-len_timing.nes"), "5-len_timing");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/5-len_timing.nes"), "5-len_timing");
     }
 
     #[test]
     fn test_blargg_apu_irq_flag_timing() {
         run_blargg_apu_rom(
-            test_input!("nes/apu/6-irq_flag_timing.nes"),
+            test_rom!("apu_test/rom_singles/6-irq_flag_timing.nes"),
             "6-irq_flag_timing",
         );
     }
 
     #[test]
     fn test_blargg_apu_dmc_basics() {
-        run_blargg_apu_rom(test_input!("nes/apu/7-dmc_basics.nes"), "7-dmc_basics");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/7-dmc_basics.nes"), "7-dmc_basics");
     }
 
     #[test]
     fn test_blargg_apu_dmc_rates() {
-        run_blargg_apu_rom(test_input!("nes/apu/8-dmc_rates.nes"), "8-dmc_rates");
+        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/8-dmc_rates.nes"), "8-dmc_rates");
     }
 
     fn run_blargg_apu_2005_rom(rom_path: &str) {
@@ -1013,57 +1013,57 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_2005_len_ctr() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/01.len_ctr.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/01.len_ctr.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_len_table() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/02.len_table.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/02.len_table.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_irq_flag() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/03.irq_flag.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/03.irq_flag.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_clock_jitter() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/04.clock_jitter.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/04.clock_jitter.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_len_timing_mode0() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/05.len_timing_mode0.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/05.len_timing_mode0.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_len_timing_mode1() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/06.len_timing_mode1.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/06.len_timing_mode1.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_irq_flag_timing() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/07.irq_flag_timing.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/07.irq_flag_timing.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_irq_timing() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/08.irq_timing.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/08.irq_timing.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_reset_timing() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/09.reset_timing.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/09.reset_timing.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_len_halt_timing() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/10.len_halt_timing.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/10.len_halt_timing.nes"));
     }
 
     #[test]
     fn test_blargg_apu_2005_len_reload_timing() {
-        run_blargg_apu_2005_rom(test_input!("nes/apu/11.len_reload_timing.nes"));
+        run_blargg_apu_2005_rom(test_rom!("blargg_apu_2005.07.30/11.len_reload_timing.nes"));
     }
 
     // --- apu_reset tests ---
@@ -1108,20 +1108,20 @@ mod tests {
     #[test]
     fn test_apu_reset_4015_cleared() {
         run_apu_reset_rom(
-            test_input!("nes/apu_reset/4015_cleared.nes"),
+            test_rom!("apu_reset/4015_cleared.nes"),
             "4015_cleared",
         );
     }
 
     #[test]
     fn test_apu_reset_4017_timing() {
-        run_apu_reset_rom(test_input!("nes/apu_reset/4017_timing.nes"), "4017_timing");
+        run_apu_reset_rom(test_rom!("apu_reset/4017_timing.nes"), "4017_timing");
     }
 
     #[test]
     fn test_apu_reset_4017_written() {
         run_apu_reset_rom(
-            test_input!("nes/apu_reset/4017_written.nes"),
+            test_rom!("apu_reset/4017_written.nes"),
             "4017_written",
         );
     }
@@ -1129,7 +1129,7 @@ mod tests {
     #[test]
     fn test_apu_reset_irq_flag_cleared() {
         run_apu_reset_rom(
-            test_input!("nes/apu_reset/irq_flag_cleared.nes"),
+            test_rom!("apu_reset/irq_flag_cleared.nes"),
             "irq_flag_cleared",
         );
     }
@@ -1137,7 +1137,7 @@ mod tests {
     #[test]
     fn test_apu_reset_len_ctrs_enabled() {
         run_apu_reset_rom(
-            test_input!("nes/apu_reset/len_ctrs_enabled.nes"),
+            test_rom!("apu_reset/len_ctrs_enabled.nes"),
             "len_ctrs_enabled",
         );
     }
@@ -1145,7 +1145,7 @@ mod tests {
     #[test]
     fn test_apu_reset_works_immediately() {
         run_apu_reset_rom(
-            test_input!("nes/apu_reset/works_immediately.nes"),
+            test_rom!("apu_reset/works_immediately.nes"),
             "works_immediately",
         );
     }
@@ -1157,8 +1157,8 @@ mod tests {
         use crate::emu;
         use crate::emu::io::loader;
 
-        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(test_input!(
-            "nes/apu/test_cpu_exec_space_apu.nes"
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(test_rom!(
+            "cpu_exec_space/test_cpu_exec_space_apu.nes"
         ))));
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
@@ -1203,26 +1203,26 @@ mod tests {
     #[test]
     #[ignore]
     fn test_pal_apu_len_ctr() {
-        run_pal_apu_rom(test_input!("nes/pal_apu/01.len_ctr.nes"), "01.len_ctr");
+        run_pal_apu_rom(test_rom!("pal_apu_tests/01.len_ctr.nes"), "01.len_ctr");
     }
 
     #[test]
     #[ignore]
     fn test_pal_apu_len_table() {
-        run_pal_apu_rom(test_input!("nes/pal_apu/02.len_table.nes"), "02.len_table");
+        run_pal_apu_rom(test_rom!("pal_apu_tests/02.len_table.nes"), "02.len_table");
     }
 
     #[test]
     #[ignore]
     fn test_pal_apu_irq_flag() {
-        run_pal_apu_rom(test_input!("nes/pal_apu/03.irq_flag.nes"), "03.irq_flag");
+        run_pal_apu_rom(test_rom!("pal_apu_tests/03.irq_flag.nes"), "03.irq_flag");
     }
 
     #[test]
     #[ignore]
     fn test_pal_apu_clock_jitter() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/04.clock_jitter.nes"),
+            test_rom!("pal_apu_tests/04.clock_jitter.nes"),
             "04.clock_jitter",
         );
     }
@@ -1231,7 +1231,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_len_timing_mode0() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/05.len_timing_mode0.nes"),
+            test_rom!("pal_apu_tests/05.len_timing_mode0.nes"),
             "05.len_timing_mode0",
         );
     }
@@ -1240,7 +1240,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_len_timing_mode1() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/06.len_timing_mode1.nes"),
+            test_rom!("pal_apu_tests/06.len_timing_mode1.nes"),
             "06.len_timing_mode1",
         );
     }
@@ -1249,7 +1249,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_irq_flag_timing() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/07.irq_flag_timing.nes"),
+            test_rom!("pal_apu_tests/07.irq_flag_timing.nes"),
             "07.irq_flag_timing",
         );
     }
@@ -1258,7 +1258,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_irq_timing() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/08.irq_timing.nes"),
+            test_rom!("pal_apu_tests/08.irq_timing.nes"),
             "08.irq_timing",
         );
     }
@@ -1267,7 +1267,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_len_halt_timing() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/10.len_halt_timing.nes"),
+            test_rom!("pal_apu_tests/10.len_halt_timing.nes"),
             "10.len_halt_timing",
         );
     }
@@ -1276,7 +1276,7 @@ mod tests {
     #[ignore]
     fn test_pal_apu_len_reload_timing() {
         run_pal_apu_rom(
-            test_input!("nes/pal_apu/11.len_reload_timing.nes"),
+            test_rom!("pal_apu_tests/11.len_reload_timing.nes"),
             "11.len_reload_timing",
         );
     }
@@ -1376,9 +1376,9 @@ mod tests {
     #[ignore] // slow (~18s); run in CI with: cargo test -- --ignored
     fn test_apu_mixer_square() {
         run_mixer_test(
-            test_input!("nes/apu/square.nes"),
+            test_rom!("apu_mixer/square.nes"),
             "square",
-            test_input!("nes/apu/mixer_reference/square.mp3"),
+            test_rom!("apu_mixer_recordings/square.mp3"),
             18,
         );
     }
@@ -1387,9 +1387,9 @@ mod tests {
     #[ignore] // slow (~12s); run in CI with: cargo test -- --ignored
     fn test_apu_mixer_triangle() {
         run_mixer_test(
-            test_input!("nes/apu/triangle.nes"),
+            test_rom!("apu_mixer/triangle.nes"),
             "triangle",
-            test_input!("nes/apu/mixer_reference/triangle.mp3"),
+            test_rom!("apu_mixer_recordings/triangle.mp3"),
             12,
         );
     }
@@ -1398,9 +1398,9 @@ mod tests {
     #[ignore] // slow (~20s); run in CI with: cargo test -- --ignored
     fn test_apu_mixer_noise() {
         run_mixer_test(
-            test_input!("nes/apu/noise.nes"),
+            test_rom!("apu_mixer/noise.nes"),
             "noise",
-            test_input!("nes/apu/mixer_reference/noise.mp3"),
+            test_rom!("apu_mixer_recordings/noise.mp3"),
             20,
         );
     }
@@ -1409,9 +1409,9 @@ mod tests {
     #[ignore] // slow (~14s); run in CI with: cargo test -- --ignored
     fn test_apu_mixer_dmc() {
         run_mixer_test(
-            test_input!("nes/apu/dmc.nes"),
+            test_rom!("apu_mixer/dmc.nes"),
             "dmc",
-            test_input!("nes/apu/mixer_reference/dmc.mp3"),
+            test_rom!("apu_mixer_recordings/dmc.mp3"),
             14,
         );
     }
