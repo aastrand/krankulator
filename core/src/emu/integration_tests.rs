@@ -718,10 +718,7 @@ mod tests {
 
     #[test]
     fn test_ppu_open_bus() {
-        run_blargg_test(
-            test_rom!("ppu_open_bus/ppu_open_bus.nes"),
-            "ppu_open_bus",
-        );
+        run_blargg_test(test_rom!("ppu_open_bus/ppu_open_bus.nes"), "ppu_open_bus");
     }
 
     // --- oam_stress ---
@@ -769,10 +766,7 @@ mod tests {
 
     #[test]
     fn test_vbl_nmi_timing_vbl_timing() {
-        run_blargg_test(
-            test_rom!("vbl_nmi_timing/2.vbl_timing.nes"),
-            "2.vbl_timing",
-        );
+        run_blargg_test(test_rom!("vbl_nmi_timing/2.vbl_timing.nes"), "2.vbl_timing");
     }
 
     #[test]
@@ -809,10 +803,7 @@ mod tests {
 
     #[test]
     fn test_vbl_nmi_timing_nmi_timing() {
-        run_blargg_test(
-            test_rom!("vbl_nmi_timing/7.nmi_timing.nes"),
-            "7.nmi_timing",
-        );
+        run_blargg_test(test_rom!("vbl_nmi_timing/7.nmi_timing.nes"), "7.nmi_timing");
     }
 
     // --- ppu_read_buffer ---
@@ -920,10 +911,7 @@ mod tests {
 
     #[test]
     fn test_sprite_overflow_basics() {
-        run_blargg_test(
-            test_rom!("sprite_overflow_tests/1.Basics.nes"),
-            "1.Basics",
-        );
+        run_blargg_test(test_rom!("sprite_overflow_tests/1.Basics.nes"), "1.Basics");
     }
 
     #[test]
@@ -936,10 +924,7 @@ mod tests {
 
     #[test]
     fn test_sprite_overflow_timing() {
-        run_blargg_test(
-            test_rom!("sprite_overflow_tests/3.Timing.nes"),
-            "3.Timing",
-        );
+        run_blargg_test(test_rom!("sprite_overflow_tests/3.Timing.nes"), "3.Timing");
     }
 
     #[test]

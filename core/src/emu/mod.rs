@@ -231,7 +231,8 @@ impl Emulator {
         // Also reset the APU and clear any pending audio to avoid residual noise
         self.apu.reset();
         self.audio.clear();
-        self.ppu_register_warmup_until_cpu_cycle = self.cpu.cycle.wrapping_add(PPU_WARMUP_CPU_CYCLES);
+        self.ppu_register_warmup_until_cpu_cycle =
+            self.cpu.cycle.wrapping_add(PPU_WARMUP_CPU_CYCLES);
     }
 
     pub fn save_state_to_bytes(&self) -> Vec<u8> {

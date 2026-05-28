@@ -244,7 +244,8 @@ impl DmcChannel {
     }
 
     fn restart_sample(&mut self) {
-        self.current_address = SAMPLE_ADDR_BASE | ((self.sample_address as u16) << SAMPLE_ADDR_SHIFT);
+        self.current_address =
+            SAMPLE_ADDR_BASE | ((self.sample_address as u16) << SAMPLE_ADDR_SHIFT);
         self.bytes_remaining = ((self.sample_length as u16) << SAMPLE_LEN_SHIFT) | 1;
     }
 

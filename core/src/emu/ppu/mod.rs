@@ -523,7 +523,8 @@ impl PPU {
                 self.ppu_data_valid = false;
 
                 // Top 3 bits from status refresh open bus; bottom 5 are decayed open bus.
-                let result = (status & STATUS_HIGH_BITS) | (self.decayed_open_bus() & STATUS_OPEN_BUS_BITS);
+                let result =
+                    (status & STATUS_HIGH_BITS) | (self.decayed_open_bus() & STATUS_OPEN_BUS_BITS);
                 self.refresh_open_bus_bits(status, STATUS_HIGH_BITS);
                 result
             }
@@ -574,8 +575,8 @@ impl PPU {
         match addr {
             CTRL_REG_ADDR => {
                 self.ppu_ctrl = value;
-                self.t = (self.t & T_CLEAR_NAMETABLE)
-                    | (((value & 0x03) as u16) << V_NAMETABLE_SHIFT);
+                self.t =
+                    (self.t & T_CLEAR_NAMETABLE) | (((value & 0x03) as u16) << V_NAMETABLE_SHIFT);
             }
             MASK_REG_ADDR => self.ppu_mask = value,
             OAM_ADDR => {
@@ -610,8 +611,8 @@ impl PPU {
             }
             ADDR_ADDR => {
                 if !self.w {
-                    self.t = (self.t & T_CLEAR_HIGH_BYTE)
-                        | (((value & PPUADDR_HIGH_MASK) as u16) << 8);
+                    self.t =
+                        (self.t & T_CLEAR_HIGH_BYTE) | (((value & PPUADDR_HIGH_MASK) as u16) << 8);
                 } else {
                     self.t = (self.t & 0xFF00) | (value as u16);
                     self.v = self.t;
@@ -634,9 +635,7 @@ impl PPU {
                 match page {
                     0x20 | 0x30 => {
                         let addr: u16 = match write_addr {
-                            0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => {
-                                write_addr - SPRITE_PALETTE_OFFSET
-                            }
+                            0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => write_addr - SPRITE_PALETTE_OFFSET,
                             _ => write_addr,
                         };
                         // This should be written by the mapper, bounce it back
@@ -903,7 +902,8 @@ impl PPU {
         pixel: u8,
         palette_id: u8,
     ) -> (u8, u8, u8) {
-        let palette_addr = PALETTE_START + u16::from(palette_id) * COLORS_PER_PALETTE + u16::from(pixel);
+        let palette_addr =
+            PALETTE_START + u16::from(palette_id) * COLORS_PER_PALETTE + u16::from(pixel);
         let color_idx = mem.ppu_read(palette_addr) as usize % palette::PALETTE_SIZE;
         palette::PALETTE[color_idx]
     }
@@ -975,8 +975,7 @@ impl PPU {
 
         let bg_v_curr = Self::coarse_x_offset(self.render_line_v, tile_index);
         let fine_y = ((bg_v_curr >> V_FINE_Y_SHIFT) & 0x07) as u16;
-        let tile_id_curr =
-            mem.ppu_read(NAMETABLE_BASE | (bg_v_curr & NAMETABLE_ADDR_MASK)) as u16;
+        let tile_id_curr = mem.ppu_read(NAMETABLE_BASE | (bg_v_curr & NAMETABLE_ADDR_MASK)) as u16;
         let pat_lo_curr = mem.ppu_read(pat_base + tile_id_curr * TILE_STRIDE + fine_y);
         let pat_hi_curr =
             mem.ppu_read(pat_base + tile_id_curr * TILE_STRIDE + fine_y + TILE_BITPLANE_OFFSET);
@@ -984,8 +983,7 @@ impl PPU {
         let (al_c, ah_c) = Self::expanded_attr_plane_bytes(attr_curr);
 
         let bg_v_next = Self::coarse_x_incremented(bg_v_curr);
-        let tile_id_next =
-            mem.ppu_read(NAMETABLE_BASE | (bg_v_next & NAMETABLE_ADDR_MASK)) as u16;
+        let tile_id_next = mem.ppu_read(NAMETABLE_BASE | (bg_v_next & NAMETABLE_ADDR_MASK)) as u16;
         let pat_lo_next = mem.ppu_read(pat_base + tile_id_next * TILE_STRIDE + fine_y);
         let pat_hi_next =
             mem.ppu_read(pat_base + tile_id_next * TILE_STRIDE + fine_y + TILE_BITPLANE_OFFSET);
@@ -1047,13 +1045,12 @@ impl PPU {
     }
 
     fn sync_render_origin_after_v_write(&mut self) {
-        self.render_line_v = if self.scanline < SCREEN_HEIGHT as u16
-            && self.cycle < LAST_VISIBLE_DOT
-        {
-            self.render_origin_for_dot(self.v, self.cycle + 1)
-        } else {
-            self.v
-        };
+        self.render_line_v =
+            if self.scanline < SCREEN_HEIGHT as u16 && self.cycle < LAST_VISIBLE_DOT {
+                self.render_origin_for_dot(self.v, self.cycle + 1)
+            } else {
+                self.v
+            };
         self.next_render_line_v = self.v;
 
         let rendering_scanline =

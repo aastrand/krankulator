@@ -261,7 +261,8 @@ impl MemoryMapper for MMC2Mapper {
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
-        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
+        let cpu_ram =
+            unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         w.write_bytes(cpu_ram);
         w.write_u8(self.prg_bank_idx as u8);
         for half in 0..2 {

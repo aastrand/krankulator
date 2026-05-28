@@ -526,7 +526,11 @@ impl APU {
         if r.version() >= 3 {
             self.frame_irq_since_dot = r.read_u64()?;
         } else {
-            self.frame_irq_since_dot = if self.status & STATUS_FRAME_IRQ != 0 { 0 } else { u64::MAX };
+            self.frame_irq_since_dot = if self.status & STATUS_FRAME_IRQ != 0 {
+                0
+            } else {
+                u64::MAX
+            };
         }
         if r.version() >= 4 {
             let val = r.read_u8()?;
@@ -958,12 +962,18 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_len_table() {
-        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/2-len_table.nes"), "2-len_table");
+        run_blargg_apu_rom(
+            test_rom!("apu_test/rom_singles/2-len_table.nes"),
+            "2-len_table",
+        );
     }
 
     #[test]
     fn test_blargg_apu_irq_flag() {
-        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/3-irq_flag.nes"), "3-irq_flag");
+        run_blargg_apu_rom(
+            test_rom!("apu_test/rom_singles/3-irq_flag.nes"),
+            "3-irq_flag",
+        );
     }
 
     #[test]
@@ -973,7 +983,10 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_len_timing() {
-        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/5-len_timing.nes"), "5-len_timing");
+        run_blargg_apu_rom(
+            test_rom!("apu_test/rom_singles/5-len_timing.nes"),
+            "5-len_timing",
+        );
     }
 
     #[test]
@@ -986,12 +999,18 @@ mod tests {
 
     #[test]
     fn test_blargg_apu_dmc_basics() {
-        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/7-dmc_basics.nes"), "7-dmc_basics");
+        run_blargg_apu_rom(
+            test_rom!("apu_test/rom_singles/7-dmc_basics.nes"),
+            "7-dmc_basics",
+        );
     }
 
     #[test]
     fn test_blargg_apu_dmc_rates() {
-        run_blargg_apu_rom(test_rom!("apu_test/rom_singles/8-dmc_rates.nes"), "8-dmc_rates");
+        run_blargg_apu_rom(
+            test_rom!("apu_test/rom_singles/8-dmc_rates.nes"),
+            "8-dmc_rates",
+        );
     }
 
     fn run_blargg_apu_2005_rom(rom_path: &str) {
@@ -1107,10 +1126,7 @@ mod tests {
 
     #[test]
     fn test_apu_reset_4015_cleared() {
-        run_apu_reset_rom(
-            test_rom!("apu_reset/4015_cleared.nes"),
-            "4015_cleared",
-        );
+        run_apu_reset_rom(test_rom!("apu_reset/4015_cleared.nes"), "4015_cleared");
     }
 
     #[test]
@@ -1120,10 +1136,7 @@ mod tests {
 
     #[test]
     fn test_apu_reset_4017_written() {
-        run_apu_reset_rom(
-            test_rom!("apu_reset/4017_written.nes"),
-            "4017_written",
-        );
+        run_apu_reset_rom(test_rom!("apu_reset/4017_written.nes"), "4017_written");
     }
 
     #[test]
@@ -1333,8 +1346,7 @@ mod tests {
             wav_path
         );
 
-        let analyze_script =
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/analyze_audio.py");
+        let analyze_script = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/analyze_audio.py");
         let output = std::process::Command::new(venv_python)
             .args([
                 analyze_script,

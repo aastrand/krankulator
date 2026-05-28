@@ -407,7 +407,8 @@ impl MemoryMapper for MMC1Mapper {
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
-        let cpu_ram = unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
+        let cpu_ram =
+            unsafe { std::slice::from_raw_parts(self.cpu_ram_ptr, CPU_RAM_SIZE as usize) };
         w.write_bytes(cpu_ram);
         let mmc_ram = unsafe { std::slice::from_raw_parts(self.mmc_ram_ptr, MMC_RAM_SIZE) };
         w.write_bytes(mmc_ram);

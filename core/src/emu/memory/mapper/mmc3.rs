@@ -828,10 +828,7 @@ mod tests {
 
     #[test]
     fn test_mmc3_3_a12_clocking() {
-        run_mmc3_rom(
-            test_rom!("mmc3_test/3-A12_clocking.nes"),
-            "3-A12_clocking",
-        );
+        run_mmc3_rom(test_rom!("mmc3_test/3-A12_clocking.nes"), "3-A12_clocking");
     }
 
     #[test]
@@ -849,23 +846,25 @@ mod tests {
 
     #[test]
     fn test_mmc3_6_mmc6() {
-        run_mmc3_rom_with_submapper(
-            test_rom!("mmc3_test/6-MMC6.nes"),
-            "6-MMC6",
-            Some(1),
-        );
+        run_mmc3_rom_with_submapper(test_rom!("mmc3_test/6-MMC6.nes"), "6-MMC6", Some(1));
     }
 
     // --- mmc3_test_2 ---
 
     #[test]
     fn test_mmc3_v2_1_clocking() {
-        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/1-clocking.nes"), "1-clocking");
+        run_mmc3_rom(
+            test_rom!("mmc3_test_2/rom_singles/1-clocking.nes"),
+            "1-clocking",
+        );
     }
 
     #[test]
     fn test_mmc3_v2_2_details() {
-        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/2-details.nes"), "2-details");
+        run_mmc3_rom(
+            test_rom!("mmc3_test_2/rom_singles/2-details.nes"),
+            "2-details",
+        );
     }
 
     #[test]
