@@ -665,7 +665,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_ppu_even_odd_timing() {
         run_blargg_test(
             test_rom!("ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes"),
@@ -718,7 +717,6 @@ mod tests {
     // --- ppu_open_bus ---
 
     #[test]
-    #[ignore]
     fn test_ppu_open_bus() {
         run_blargg_test(
             test_rom!("ppu_open_bus/ppu_open_bus.nes"),

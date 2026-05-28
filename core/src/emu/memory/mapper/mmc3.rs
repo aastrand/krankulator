@@ -890,9 +890,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_mmc3_v2_6_mmc3_alt() {
-        run_mmc3_rom(test_rom!("mmc3_test_2/rom_singles/6-MMC3_alt.nes"), "6-MMC3_alt");
+        run_mmc3_rom_with_submapper(
+            test_rom!("mmc3_test_2/rom_singles/6-MMC3_alt.nes"),
+            "6-MMC3_alt",
+            Some(1),
+        );
     }
 
     #[test]

@@ -224,13 +224,13 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | pal_apu_tests | all 10 | ⏸ ignored (needs PAL) | apu/mod.rs |
 | dmc_tests | status, status_irq, buffer_retained, latency | ✅ | integration_tests.rs |
 | oam_read | 1 | ✅ | integration_tests.rs |
-| ppu_vbl_nmi | 01, 03, 04, 05, 09 | ✅ | integration_tests.rs |
-| ppu_vbl_nmi | 02, 06, 07, 08, 10 | ❌ ignored | integration_tests.rs |
+| ppu_vbl_nmi | 01, 03, 04, 05, 09, 10 | ✅ | integration_tests.rs |
+| ppu_vbl_nmi | 02, 06, 07, 08 | ❌ ignored | integration_tests.rs |
 | blargg_ppu_tests_2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ | integration_tests.rs |
-| ppu_open_bus | 1 | ❌ ignored | integration_tests.rs |
+| ppu_open_bus | 1 | ✅ | integration_tests.rs |
 | oam_stress | 1 | ❌ ignored | integration_tests.rs |
 | mmc3_test | all 6 | ✅ | memory/mapper/mmc3.rs |
-| mmc3_test_2 | 5 of 6 (6-MMC3_alt fails) | ✅ (1 ignored) | memory/mapper/mmc3.rs |
+| mmc3_test_2 | all 6 | ✅ | memory/mapper/mmc3.rs |
 | apu_mixer | 4 | ⏸ ignored (release-only) | apu/mod.rs |
 | vbl_nmi_timing | all 7 | ✅ | integration_tests.rs |
 | sprite_hit_tests_2005 | all 11 | ✅ | integration_tests.rs |
@@ -256,14 +256,14 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | **Priority 2 — NMI hijacking + even/odd timing** | | | | |
 | `2-nmi_and_brk` | NMI during BRK redirects to NMI vector | Medium — any game hitting BRK near VBL | Detect NMI edge before vector fetch in BRK | M |
 | `3-nmi_and_irq` | NMI during IRQ redirects to NMI vector | Medium — IRQ-heavy games (MMC3) near VBL | Same mechanism in trigger_irq() | M |
-| `10-even_odd_timing` | Odd-frame clock skip timing vs BG enable | Low — only cycle-exact raster effects | Odd-frame skip happens too late relative to $2001 BG enable | S |
+| ~~`10-even_odd_timing`~~ | ~~Odd-frame clock skip timing vs BG enable~~ | ~~Low~~ | **FIXED** — latch BG enable at pre-render dot 337 for skip decision | ✅ |
 | **Priority 3 — Small targeted fixes** | | | | |
 | `1-instr_timing` | Cycle counts for unofficial NOP/SBC opcodes | Very low — only unofficial opcodes 82/89/C2/E2/0B/2B fail | Add cycle counts for ~6 unofficial opcodes | XS |
 | `04-dummy_reads_apu` | Dummy reads on indexed ops trigger APU side effects | Low — only if game does indexed write to $40xx | APU registers respond to dummy read at uncorrected address | S |
 | `5-branch_delays_irq` | Branch instruction delays IRQ by 1 cycle | Low — extremely narrow timing window | IRQ sampling during taken branch needs page-cross check | S |
 | **Priority 4 — Deeper plumbing** | | | | |
 | `4-irq_and_dma` | OAM DMA delays IRQ servicing | Low — IRQ-during-DMA is rare in practice | DMA doesn't model per-cycle IRQ polling | L |
-| `ppu_open_bus` | PPU bus bits decay to 0 after ~600ms | Low — very few games rely on decay | Need per-bit decay timer on PPU data bus | M |
+| ~~`ppu_open_bus`~~ | ~~PPU bus bits decay to 0 after ~600ms~~ | ~~Low~~ | **FIXED** — per-bit decay timer + OAM attribute bit masking + palette partial refresh | ✅ |
 | **Priority 5 — Deprioritize** | | | | |
 | `oam_stress` | OAM address/read/write under stress | Low — test only passes 1/4 on real HW | PPU-CPU alignment jitter, may be unfixable deterministically | S |
 | `cpu_exec_space_ppuio` | Code execution from PPU I/O space | Very low — no real game does this | PPU open bus during instruction fetch | M |

@@ -61,6 +61,8 @@ const LAST_VISIBLE_DOT: u16 = 256;
 const HSCROLL_COPY_DOT: u16 = 257;
 const VSCROLL_COPY_START: u16 = 280;
 const VSCROLL_COPY_END: u16 = 304;
+const OPEN_BUS_DECAY_DOTS: u64 = 3_200_000; // ~600ms at 5.37 MHz PPU clock
+
 const PREFETCH_START: u16 = 321;
 const PREFETCH_END: u16 = 336;
 const SPRITE_EVAL_START: u16 = 65;
@@ -285,6 +287,11 @@ pub struct PPU {
 
     /// Last byte driven onto the CPU data bus by a PPU register read (open-bus model).
     ppu_open_bus: u8,
+    /// PPU dot at which each open-bus bit was last refreshed (for capacitance decay).
+    ppu_open_bus_decay_dots: [u64; 8],
+
+    /// Latched at pre-render dot 339: skip idle dot (0,0) on odd frames with BG on.
+    odd_frame_skip_pending: bool,
 
     /// $2002 read on scanline 241 dot 0 suppresses the NMI for that vblank.
     nmi_suppress_next_vblank: bool,
@@ -346,9 +353,32 @@ impl PPU {
             bg_shifter_resync_pending: false,
 
             ppu_open_bus: 0,
+            ppu_open_bus_decay_dots: [0; 8],
 
+            odd_frame_skip_pending: false,
             nmi_suppress_next_vblank: false,
         }
+    }
+
+    fn refresh_open_bus_bits(&mut self, value: u8, mask: u8) {
+        let now = self.last_synced_dot;
+        self.ppu_open_bus = (self.ppu_open_bus & !mask) | (value & mask);
+        for bit in 0..8u8 {
+            if mask & (1 << bit) != 0 {
+                self.ppu_open_bus_decay_dots[bit as usize] = now;
+            }
+        }
+    }
+
+    fn decayed_open_bus(&self) -> u8 {
+        let now = self.last_synced_dot;
+        let mut val = self.ppu_open_bus;
+        for bit in 0..8u8 {
+            if now.wrapping_sub(self.ppu_open_bus_decay_dots[bit as usize]) >= OPEN_BUS_DECAY_DOTS {
+                val &= !(1 << bit);
+            }
+        }
+        val
     }
 
     pub fn save_state(&self, w: &mut SavestateWriter) {
@@ -403,6 +433,9 @@ impl PPU {
         w.write_bool(self.sprite_eval_overflow_phase);
         w.write_bool(self.bg_shifter_resync_pending);
         w.write_u8(self.ppu_open_bus);
+        for &dot in &self.ppu_open_bus_decay_dots {
+            w.write_u64(dot);
+        }
         w.write_bool(self.nmi_suppress_next_vblank);
     }
 
@@ -458,6 +491,9 @@ impl PPU {
         self.sprite_eval_overflow_phase = r.read_bool()?;
         self.bg_shifter_resync_pending = r.read_bool()?;
         self.ppu_open_bus = r.read_u8()?;
+        for dot in &mut self.ppu_open_bus_decay_dots {
+            *dot = r.read_u64()?;
+        }
         self.nmi_suppress_next_vblank = r.read_bool()?;
         Ok(())
     }
@@ -471,30 +507,35 @@ impl PPU {
     }
 
     pub fn read(&mut self, addr: u16, mem: &dyn memory::MemoryMapper) -> u8 {
-        let v = match addr {
-            // Write-only registers and mirrors: CPU reads see the last PPU bus value (simplified open bus).
-            CTRL_REG_ADDR | MASK_REG_ADDR | OAM_ADDR | SCROLL_ADDR | ADDR_ADDR => self.ppu_open_bus,
+        match addr {
+            // Write-only registers: return decayed open bus, no refresh.
+            CTRL_REG_ADDR | MASK_REG_ADDR | OAM_ADDR | SCROLL_ADDR | ADDR_ADDR => {
+                self.decayed_open_bus()
+            }
 
             STATUS_REG_ADDR => {
                 let status = self.get_status_reg();
-
-                // Only vblank (bit 7) clears on read; sprite 0 hit and overflow clear at prerender dot 1
-                // (https://www.nesdev.org/wiki/PPU_programmer_reference#PPUSTATUS_-_Rendering_events_.28.242002_read.29).
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
-                // reset write toggle - this is crucial for proper scrolling
                 self.w = false;
-                // Legacy support
                 self.ppu_addr_idx = 0;
                 self.ppu_addr[0] = 0;
                 self.ppu_addr[1] = 0;
                 self.ppu_data_valid = false;
 
-                (status & STATUS_HIGH_BITS) | (self.ppu_open_bus & STATUS_OPEN_BUS_BITS)
+                // Top 3 bits from status refresh open bus; bottom 5 are decayed open bus.
+                let result = (status & STATUS_HIGH_BITS) | (self.decayed_open_bus() & STATUS_OPEN_BUS_BITS);
+                self.refresh_open_bus_bits(status, STATUS_HIGH_BITS);
+                result
             }
 
             OAM_DATA_ADDR => {
-                // reads during vertical or forced blanking return the value from OAM at that address but do not increment.
-                self.oam_ram[self.oam_addr as usize]
+                let mut value = self.oam_ram[self.oam_addr as usize];
+                // Byte 2 of each sprite (attribute): bits 2-4 are unimplemented, read as 0.
+                if self.oam_addr % 4 == 2 {
+                    value &= 0xE3;
+                }
+                self.refresh_open_bus_bits(value, 0xFF);
+                value
             }
             DATA_ADDR => {
                 let read_addr = self.v;
@@ -502,21 +543,20 @@ impl PPU {
                     let mirrored_addr = read_addr & PALETTE_MIRROR_MASK;
                     let result = mem.ppu_read(read_addr as _);
                     self.ppu_data_buf = mem.ppu_read(mirrored_addr as _);
-                    result
+                    // Palette reads: lower 6 bits from palette, upper 2 from decayed open bus.
+                    self.refresh_open_bus_bits(result, 0x3F);
+                    (result & 0x3F) | (self.decayed_open_bus() & 0xC0)
                 } else {
-                    // Pattern/nametable: return buffer, update buffer
                     let r = self.ppu_data_buf;
                     self.ppu_data_buf = mem.ppu_read(read_addr as _);
+                    self.refresh_open_bus_bits(r, 0xFF);
                     r
                 };
                 self.inc_vram_addr_v();
                 value
             }
-            _ => self.ppu_open_bus,
-        };
-
-        self.ppu_open_bus = v;
-        v
+            _ => self.decayed_open_bus(),
+        }
     }
 
     fn inc_vram_addr_v(&mut self) {
@@ -614,6 +654,7 @@ impl PPU {
         }
 
         self.ppu_open_bus = value;
+        self.refresh_open_bus_bits(value, 0xFF);
         ret
     }
 
@@ -646,19 +687,12 @@ impl PPU {
         &mut self,
         mut render_ctx: Option<(&mut dyn memory::MemoryMapper, &mut Buffer)>,
     ) -> StepResult {
-        // With rendering enabled, each odd PPU frame is one PPU clock shorter than normal.
-        // This is done by skipping the first idle tick on the first visible scanline (by jumping directly from (339,261)
-        // on the pre-render scanline to (0,0) on the first visible scanline and doing the last cycle of the last dummy nametable fetch there instead;
-        if self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE
-            && self.frames % 2 == 1
-            && self.scanline == PRE_RENDER_SCANLINE
-            && self.cycle == CYCLES_PER_SCANLINE - 1
-        {
-            self.cycle = 0;
-            self.scanline = 0;
-            self.frames += 1;
-            self.last_synced_dot = self.last_synced_dot.wrapping_add(1);
-            return StepResult::default();
+        // Latch BG-enable at pre-render dot 337 for the odd-frame skip decision.
+        // The skip is at dot 339 but the CPU write that toggles BG on the same
+        // CPU cycle (dots 337-339) must not affect this frame's skip.
+        if self.scanline == PRE_RENDER_SCANLINE && self.cycle == CYCLES_PER_SCANLINE - 3 {
+            self.odd_frame_skip_pending = self.frames % 2 == 1
+                && (self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE);
         }
 
         self.cycle = self.cycle.wrapping_add(1);
@@ -668,6 +702,12 @@ impl PPU {
             if self.scanline == 0 {
                 self.frames += 1;
             }
+        }
+
+        // Odd-frame skip: eliminate the idle dot (0,0).
+        if self.odd_frame_skip_pending && self.scanline == 0 && self.cycle == 0 {
+            self.odd_frame_skip_pending = false;
+            self.cycle = 1;
         }
 
         self.last_synced_dot = self.last_synced_dot.wrapping_add(1);

@@ -199,7 +199,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-503 tests passing, 40 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+506 tests passing, 37 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
@@ -207,7 +207,8 @@ waveform, spectrum, and envelope comparisons.
 | [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | ✅ |
 | [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` v5 — all official opcodes | ✅ |
 | Blargg PPU | VBlank basics, clear time, NMI control, NMI timing, even/odd frames | ✅ |
-| Blargg PPU | VBL set time, suppression, NMI on/off timing, even/odd timing | ❌ |
+| Blargg PPU | VBL set time, suppression, NMI on/off timing | ❌ |
+| Blargg PPU | Even/odd timing | ✅ |
 | Blargg PPU 2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ |
 | Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
 | Blargg APU 2005 | All 11 tests | ✅ |
@@ -224,10 +225,11 @@ waveform, spectrum, and envelope comparisons.
 | CPU interrupts | CLI latency | ✅ |
 | CPU interrupts | NMI/BRK, NMI/IRQ, IRQ/DMA, branch delays IRQ | ❌ |
 | PPU OAM | OAM read | ✅ |
-| PPU OAM | OAM stress, open bus | ❌ |
+| PPU OAM | OAM stress | ❌ |
+| PPU open bus | Decay, register refresh | ✅ |
 | CPU registers/RAM | Registers after reset, RAM after reset | ✅ |
 | MMC3 | All 6 tests (mmc3_test) | ✅ |
-| MMC3 v2 | 5 of 6 tests (mmc3_test_2), 6-MMC3_alt fails | ✅ |
+| MMC3 v2 | All 6 tests (mmc3_test_2) | ✅ |
 | vbl_nmi_timing | All 7 tests | ✅ |
 | sprite_hit_tests_2005 | All 11 tests | ✅ |
 | sprite_overflow_tests | All 5 tests | ✅ |
