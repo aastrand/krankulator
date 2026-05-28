@@ -591,7 +591,6 @@ mod tests {
     // --- instr_timing ---
 
     #[test]
-    #[ignore]
     fn test_instr_timing_1() {
         run_blargg_test(
             test_rom!("instr_timing/rom_singles/1-instr_timing.nes"),

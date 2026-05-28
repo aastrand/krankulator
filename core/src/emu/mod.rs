@@ -1257,6 +1257,114 @@ impl Emulator {
                 self.cpu.sp = self.cpu.x;
                 // TSX sets NZ - TXS does not
             }
+            opcodes::ANC_0B | opcodes::ANC_2B => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                self.cpu.and(value);
+                if self.cpu.negative_flag() {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+            }
+            opcodes::ALR_IMM => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                self.cpu.a &= value;
+                let old_bit0 = self.cpu.a & 1;
+                self.cpu.a >>= 1;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+                if old_bit0 != 0 {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+            }
+            opcodes::ARR_IMM => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                self.cpu.a &= value;
+                let old_carry = if self.cpu.carry_flag() { 1u8 } else { 0u8 };
+                self.cpu.a = (self.cpu.a >> 1) | (old_carry << 7);
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+                let bit6 = (self.cpu.a >> 6) & 1;
+                let bit5 = (self.cpu.a >> 5) & 1;
+                if bit6 != 0 {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+                if (bit6 ^ bit5) != 0 {
+                    self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
+                }
+            }
+            opcodes::XAA_IMM => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                self.cpu.a = self.cpu.x & value;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+            }
+            opcodes::LAX_IMM => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                self.cpu.a = value;
+                self.cpu.x = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
+            opcodes::SBX_IMM => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr);
+                let ax = self.cpu.a & self.cpu.x;
+                let result = (ax as u16).wrapping_sub(value as u16);
+                self.cpu.x = result as u8;
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+                if ax >= value {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+            }
+            opcodes::SHA_INY | opcodes::SHA_ABY => {
+                let addr = self.addr(opcode);
+                let high = ((addr >> 8) as u8).wrapping_add(1);
+                let value = self.cpu.a & self.cpu.x & high;
+                self.cpu_write(addr, value);
+            }
+            opcodes::TAS_ABY => {
+                let addr = self.addr(opcode);
+                self.cpu.sp = self.cpu.a & self.cpu.x;
+                let high = ((addr >> 8) as u8).wrapping_add(1);
+                let value = self.cpu.sp & high;
+                self.cpu_write(addr, value);
+            }
+            opcodes::SHY_ABX => {
+                let addr = self.addr(opcode);
+                let high = ((addr >> 8) as u8).wrapping_add(1);
+                let value = self.cpu.y & high;
+                self.cpu_write(addr, value);
+            }
+            opcodes::SHX_ABY => {
+                let addr = self.addr(opcode);
+                let high = ((addr >> 8) as u8).wrapping_add(1);
+                let value = self.cpu.x & high;
+                self.cpu_write(addr, value);
+            }
+            opcodes::LAS_ABY => {
+                let addr = self.addr(opcode);
+                let value = self.cpu_read(addr) & self.cpu.sp;
+                self.cpu.a = value;
+                self.cpu.x = value;
+                self.cpu.sp = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
             _ => {
                 // Infer page boundary penalty for certain unofficial NOPs
                 if opcode & 0xf == 0xc && self.lookup.mode(opcode) != 0xff {

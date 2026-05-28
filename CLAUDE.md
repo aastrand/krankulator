@@ -98,6 +98,8 @@ cargo fmt
 cargo clippy --workspace
 ```
 
+**Always run `cargo fmt` before committing.** Formatting changes must not be mixed into functional commits.
+
 ## Architecture Overview
 
 ### Core Library (`core/src/`)
@@ -262,7 +264,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (506 tests, 37 ignored). Desktop has 1 smoke test verifying audio backend wiring.
+All emulation tests live in `core/` (507 tests, 36 ignored). Desktop has 1 smoke test verifying audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -316,4 +318,4 @@ All emulation tests live in `core/` (506 tests, 37 ignored). Desktop has 1 smoke
 - Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
 - RMW instructions always perform the dummy read regardless of page crossing
 
-The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction misc, CPU interrupt CLI latency, PPU VBL basics/clear/NMI control/even-odd frames, OAM read, and MMC3. Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), advanced PPU VBL timing (suppression, nmi_on/off_timing), PPU open bus decay, DMA cycle stealing, and full instruction timing for unofficial opcodes.
+The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc, CPU interrupt CLI latency, PPU VBL basics/clear/NMI control/even-odd frames, OAM read, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), advanced PPU VBL timing (suppression, nmi_on/off_timing), DMA cycle stealing, and cpu_dummy_writes.

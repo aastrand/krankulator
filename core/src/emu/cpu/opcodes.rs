@@ -227,6 +227,34 @@ pub const NOP_54: u8 = 0x54; // NOP (Unofficial opcode)
 pub const NOP_74: u8 = 0x74; // NOP (Unofficial opcode)
 pub const NOP_D4: u8 = 0xd4; // NOP (Unofficial opcode)
 pub const NOP_F4: u8 = 0xf4; // NOP (Unofficial opcode)
+pub const NOP_82: u8 = 0x82; // NOP #imm (Unofficial opcode)
+pub const NOP_89: u8 = 0x89; // NOP #imm (Unofficial opcode)
+pub const NOP_C2: u8 = 0xc2; // NOP #imm (Unofficial opcode)
+pub const NOP_E2: u8 = 0xe2; // NOP #imm (Unofficial opcode)
+pub const ANC_0B: u8 = 0x0b; // ANC = AND + copy N to C (Unofficial opcode)
+pub const ANC_2B: u8 = 0x2b; // ANC = AND + copy N to C (Unofficial opcode)
+pub const NOP_0C: u8 = 0x0c; // NOP abs (Unofficial opcode)
+pub const NOP_04: u8 = 0x04; // NOP zp (Unofficial opcode)
+pub const NOP_44: u8 = 0x44; // NOP zp (Unofficial opcode)
+pub const NOP_64: u8 = 0x64; // NOP zp (Unofficial opcode)
+pub const NOP_80: u8 = 0x80; // NOP #imm (Unofficial opcode)
+pub const NOP_1A: u8 = 0x1a; // NOP implied (Unofficial opcode)
+pub const NOP_3A: u8 = 0x3a; // NOP implied (Unofficial opcode)
+pub const NOP_5A: u8 = 0x5a; // NOP implied (Unofficial opcode)
+pub const NOP_7A: u8 = 0x7a; // NOP implied (Unofficial opcode)
+pub const NOP_DA: u8 = 0xda; // NOP implied (Unofficial opcode)
+pub const NOP_FA: u8 = 0xfa; // NOP implied (Unofficial opcode)
+pub const ALR_IMM: u8 = 0x4b; // ALR = AND + LSR (Unofficial opcode)
+pub const ARR_IMM: u8 = 0x6b; // ARR = AND + ROR (Unofficial opcode)
+pub const XAA_IMM: u8 = 0x8b; // XAA = TXA + AND (Unofficial opcode, unstable)
+pub const LAX_IMM: u8 = 0xab; // LAX #imm (Unofficial opcode, unstable)
+pub const SBX_IMM: u8 = 0xcb; // SBX = (A AND X) - imm (Unofficial opcode)
+pub const SHA_INY: u8 = 0x93; // SHA = store A AND X AND (high+1) (Unofficial opcode)
+pub const SHA_ABY: u8 = 0x9f; // SHA = store A AND X AND (high+1) (Unofficial opcode)
+pub const TAS_ABY: u8 = 0x9b; // TAS = S = A AND X, store S AND (high+1) (Unofficial opcode)
+pub const SHY_ABX: u8 = 0x9c; // SHY = store Y AND (high+1) (Unofficial opcode)
+pub const SHX_ABY: u8 = 0x9e; // SHX = store X AND (high+1) (Unofficial opcode)
+pub const LAS_ABY: u8 = 0xbb; // LAS = LDA/TSX (S AND mem) (Unofficial opcode)
 
 pub struct Opcode {
     name: &'static str,
@@ -1979,6 +2007,230 @@ impl Lookup {
             cycles: 4,
             mode: ADDR_MODE_NA,
             page_boundary_penalty: false,
+        };
+        lookup[NOP_82 as usize] = &Opcode {
+            // NOP #imm (Unofficial opcode)
+            name: "NOP_82",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_89 as usize] = &Opcode {
+            // NOP #imm (Unofficial opcode)
+            name: "NOP_89",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_C2 as usize] = &Opcode {
+            // NOP #imm (Unofficial opcode)
+            name: "NOP_C2",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_E2 as usize] = &Opcode {
+            // NOP #imm (Unofficial opcode)
+            name: "NOP_E2",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[ANC_0B as usize] = &Opcode {
+            // ANC = AND + copy N to C (Unofficial opcode)
+            name: "ANC_0B",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[ANC_2B as usize] = &Opcode {
+            // ANC = AND + copy N to C (Unofficial opcode)
+            name: "ANC_2B",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_0C as usize] = &Opcode {
+            // NOP abs (Unofficial opcode)
+            name: "NOP_0C",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_04 as usize] = &Opcode {
+            // NOP zp (Unofficial opcode)
+            name: "NOP_04",
+            size: 2,
+            cycles: 3,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_44 as usize] = &Opcode {
+            // NOP zp (Unofficial opcode)
+            name: "NOP_44",
+            size: 2,
+            cycles: 3,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_64 as usize] = &Opcode {
+            // NOP zp (Unofficial opcode)
+            name: "NOP_64",
+            size: 2,
+            cycles: 3,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_80 as usize] = &Opcode {
+            // NOP #imm (Unofficial opcode)
+            name: "NOP_80",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_1A as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_1A",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_3A as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_3A",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_5A as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_5A",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_7A as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_7A",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_DA as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_DA",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[NOP_FA as usize] = &Opcode {
+            // NOP implied (Unofficial opcode)
+            name: "NOP_FA",
+            size: 1,
+            cycles: 2,
+            mode: ADDR_MODE_NA,
+            page_boundary_penalty: false,
+        };
+        lookup[ALR_IMM as usize] = &Opcode {
+            // ALR = AND + LSR (Unofficial opcode)
+            name: "ALR_IMM",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[ARR_IMM as usize] = &Opcode {
+            // ARR = AND + ROR (Unofficial opcode)
+            name: "ARR_IMM",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[XAA_IMM as usize] = &Opcode {
+            // XAA = TXA + AND (Unofficial opcode, unstable)
+            name: "XAA_IMM",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[LAX_IMM as usize] = &Opcode {
+            // LAX #imm (Unofficial opcode, unstable)
+            name: "LAX_IMM",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[SBX_IMM as usize] = &Opcode {
+            // SBX = (A AND X) - imm (Unofficial opcode)
+            name: "SBX_IMM",
+            size: 2,
+            cycles: 2,
+            mode: ADDR_MODE_IMM,
+            page_boundary_penalty: false,
+        };
+        lookup[SHA_INY as usize] = &Opcode {
+            // SHA = store A AND X AND (high+1) (Unofficial opcode)
+            name: "SHA_INY",
+            size: 2,
+            cycles: 6,
+            mode: ADDR_MODE_INY,
+            page_boundary_penalty: false,
+        };
+        lookup[SHA_ABY as usize] = &Opcode {
+            // SHA = store A AND X AND (high+1) (Unofficial opcode)
+            name: "SHA_ABY",
+            size: 3,
+            cycles: 5,
+            mode: ADDR_MODE_ABY,
+            page_boundary_penalty: false,
+        };
+        lookup[TAS_ABY as usize] = &Opcode {
+            // TAS = S = A AND X, store S AND (high+1) (Unofficial opcode)
+            name: "TAS_ABY",
+            size: 3,
+            cycles: 5,
+            mode: ADDR_MODE_ABY,
+            page_boundary_penalty: false,
+        };
+        lookup[SHY_ABX as usize] = &Opcode {
+            // SHY = store Y AND (high+1) (Unofficial opcode)
+            name: "SHY_ABX",
+            size: 3,
+            cycles: 5,
+            mode: ADDR_MODE_ABX,
+            page_boundary_penalty: false,
+        };
+        lookup[SHX_ABY as usize] = &Opcode {
+            // SHX = store X AND (high+1) (Unofficial opcode)
+            name: "SHX_ABY",
+            size: 3,
+            cycles: 5,
+            mode: ADDR_MODE_ABY,
+            page_boundary_penalty: false,
+        };
+        lookup[LAS_ABY as usize] = &Opcode {
+            // LAS = LDA/TSX (S AND mem) (Unofficial opcode)
+            name: "LAS_ABY",
+            size: 3,
+            cycles: 4,
+            mode: ADDR_MODE_ABY,
+            page_boundary_penalty: true,
         };
         Lookup { opcodes: lookup }
     }

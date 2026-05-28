@@ -213,7 +213,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | cpu_interrupts_v2 | 1-cli_latency | ✅ | integration_tests.rs |
 | cpu_interrupts_v2 | 2-nmi_and_brk, 3-nmi_and_irq, 4-irq_and_dma, 5-branch_delays_irq | ❌ ignored | integration_tests.rs |
 | instr_timing | 2-branch_timing | ✅ | integration_tests.rs |
-| instr_timing | 1-instr_timing | ❌ ignored | integration_tests.rs |
+| instr_timing | 1-instr_timing | ✅ | integration_tests.rs |
 | cpu_timing_test6 | 1 ROM | ✅ | integration_tests.rs |
 | instr_misc | abs_x_wrap, branch_wrap, dummy_reads | ✅ | integration_tests.rs |
 | instr_misc | dummy_reads_apu | ❌ ignored | integration_tests.rs |
@@ -258,7 +258,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | `3-nmi_and_irq` | NMI during IRQ redirects to NMI vector | Medium — IRQ-heavy games (MMC3) near VBL | Same mechanism in trigger_irq() | M |
 | ~~`10-even_odd_timing`~~ | ~~Odd-frame clock skip timing vs BG enable~~ | ~~Low~~ | **FIXED** — latch BG enable at pre-render dot 337 for skip decision | ✅ |
 | **Priority 3 — Small targeted fixes** | | | | |
-| `1-instr_timing` | Cycle counts for unofficial NOP/SBC opcodes | Very low — only unofficial opcodes 82/89/C2/E2/0B/2B fail | Add cycle counts for ~6 unofficial opcodes | XS |
+| ~~`1-instr_timing`~~ | ~~Cycle counts for unofficial opcodes~~ | ~~Very low~~ | **FIXED** — added 22 missing unofficial opcode definitions (NOPs, ANC, ALR, ARR, XAA, LAX#, SBX, SHA, SHX, SHY, TAS, LAS) | ✅ |
 | `04-dummy_reads_apu` | Dummy reads on indexed ops trigger APU side effects | Low — only if game does indexed write to $40xx | APU registers respond to dummy read at uncorrected address | S |
 | `5-branch_delays_irq` | Branch instruction delays IRQ by 1 cycle | Low — extremely narrow timing window | IRQ sampling during taken branch needs page-cross check | S |
 | **Priority 4 — Deeper plumbing** | | | | |
@@ -274,7 +274,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 
 2. **NMI hijacking (nmi_and_brk, nmi_and_irq) + even/odd timing** — second pass on code we attempted and reverted. With correct VBL timing from step 1, the hijacking logic should be straightforward: check for pending NMI edge before the vector fetch on cycle 6 of BRK/IRQ.
 
-3. **Small wins (instr_timing_1, dummy_reads_apu, branch_delays_irq)** — quick targeted fixes. Add cycle counts for 6 unofficial opcodes, wire APU dummy reads, adjust branch IRQ sampling.
+3. **Small wins (dummy_reads_apu, branch_delays_irq)** — quick targeted fixes. Wire APU dummy reads, adjust branch IRQ sampling. (instr_timing_1 already fixed.)
 
 4. **PPU open bus + IRQ/DMA** — lower game impact, more plumbing work.
 
@@ -314,7 +314,7 @@ Visual demos, interactive tests, or unsupported hardware — cannot use $6000 pr
 - [ ] NMI hijacking during BRK/IRQ vector fetch [M]
 - [ ] Sprite 0 hit: upgrade from position-based to pixel-overlap accuracy [M]
 - [ ] PPU open bus decay behavior [M]
-- [ ] CPU unofficial/illegal opcodes (for some unlicensed games and demos) [L]
+- [x] CPU unofficial/illegal opcodes (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA + NOP variants) [L]
 - [ ] APU DMC DMA cycle stealing accuracy [L]
 
 ---

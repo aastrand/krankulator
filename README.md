@@ -13,7 +13,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 
 ## Features
 
-- **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA)
+- **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119) — 695/695 licensed NTSC US games (100%)
@@ -199,7 +199,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-506 tests passing, 37 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+507 tests passing, 36 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
@@ -218,7 +218,7 @@ waveform, spectrum, and envelope comparisons.
 | cpu_exec_space | APU register space execution | ✅ |
 | cpu_exec_space | PPU I/O space execution | ❌ |
 | Instruction timing | Branch timing (2-branch_timing) | ✅ |
-| Instruction timing | Full instruction timing (1-instr_timing) | ❌ |
+| Instruction timing | Full instruction timing (1-instr_timing) | ✅ |
 | CPU timing test | All official instruction cycle counts | ✅ |
 | Instruction misc | abs_x_wrap, branch_wrap, dummy_reads | ✅ |
 | Branch timing | Branch basics, backward, forward | ✅ |
