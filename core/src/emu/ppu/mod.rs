@@ -1511,15 +1511,14 @@ impl PPU {
     fn update_nmi_output(&mut self) {
         let new = self.vblank_nmi_is_enabled() && self.is_in_vblank();
         if new && !self.nmi_output {
-            // Rising edge: record the PPU dot for the CPU's edge detector.
             self.nmi_rising_edge_dot = Some(self.last_synced_dot);
         } else if !new && self.nmi_output {
-            // Falling edge: cancel the rising edge only if it occurred
-            // within the same CPU cycle (fewer than 3 PPU dots ago).
-            // Beyond that window the CPU's edge detector has already
-            // latched the signal and the NMI cannot be suppressed.
+            // Cancel the rising edge only if it happened within the same
+            // CPU cycle (at most 2 PPU dots ago). Once the CPU has had a
+            // full cycle to sample the /NMI line, the flip-flop is latched
+            // and cannot be suppressed.
             if let Some(edge_dot) = self.nmi_rising_edge_dot {
-                if self.last_synced_dot.wrapping_sub(edge_dot) < 3 {
+                if self.last_synced_dot.wrapping_sub(edge_dot) <= 1 {
                     self.nmi_rising_edge_dot = None;
                 }
             }

@@ -636,7 +636,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_ppu_suppression() {
         run_blargg_test(
             test_rom!("ppu_vbl_nmi/rom_singles/06-suppression.nes"),
@@ -654,7 +653,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_ppu_nmi_off_timing() {
         run_blargg_test(
             test_rom!("ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes"),
