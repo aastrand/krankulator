@@ -162,7 +162,6 @@ const LEFT_CLIP_WIDTH: u16 = 8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StepResult {
-    pub fire_vblank_nmi: bool,
     pub ppu_cycle_260_scanline: Option<u16>,
 }
 
@@ -293,8 +292,16 @@ pub struct PPU {
     /// Latched at pre-render dot 339: skip idle dot (0,0) on odd frames with BG on.
     odd_frame_skip_pending: bool,
 
-    /// $2002 read on scanline 241 dot 0 suppresses the NMI for that vblank.
+    /// $2002 read on scanline 241 dot 0-1 suppresses the VBL flag set for that vblank.
     nmi_suppress_next_vblank: bool,
+
+    /// NMI output level: true when (vblank_flag AND nmi_enable) are both set.
+    /// The CPU edge-detects this signal each cycle.
+    pub nmi_output: bool,
+
+    /// PPU dot of the most recent nmi_output rising edge.
+    /// Cleared when nmi_output goes back to false (cancels the edge before the CPU samples it).
+    pub nmi_rising_edge_dot: Option<u64>,
 }
 
 impl PPU {
@@ -357,6 +364,8 @@ impl PPU {
 
             odd_frame_skip_pending: false,
             nmi_suppress_next_vblank: false,
+            nmi_output: false,
+            nmi_rising_edge_dot: None,
         }
     }
 
@@ -437,6 +446,7 @@ impl PPU {
             w.write_u64(dot);
         }
         w.write_bool(self.nmi_suppress_next_vblank);
+        w.write_bool(self.nmi_output);
     }
 
     pub fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -491,10 +501,19 @@ impl PPU {
         self.sprite_eval_overflow_phase = r.read_bool()?;
         self.bg_shifter_resync_pending = r.read_bool()?;
         self.ppu_open_bus = r.read_u8()?;
-        for dot in &mut self.ppu_open_bus_decay_dots {
-            *dot = r.read_u64()?;
+        if r.version() >= 6 {
+            for dot in &mut self.ppu_open_bus_decay_dots {
+                *dot = r.read_u64()?;
+            }
+        } else {
+            self.ppu_open_bus_decay_dots = [0; 8];
         }
         self.nmi_suppress_next_vblank = r.read_bool()?;
+        if r.version() >= 6 {
+            self.nmi_output = r.read_bool()?;
+        } else {
+            self.update_nmi_output();
+        }
         Ok(())
     }
 
@@ -502,7 +521,6 @@ impl PPU {
         if self.scanline == VBLANK_SCANLINE && self.cycle == 0 {
             self.nmi_suppress_next_vblank = true;
         }
-
         self.ppu_status
     }
 
@@ -516,6 +534,7 @@ impl PPU {
             STATUS_REG_ADDR => {
                 let status = self.get_status_reg();
                 self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
+                self.update_nmi_output();
                 self.w = false;
                 self.ppu_addr_idx = 0;
                 self.ppu_addr[0] = 0;
@@ -577,6 +596,7 @@ impl PPU {
                 self.ppu_ctrl = value;
                 self.t =
                     (self.t & T_CLEAR_NAMETABLE) | (((value & 0x03) as u16) << V_NAMETABLE_SHIFT);
+                self.update_nmi_output();
             }
             MASK_REG_ADDR => self.ppu_mask = value,
             OAM_ADDR => {
@@ -791,13 +811,11 @@ impl PPU {
         }
 
         if self.scanline == VBLANK_SCANLINE && self.cycle == FIRST_VISIBLE_DOT {
-            self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
-            let mut fire = self.vblank_nmi_is_enabled();
-            if self.nmi_suppress_next_vblank {
-                fire = false;
-                self.nmi_suppress_next_vblank = false;
+            if !self.nmi_suppress_next_vblank {
+                self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
+                self.update_nmi_output();
             }
-            result.fire_vblank_nmi = fire;
+            self.nmi_suppress_next_vblank = false;
         }
 
         if rendering_scanline
@@ -813,6 +831,7 @@ impl PPU {
             self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
             self.ppu_status &= !STATUS_SPRITE_OVERFLOW;
+            self.update_nmi_output();
             self.nmi_suppress_next_vblank = false;
             self.clear_background_shift_registers();
         }
@@ -1365,26 +1384,21 @@ impl PPU {
     }
 
     #[cfg(test)]
-    pub fn catch_up_to<F>(&mut self, target_dot: u64, mut on_step: F) -> bool
+    pub fn catch_up_to<F>(&mut self, target_dot: u64, mut on_step: F)
     where
         F: FnMut(StepResult),
     {
-        let mut fire_vblank_nmi = false;
         while self.last_synced_dot < target_dot {
             let result = self.step_dot();
-            fire_vblank_nmi |= result.fire_vblank_nmi;
             on_step(result);
         }
-        fire_vblank_nmi
     }
 
     #[cfg(test)]
-    pub fn cycle(&mut self) -> bool {
-        let mut fire_vblank_nmi = false;
+    pub fn cycle(&mut self) {
         for _ in 0..3 {
-            fire_vblank_nmi |= self.step_dot().fire_vblank_nmi;
+            self.step_dot();
         }
-        fire_vblank_nmi
     }
 
     fn inc_coarse_x(&mut self) {
@@ -1492,6 +1506,25 @@ impl PPU {
 
     pub fn is_in_vblank(&self) -> bool {
         (self.ppu_status & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
+    }
+
+    fn update_nmi_output(&mut self) {
+        let new = self.vblank_nmi_is_enabled() && self.is_in_vblank();
+        if new && !self.nmi_output {
+            // Rising edge: record the PPU dot for the CPU's edge detector.
+            self.nmi_rising_edge_dot = Some(self.last_synced_dot);
+        } else if !new && self.nmi_output {
+            // Falling edge: cancel the rising edge only if it occurred
+            // within the same CPU cycle (fewer than 3 PPU dots ago).
+            // Beyond that window the CPU's edge detector has already
+            // latched the signal and the NMI cannot be suppressed.
+            if let Some(edge_dot) = self.nmi_rising_edge_dot {
+                if self.last_synced_dot.wrapping_sub(edge_dot) < 3 {
+                    self.nmi_rising_edge_dot = None;
+                }
+            }
+        }
+        self.nmi_output = new;
     }
 
     pub fn ctrl_sprite_pattern_table_addr(&self) -> u16 {
@@ -1662,14 +1695,15 @@ mod tests {
         let mut ppu = PPU::new();
         ppu.ppu_ctrl |= CTRL_NMI_ENABLE;
 
-        let vblank = ppu.cycle();
-        assert_eq!(vblank, false);
+        ppu.cycle();
+        assert!(!ppu.nmi_output);
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.cycle, 3);
         assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
 
-        while ppu.cycle() == false {
+        while !ppu.nmi_output {
             assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
+            ppu.cycle();
         }
 
         assert_eq!(ppu.scanline, 241);
@@ -1682,9 +1716,9 @@ mod tests {
         }
 
         while ppu.scanline != 0 {
-            let vblank = ppu.cycle();
-            assert_eq!(vblank, false);
+            ppu.cycle();
         }
+        assert!(!ppu.nmi_output);
         assert_eq!(ppu.ppu_status & STATUS_VERTICAL_BLANK_BIT, 0);
     }
 
@@ -1700,9 +1734,9 @@ mod tests {
     fn test_catch_up_idempotent() {
         let mut ppu = PPU::new();
 
-        let fired_nmi = ppu.catch_up_to(0, |_| {});
+        ppu.catch_up_to(0, |_| {});
 
-        assert_eq!(fired_nmi, false);
+        assert!(!ppu.nmi_output);
         assert_eq!(ppu.last_synced_dot, 0);
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.cycle, 0);
@@ -1712,9 +1746,9 @@ mod tests {
     fn test_catch_up_advances_ppu_state() {
         let mut ppu = PPU::new();
 
-        let fired_nmi = ppu.catch_up_to(341, |_| {});
+        ppu.catch_up_to(341, |_| {});
 
-        assert_eq!(fired_nmi, false);
+        assert!(!ppu.nmi_output);
         assert_eq!(ppu.last_synced_dot, 341);
         assert_eq!(ppu.scanline, 1);
         assert_eq!(ppu.cycle, 0);

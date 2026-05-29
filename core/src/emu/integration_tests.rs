@@ -620,7 +620,6 @@ mod tests {
     // --- ppu_vbl_nmi (remaining) ---
 
     #[test]
-    #[ignore]
     fn test_ppu_vbl_set_time() {
         run_blargg_test(
             test_rom!("ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes"),

@@ -237,7 +237,7 @@ pub(crate) fn save_last_rom_dir(dir: &std::path::Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krankulator_core::test_input;
+    use krankulator_core::test_rom;
 
     #[test]
     fn test_audio_backend_wires_to_core() {
@@ -249,7 +249,7 @@ mod tests {
                     return;
                 }
             };
-        let mapper = loader::load_nes(&String::from(test_input!("nes/nestest.nes")));
+        let mapper = loader::load_nes(&String::from(test_rom!("other/nestest.nes")));
         let mut emu =
             emu::Emulator::new_with(Box::new(emu::io::HeadlessIOHandler {}), mapper, audio);
         emu.cpu.pc = 0xc000;

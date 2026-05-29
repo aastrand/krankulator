@@ -81,7 +81,7 @@ pub struct Emulator {
     irq_allowed: bool,
 
     should_trigger_nmi: bool,
-    nmi_triggered_countdown: i8,
+    nmi_countdown: i8,
     pub audio: Box<dyn AudioBackend>,
     /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
     ppu_register_warmup_until_cpu_cycle: u64,
@@ -152,7 +152,7 @@ impl Emulator {
             irq_sample_deadline: 0,
             irq_allowed: false,
             should_trigger_nmi: false,
-            nmi_triggered_countdown: -1,
+            nmi_countdown: -1,
             audio: audio,
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: PPU_WARMUP_CPU_CYCLES,
@@ -188,7 +188,7 @@ impl Emulator {
         self.ppu = ppu::PPU::new();
         self.apu.reset();
         self.audio.clear();
-        self.nmi_triggered_countdown = -1;
+        self.nmi_countdown = -1;
         self.ppu_register_warmup_until_cpu_cycle = 29_658;
         self.savestate_slot = 0;
         self.last_rendered_frame = 0;
@@ -247,7 +247,7 @@ impl Emulator {
         w.write_u64(self.instruction_start_dot);
         w.write_u8(self.cpu_bus_cycle_offset);
         w.write_bool(self.should_trigger_nmi);
-        w.write_i8(self.nmi_triggered_countdown);
+        w.write_i8(self.nmi_countdown);
         w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
         w.write_u64(self.instructions);
         w.finish()
@@ -314,7 +314,7 @@ impl Emulator {
         self.instruction_start_dot = r.read_u64()?;
         self.cpu_bus_cycle_offset = r.read_u8()?;
         self.should_trigger_nmi = r.read_bool()?;
-        self.nmi_triggered_countdown = r.read_i8()?;
+        self.nmi_countdown = r.read_i8()?;
         self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
         self.instructions = r.read_u64()?;
         Ok(())
@@ -433,14 +433,15 @@ impl Emulator {
                     !i_flag_before
                 };
 
-                if self.nmi_triggered_countdown > 0 {
-                    self.nmi_triggered_countdown = self.nmi_triggered_countdown.wrapping_sub(1)
+                if self.nmi_countdown > 0 {
+                    self.nmi_countdown -= 1;
                 }
             }
         }
 
+        let ppu_step_start = self.master_clock;
         let target_dot = self.master_clock + 3;
-        let vbl_dot = self.sync_ppu_to_dot(target_dot);
+        self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
 
         // Cycle the APU and mapper
@@ -451,18 +452,27 @@ impl Emulator {
             self.audio.push_samples(samples);
         }
 
-        if let Some(vbl_dot) = vbl_dot {
-            if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
-                self.nmi_triggered_countdown = if vbl_dot <= self.irq_sample_deadline {
-                    0
+        // NMI edge detection: consume rising edge recorded by PPU
+        if let Some(edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
+            if self.should_trigger_nmi && self.nmi_countdown < 0 {
+                if edge_dot < ppu_step_start {
+                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
+                        1
+                    } else {
+                        2
+                    };
                 } else {
-                    1
-                };
+                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
+                        0
+                    } else {
+                        1
+                    };
+                }
             }
         }
-        if self.should_trigger_nmi && self.nmi_triggered_countdown == 0 {
+        if self.should_trigger_nmi && self.nmi_countdown == 0 {
             self.trigger_nmi();
-            self.nmi_triggered_countdown = -1;
+            self.nmi_countdown = -1;
         }
 
         if self.ppu.frames > self.last_rendered_frame {
@@ -585,18 +595,14 @@ impl Emulator {
             || (is_write && addr >= MAPPER_START)
     }
 
-    fn sync_ppu_to_dot(&mut self, target_dot: u64) -> Option<u64> {
+    fn sync_ppu_to_dot(&mut self, target_dot: u64) {
         let mut cycle_260_scanlines: [u16; 4] = [0; 4];
         let mut cycle_260_count: usize = 0;
-        let mut vbl_dot: Option<u64> = None;
 
         while self.ppu.last_synced_dot < target_dot {
             let step = self
                 .ppu
                 .step_dot_with_rendering(&mut *self.mem, &mut self.buf);
-            if step.fire_vblank_nmi && vbl_dot.is_none() {
-                vbl_dot = Some(self.ppu.last_synced_dot);
-            }
             if let Some(scanline) = step.ppu_cycle_260_scanline {
                 if cycle_260_count < cycle_260_scanlines.len() {
                     cycle_260_scanlines[cycle_260_count] = scanline;
@@ -608,22 +614,12 @@ impl Emulator {
         for i in 0..cycle_260_count {
             self.mem.ppu_cycle_260(cycle_260_scanlines[i]);
         }
-
-        vbl_dot
     }
 
     fn sync_for_cpu_access(&mut self, addr: u16, is_write: bool) {
         if self.cpu_access_needs_ppu_sync(addr, is_write) {
             let target_dot = self.cpu_bus_access_dot();
-            if let Some(vbl_dot) = self.sync_ppu_to_dot(target_dot) {
-                if self.should_trigger_nmi && self.nmi_triggered_countdown < 0 {
-                    self.nmi_triggered_countdown = if vbl_dot <= self.irq_sample_deadline {
-                        1
-                    } else {
-                        2
-                    };
-                }
-            }
+            self.sync_ppu_to_dot(target_dot);
         }
     }
 
@@ -1421,17 +1417,6 @@ impl Emulator {
                 return;
             }
             if reg == ppu::CTRL_REG_ADDR {
-                if (value & ppu::STATUS_VERTICAL_BLANK_BIT) != 0
-                    && !self.ppu.vblank_nmi_is_enabled()
-                    && self.ppu.is_in_vblank()
-                {
-                    let write_dot = self.cpu_bus_access_dot();
-                    self.nmi_triggered_countdown = if write_dot <= self.irq_sample_deadline {
-                        1
-                    } else {
-                        2
-                    };
-                }
                 self.mem.notify_ppu_ctrl(value);
             }
             if reg == ppu::MASK_REG_ADDR {
