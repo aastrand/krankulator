@@ -79,6 +79,7 @@ pub struct Emulator {
     cpu_open_bus: u8,
     irq_sample_deadline: u64,
     irq_allowed: bool,
+    branch_irq_suppressed: bool,
 
     should_trigger_nmi: bool,
     nmi_countdown: i8,
@@ -151,6 +152,7 @@ impl Emulator {
             cpu_open_bus: 0,
             irq_sample_deadline: 0,
             irq_allowed: false,
+            branch_irq_suppressed: false,
             should_trigger_nmi: false,
             nmi_countdown: -1,
             audio: audio,
@@ -433,7 +435,9 @@ impl Emulator {
                     !i_flag_before
                 };
 
-                if self.nmi_countdown > 0 {
+                if self.branch_irq_suppressed {
+                    self.irq_allowed = false;
+                } else if self.nmi_countdown > 0 {
                     self.nmi_countdown -= 1;
                 }
             }
@@ -567,6 +571,7 @@ impl Emulator {
     fn begin_cpu_instruction_timing(&mut self) {
         self.instruction_start_dot = self.master_clock;
         self.cpu_bus_cycle_offset = 0;
+        self.branch_irq_suppressed = false;
     }
 
     fn cpu_bus_access_dot(&self) -> u64 {
@@ -802,7 +807,11 @@ impl Emulator {
             }
 
             opcodes::BRK => {
-                let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
+                // Sync PPU to the vector fetch point (cycle 5 of 7) so NMI
+                // edges that arrive during BRK can hijack the vector.
+                let vector_fetch_dot = self.instruction_start_dot + 3 * 3;
+                self.sync_ppu_to_dot(vector_fetch_dot);
+                let addr = self.nmi_hijack_vector();
 
                 if addr > 0 {
                     self.push_pc_to_stack(2);
@@ -1395,13 +1404,14 @@ impl Emulator {
     }
 
     fn branch(&mut self, operand: i8) {
-        // Branching across page boundaries infers a cycle penalty
-        if (self.cpu.pc.wrapping_add(2) & 0xff).wrapping_add(operand as u16) > 0xff {
+        let page_cross = (self.cpu.pc.wrapping_add(2) & 0xff).wrapping_add(operand as u16) > 0xff;
+        if page_cross {
             self.cpu.cycle += 1;
+        } else {
+            self.branch_irq_suppressed = true;
         }
         self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
         self.log_push(self.cpu.pc.wrapping_add(2));
-        // Branch taken is infers a cycle penalty
         self.cpu.cycle += 1;
     }
 
@@ -1444,6 +1454,8 @@ impl Emulator {
                 let byte = self.mem.cpu_read(base.wrapping_add(i));
                 self.ppu.oam_dma_write(i as u8, byte);
             }
+            let alignment: u64 = if self.cpu.cycle % 2 == 1 { 1 } else { 0 };
+            self.cpu.cycle += 512 + 1 + alignment;
         } else if addr == CONTROLLER1_ADDR {
             let strobe = value & 1 != 0;
             self.mem.controllers()[0].set_strobe(strobe);
@@ -1728,24 +1740,30 @@ impl Emulator {
         }
     }
 
+    fn nmi_hijack_vector(&mut self) -> u16 {
+        if self.nmi_countdown >= 0 || self.ppu.nmi_rising_edge_dot.is_some() {
+            self.nmi_countdown = -1;
+            self.ppu.nmi_rising_edge_dot = None;
+            self.get_16b_addr(memory::NMI_TARGET_ADDR)
+        } else {
+            self.get_16b_addr(memory::BRK_TARGET_ADDR)
+        }
+    }
+
     pub fn trigger_nmi(&mut self) {
         let addr: u16 = self.get_16b_addr(memory::NMI_TARGET_ADDR);
         self.push_pc_to_stack(0);
-        // hardware interrupts IRQ & NMI will push the B flag as being 0.
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
-
-        // we set the I flag
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-
         self.cpu.pc = addr;
         self.cpu.cycle += 7;
     }
 
     pub fn trigger_irq(&mut self) {
-        let addr: u16 = self.get_16b_addr(memory::BRK_TARGET_ADDR);
         self.push_pc_to_stack(0);
         self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
         self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+        let addr = self.nmi_hijack_vector();
         self.cpu.pc = addr;
         self.cpu.cycle += 7;
     }
