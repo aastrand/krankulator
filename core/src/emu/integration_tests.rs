@@ -570,7 +570,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_instr_misc_dummy_reads_apu() {
         run_blargg_test(
             test_rom!("instr_misc/rom_singles/04-dummy_reads_apu.nes"),
@@ -720,7 +719,6 @@ mod tests {
     // --- oam_stress ---
 
     #[test]
-    #[ignore]
     fn test_ppu_oam_stress() {
         run_blargg_test(test_rom!("oam_stress/oam_stress.nes"), "oam_stress");
     }
