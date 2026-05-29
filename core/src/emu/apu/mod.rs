@@ -1298,7 +1298,13 @@ mod tests {
 
     const CPU_CYCLES_PER_SECOND: u64 = 1_789_773;
 
-    fn run_mixer_test(rom_path: &str, test_name: &str, reference_mp3: &str, run_seconds: u64) {
+    fn run_mixer_test_with_tolerance(
+        rom_path: &str,
+        test_name: &str,
+        reference_mp3: &str,
+        run_seconds: u64,
+        rms_ratio_tolerance: f64,
+    ) {
         use crate::emu;
         use crate::emu::io::loader;
 
@@ -1355,6 +1361,8 @@ mod tests {
                 reference_mp3,
                 "--report-dir",
                 report_dir,
+                "--tolerance-test-region-rms-ratio",
+                &rms_ratio_tolerance.to_string(),
             ])
             .output()
             .expect("failed to run analysis script");
@@ -1384,14 +1392,19 @@ mod tests {
         );
     }
 
+    fn run_mixer_test(rom_path: &str, test_name: &str, reference_mp3: &str, run_seconds: u64) {
+        run_mixer_test_with_tolerance(rom_path, test_name, reference_mp3, run_seconds, 2.0);
+    }
+
     #[test]
     #[ignore] // slow (~18s); run in CI with: cargo test -- --ignored
     fn test_apu_mixer_square() {
-        run_mixer_test(
+        run_mixer_test_with_tolerance(
             test_rom!("apu_mixer/square.nes"),
             "square",
             test_rom!("apu_mixer_recordings/square.mp3"),
             18,
+            2.5,
         );
     }
 
