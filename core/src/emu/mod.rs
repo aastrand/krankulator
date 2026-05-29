@@ -443,7 +443,7 @@ impl Emulator {
             }
         }
 
-        let ppu_step_start = self.master_clock;
+        let ppu_dot_before_step = self.ppu.last_synced_dot;
         let target_dot = self.master_clock + 3;
         self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
@@ -459,13 +459,16 @@ impl Emulator {
         // NMI edge detection: consume rising edge recorded by PPU
         if let Some(edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
             if self.should_trigger_nmi && self.nmi_countdown < 0 {
-                if edge_dot < ppu_step_start {
+                if edge_dot < ppu_dot_before_step {
+                    // Edge from mid-instruction PPU sync (register access or
+                    // BRK vector fetch). Fire after current instruction boundary.
                     self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
                         1
                     } else {
                         2
                     };
                 } else {
+                    // Edge from the end-of-cycle 3-dot PPU step.
                     self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
                         0
                     } else {
