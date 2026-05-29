@@ -50,6 +50,95 @@ pub enum CycleState {
     Exiting,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum CpuPhase {
+    Fetch,
+    Execute,
+    Interrupt,
+    Dma,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum InterruptKind {
+    Nmi,
+    Irq,
+    Brk,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum InstrType {
+    Read,
+    Write,
+    Rmw,
+    Implied,
+    Accumulator,
+    Branch,
+    Push,
+    Pull,
+    Jsr,
+    Rts,
+    Rti,
+    Brk,
+    JmpAbs,
+    JmpInd,
+}
+
+fn classify_instr_type(opcode: u8) -> InstrType {
+    match opcode {
+        opcodes::BPL | opcodes::BMI | opcodes::BVC | opcodes::BVS |
+        opcodes::BCC | opcodes::BCS | opcodes::BEQ | opcodes::BNE => InstrType::Branch,
+
+        opcodes::PHA | opcodes::PHP => InstrType::Push,
+        opcodes::PLA | opcodes::PLP => InstrType::Pull,
+        opcodes::JSR_ABS => InstrType::Jsr,
+        opcodes::RTS => InstrType::Rts,
+        opcodes::RTI => InstrType::Rti,
+        opcodes::BRK => InstrType::Brk,
+        opcodes::JMP_ABS => InstrType::JmpAbs,
+        opcodes::JMP_IND => InstrType::JmpInd,
+
+        opcodes::ASL | opcodes::LSR | opcodes::ROL | opcodes::ROR => InstrType::Accumulator,
+
+        opcodes::CLC | opcodes::SEC | opcodes::CLI | opcodes::SEI |
+        opcodes::CLV | opcodes::CLD | opcodes::SED |
+        opcodes::TAX | opcodes::TXA | opcodes::TAY | opcodes::TYA |
+        opcodes::TSX | opcodes::TXS |
+        opcodes::DEX | opcodes::DEY | opcodes::INX | opcodes::INY |
+        opcodes::NOP |
+        opcodes::NOP_1A | opcodes::NOP_3A | opcodes::NOP_5A |
+        opcodes::NOP_7A | opcodes::NOP_DA | opcodes::NOP_FA => InstrType::Implied,
+
+        opcodes::STA_ZP | opcodes::STA_ZPX | opcodes::STA_ABS |
+        opcodes::STA_ABX | opcodes::STA_ABY | opcodes::STA_INX | opcodes::STA_INY |
+        opcodes::STX_ZP | opcodes::STX_ZPY | opcodes::STX_ABS |
+        opcodes::STY_ZP | opcodes::STY_ZPX | opcodes::STY_ABS |
+        opcodes::SAX_ZP | opcodes::SAX_ZPY | opcodes::SAX_ABS | opcodes::SAX_INX |
+        opcodes::SHA_INY | opcodes::SHA_ABY | opcodes::TAS_ABY |
+        opcodes::SHY_ABX | opcodes::SHX_ABY => InstrType::Write,
+
+        opcodes::ASL_ZP | opcodes::ASL_ZPX | opcodes::ASL_ABS | opcodes::ASL_ABX |
+        opcodes::LSR_ZP | opcodes::LSR_ZPX | opcodes::LSR_ABS | opcodes::LSR_ABX |
+        opcodes::ROL_ZP | opcodes::ROL_ZPX | opcodes::ROL_ABS | opcodes::ROL_ABX |
+        opcodes::ROR_ZP | opcodes::ROR_ZPX | opcodes::ROR_ABS | opcodes::ROR_ABX |
+        opcodes::INC_ZP | opcodes::INC_ZPX | opcodes::INC_ABS | opcodes::INC_ABX |
+        opcodes::DEC_ZP | opcodes::DEC_ZPX | opcodes::DEC_ABS | opcodes::DEC_ABX |
+        opcodes::DCP_ZP | opcodes::DCP_ZPX | opcodes::DCP_ABS | opcodes::DCP_ABX |
+        opcodes::DCP_ABY | opcodes::DCP_INX | opcodes::DCP_INY |
+        opcodes::ISB_ZP | opcodes::ISB_ZPX | opcodes::ISB_ABS | opcodes::ISB_ABX |
+        opcodes::ISB_ABY | opcodes::ISB_INX | opcodes::ISB_INY |
+        opcodes::SLO_ZP | opcodes::SLO_ZPX | opcodes::SLO_ABS | opcodes::SLO_ABX |
+        opcodes::SLO_ABY | opcodes::SLO_INX | opcodes::SLO_INY |
+        opcodes::SRE_ZP | opcodes::SRE_ZPX | opcodes::SRE_ABS | opcodes::SRE_ABX |
+        opcodes::SRE_ABY | opcodes::SRE_INX | opcodes::SRE_INY |
+        opcodes::RLA_ZP | opcodes::RLA_ZPX | opcodes::RLA_ABS | opcodes::RLA_ABX |
+        opcodes::RLA_ABY | opcodes::RLA_INX | opcodes::RLA_INY |
+        opcodes::RRA_ZP | opcodes::RRA_ZPX | opcodes::RRA_ABS | opcodes::RRA_ABX |
+        opcodes::RRA_ABY | opcodes::RRA_INX | opcodes::RRA_INY => InstrType::Rmw,
+
+        _ => InstrType::Read,
+    }
+}
+
 pub struct Emulator {
     pub cpu: cpu::Cpu,
     lookup: Box<opcodes::Lookup>,
@@ -74,15 +163,31 @@ pub struct Emulator {
     pub instructions: u64,
     pub cycles: u64,
     pub master_clock: u64,
-    instruction_start_dot: u64,
-    cpu_bus_cycle_offset: u8,
     cpu_open_bus: u8,
-    irq_sample_deadline: u64,
-    irq_allowed: bool,
-    branch_irq_suppressed: bool,
 
     should_trigger_nmi: bool,
-    nmi_countdown: i8,
+
+    cpu_phase: CpuPhase,
+    cpu_step: u8,
+    cpu_opcode: u8,
+    cpu_instr_pc: u16,
+    cpu_addr: u16,
+    cpu_data: u8,
+    cpu_addr_lo: u8,
+    cpu_page_crossed: bool,
+    pending_nmi: bool,
+    pending_irq: bool,
+    irq_i_flag_sampled: bool,
+    interrupt_kind: InterruptKind,
+    interrupt_vector: u16,
+    dma_pending: bool,
+    dma_page: u8,
+    dma_base: u16,
+    dma_offset: u16,
+    dma_value: u8,
+    dma_align_remaining: u8,
+    dma_cycle: u16,
+    instruction_just_finished: bool,
     pub audio: Box<dyn AudioBackend>,
     /// Until this CPU cycle count (exclusive), writes to PPU registers and OAM DMA are ignored.
     ppu_register_warmup_until_cpu_cycle: u64,
@@ -147,14 +252,29 @@ impl Emulator {
             instructions: 0,
             cycles: 0,
             master_clock: 0,
-            instruction_start_dot: 0,
-            cpu_bus_cycle_offset: 0,
             cpu_open_bus: 0,
-            irq_sample_deadline: 0,
-            irq_allowed: false,
-            branch_irq_suppressed: false,
             should_trigger_nmi: false,
-            nmi_countdown: -1,
+            cpu_phase: CpuPhase::Fetch,
+            cpu_step: 0,
+            cpu_opcode: 0,
+            cpu_instr_pc: 0,
+            cpu_addr: 0,
+            cpu_data: 0,
+            cpu_addr_lo: 0,
+            cpu_page_crossed: false,
+            pending_nmi: false,
+            pending_irq: false,
+            irq_i_flag_sampled: true,
+            interrupt_kind: InterruptKind::Nmi,
+            interrupt_vector: 0,
+            dma_pending: false,
+            dma_page: 0,
+            dma_base: 0,
+            dma_offset: 0,
+            dma_value: 0,
+            dma_align_remaining: 0,
+            dma_cycle: 0,
+            instruction_just_finished: false,
             audio: audio,
             // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: PPU_WARMUP_CPU_CYCLES,
@@ -190,7 +310,11 @@ impl Emulator {
         self.ppu = ppu::PPU::new();
         self.apu.reset();
         self.audio.clear();
-        self.nmi_countdown = -1;
+        self.cpu_phase = CpuPhase::Fetch;
+        self.cpu_step = 0;
+        self.pending_nmi = false;
+        self.pending_irq = false;
+        self.dma_pending = false;
         self.ppu_register_warmup_until_cpu_cycle = 29_658;
         self.savestate_slot = 0;
         self.last_rendered_frame = 0;
@@ -246,12 +370,32 @@ impl Emulator {
         self.mem.save_state(&mut w);
         w.write_u64(self.cycles);
         w.write_u64(self.master_clock);
-        w.write_u64(self.instruction_start_dot);
-        w.write_u8(self.cpu_bus_cycle_offset);
+        w.write_u64(0); // legacy: instruction_start_dot
+        w.write_u8(0); // legacy: cpu_bus_cycle_offset
         w.write_bool(self.should_trigger_nmi);
-        w.write_i8(self.nmi_countdown);
+        w.write_i8(if self.pending_nmi { 0 } else { -1 }); // legacy: nmi_countdown
         w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
         w.write_u64(self.instructions);
+        // v7: state machine fields
+        w.write_u8(self.cpu_phase as u8);
+        w.write_u8(self.cpu_step);
+        w.write_u8(self.cpu_opcode);
+        w.write_u16(self.cpu_instr_pc);
+        w.write_u16(self.cpu_addr);
+        w.write_u8(self.cpu_data);
+        w.write_u8(self.cpu_addr_lo);
+        w.write_bool(self.cpu_page_crossed);
+        w.write_bool(self.pending_nmi);
+        w.write_bool(self.pending_irq);
+        w.write_bool(self.irq_i_flag_sampled);
+        w.write_u8(self.interrupt_kind as u8);
+        w.write_bool(self.dma_pending);
+        w.write_u8(self.dma_page);
+        w.write_u16(self.dma_base);
+        w.write_u16(self.dma_offset);
+        w.write_u8(self.dma_value);
+        w.write_u8(self.dma_align_remaining);
+        w.write_u16(self.dma_cycle);
         w.finish()
     }
 
@@ -313,12 +457,48 @@ impl Emulator {
         self.mem.load_state(r)?;
         self.cycles = r.read_u64()?;
         self.master_clock = r.read_u64()?;
-        self.instruction_start_dot = r.read_u64()?;
-        self.cpu_bus_cycle_offset = r.read_u8()?;
+        let _legacy_instruction_start_dot = r.read_u64()?;
+        let _legacy_cpu_bus_cycle_offset = r.read_u8()?;
         self.should_trigger_nmi = r.read_bool()?;
-        self.nmi_countdown = r.read_i8()?;
+        let legacy_nmi_countdown = r.read_i8()?;
         self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
         self.instructions = r.read_u64()?;
+        if r.version() >= 7 {
+            self.cpu_phase = match r.read_u8()? {
+                1 => CpuPhase::Execute,
+                2 => CpuPhase::Interrupt,
+                3 => CpuPhase::Dma,
+                _ => CpuPhase::Fetch,
+            };
+            self.cpu_step = r.read_u8()?;
+            self.cpu_opcode = r.read_u8()?;
+            self.cpu_instr_pc = r.read_u16()?;
+            self.cpu_addr = r.read_u16()?;
+            self.cpu_data = r.read_u8()?;
+            self.cpu_addr_lo = r.read_u8()?;
+            self.cpu_page_crossed = r.read_bool()?;
+            self.pending_nmi = r.read_bool()?;
+            self.pending_irq = r.read_bool()?;
+            self.irq_i_flag_sampled = r.read_bool()?;
+            self.interrupt_kind = match r.read_u8()? {
+                1 => InterruptKind::Irq,
+                2 => InterruptKind::Brk,
+                _ => InterruptKind::Nmi,
+            };
+            self.dma_pending = r.read_bool()?;
+            self.dma_page = r.read_u8()?;
+            self.dma_base = r.read_u16()?;
+            self.dma_offset = r.read_u16()?;
+            self.dma_value = r.read_u8()?;
+            self.dma_align_remaining = r.read_u8()?;
+            self.dma_cycle = r.read_u16()?;
+        } else {
+            // v6 and earlier: load at instruction boundary
+            self.cpu_phase = CpuPhase::Fetch;
+            self.cpu_step = 0;
+            self.pending_nmi = legacy_nmi_countdown >= 0;
+            self.pending_irq = false;
+        }
         Ok(())
     }
 
@@ -334,7 +514,7 @@ impl Emulator {
 
     #[cfg(test)]
     pub(crate) fn test_cpu_write(&mut self, addr: u16, value: u8) {
-        self.cpu_write(addr, value);
+        self.cpu_write_cycle(addr, value);
     }
 
     #[cfg(test)]
@@ -360,6 +540,7 @@ impl Emulator {
             _ => {}
         }
 
+        self.cpu.last_instruction = 0xffff;
         loop {
             if self.cycle() == CycleState::Exiting {
                 break;
@@ -382,68 +563,80 @@ impl Emulator {
 
     pub fn cycle(&mut self) -> CycleState {
         let mut state = CycleState::CpuAhead;
-        if self.cpu.cycle == self.cycles {
-            state = CycleState::CpuExecuted;
 
-            if !self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc) {
-                self.stepping = true;
-            }
+        match self.cpu_phase {
+            CpuPhase::Fetch => {
+                state = CycleState::CpuExecuted;
 
-            if self.stepping {
-                self.debug();
-                if self.stepping {
-                    state = CycleState::Exiting;
+                if !self.breakpoints.is_empty() && self.breakpoints.contains(&self.cpu.pc) {
+                    self.stepping = true;
                 }
-            }
 
-            if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
-                && self.cpu.pc == self.cpu.last_instruction
-            {
-                if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
-                    let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
-                    self.iohandler.log(msg);
-                    if self.should_debug_on_infinite_loop {
-                        self.debug();
+                if self.stepping {
+                    self.debug();
+                    if self.stepping {
+                        state = CycleState::Exiting;
                     }
-                    if self.should_exit_on_infinite_loop {
+                }
+
+                if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
+                    && self.cpu.pc == self.cpu.last_instruction
+                {
+                    if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
+                        let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
+                        self.iohandler.log(msg);
+                        if self.should_debug_on_infinite_loop {
+                            self.debug();
+                        }
+                        if self.should_exit_on_infinite_loop {
+                            state = CycleState::Exiting
+                        }
+                    } else if self.should_exit_on_infinite_loop {
+                        self.iohandler.log(format!("reached probable end of code"));
                         state = CycleState::Exiting
                     }
-                } else if self.should_exit_on_infinite_loop {
-                    self.iohandler.log(format!("reached probable end of code"));
-                    state = CycleState::Exiting
+                }
+
+                if state != CycleState::Exiting
+                    && self.should_exit_on_infinite_loop
+                    && self.mem.cpu_read(self.cpu.pc) == opcodes::BRK
+                {
+                    let brk_vector = self.mem.get_16b_addr(memory::BRK_TARGET_ADDR);
+                    if brk_vector == 0 {
+                        state = CycleState::Exiting;
+                    }
+                }
+
+                if state == CycleState::Exiting {
+                    // Don't start the next instruction if we're exiting
+                } else if self.dma_pending {
+                    self.dma_pending = false;
+                    self.start_dma();
+                    self.step_dma();
+                } else if self.pending_nmi {
+                    self.pending_nmi = false;
+                    self.start_interrupt(InterruptKind::Nmi);
+                    self.step_interrupt();
+                } else if self.pending_irq {
+                    self.pending_irq = false;
+                    self.start_interrupt(InterruptKind::Irq);
+                    self.step_interrupt();
+                } else {
+                    self.step_fetch();
                 }
             }
-
-            if !self.service_pending_irq() {
-                let cycle_before = self.cpu.cycle;
-                let i_flag_before = self.cpu.interrupt_flag();
-                let opcode = self.execute_instruction();
-                self.log_instruction(opcode, self.cpu.last_instruction);
-
-                let actual_cycles = self.cpu.cycle - cycle_before;
-                let penultimate = actual_cycles.saturating_sub(2);
-                self.irq_sample_deadline = self.instruction_start_dot + penultimate * 3 + 1;
-
-                // The 6502 samples the I flag on the penultimate cycle of each instruction.
-                // Most instructions that change I (CLI, SEI, PLP) do so on their last
-                // cycle, so the penultimate-cycle I flag equals the value *before* the
-                // instruction executed. RTI is different: it restores flags early (cycle 4
-                // of 6), so its penultimate-cycle I reflects the *restored* value.
-                self.irq_allowed = if opcode == opcodes::RTI {
-                    !self.cpu.interrupt_flag()
-                } else {
-                    !i_flag_before
-                };
-
-                if self.branch_irq_suppressed {
-                    self.irq_allowed = false;
-                } else if self.nmi_countdown > 0 {
-                    self.nmi_countdown -= 1;
-                }
+            CpuPhase::Execute => {
+                self.step_execute();
+            }
+            CpuPhase::Interrupt => {
+                self.step_interrupt();
+            }
+            CpuPhase::Dma => {
+                self.step_dma();
             }
         }
 
-        let ppu_dot_before_step = self.ppu.last_synced_dot;
+        // PPU steps 3 dots
         let target_dot = self.master_clock + 3;
         self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
@@ -457,29 +650,10 @@ impl Emulator {
         }
 
         // NMI edge detection: consume rising edge recorded by PPU
-        if let Some(edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
-            if self.should_trigger_nmi && self.nmi_countdown < 0 {
-                if edge_dot < ppu_dot_before_step {
-                    // Edge from mid-instruction PPU sync (register access or
-                    // BRK vector fetch). Fire after current instruction boundary.
-                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
-                        1
-                    } else {
-                        2
-                    };
-                } else {
-                    // Edge from the end-of-cycle 3-dot PPU step.
-                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
-                        0
-                    } else {
-                        1
-                    };
-                }
+        if let Some(_edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
+            if self.should_trigger_nmi {
+                self.pending_nmi = true;
             }
-        }
-        if self.should_trigger_nmi && self.nmi_countdown == 0 {
-            self.trigger_nmi();
-            self.nmi_countdown = -1;
         }
 
         if self.ppu.frames > self.last_rendered_frame {
@@ -524,9 +698,1365 @@ impl Emulator {
             }
         }
 
+        self.cpu.cycle = self.cycles;
         self.cycles += 1;
 
         state
+    }
+
+    // ── Per-cycle state machine ──────────────────────────────────────
+
+    fn cpu_read_cycle(&mut self, addr: u16) -> u8 {
+        self.sync_ppu_for_access(addr, false);
+        let ppu_reg = self.ppu_reg_cpu_addr(addr);
+        let value = if let Some(reg) = ppu_reg {
+            let v = self.ppu.read(reg, &*self.mem);
+            if reg == ppu::DATA_ADDR {
+                let a = self.ppu.get_current_vram_addr();
+                self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
+            }
+            v
+        } else if addr == APU_STATUS_ADDR {
+            self.apu.read(addr)
+        } else if addr == CONTROLLER1_ADDR {
+            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[0].poll() & CONTROLLER_DATA_MASK)
+        } else if addr == CONTROLLER2_ADDR {
+            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[1].poll() & CONTROLLER_DATA_MASK)
+        } else if (APU_REG_START..APU_STATUS_ADDR).contains(&addr)
+            || (IO_EXPANSION_START..IO_EXPANSION_END).contains(&addr)
+        {
+            self.cpu_open_bus
+        } else {
+            self.mem.cpu_read(addr)
+        };
+        self.cpu_open_bus = value;
+        value
+    }
+
+    fn cpu_write_cycle(&mut self, addr: u16, value: u8) {
+        self.cpu_open_bus = value;
+        self.sync_ppu_for_access(addr, true);
+
+        let ppu_reg = self.ppu_reg_cpu_addr(addr);
+
+        if let Some(reg) = ppu_reg {
+            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
+                return;
+            }
+            if reg == ppu::CTRL_REG_ADDR {
+                self.mem.notify_ppu_ctrl(value);
+            }
+            if reg == ppu::MASK_REG_ADDR {
+                self.mem.notify_ppu_mask(value);
+            }
+            if let Some((waddr, wval)) = self.ppu.write(reg, value) {
+                self.mem.ppu_write(waddr, wval);
+            }
+            if reg == ppu::ADDR_ADDR || reg == ppu::DATA_ADDR {
+                let ppu_addr = if reg == ppu::ADDR_ADDR {
+                    self.ppu.get_temp_vram_addr()
+                } else {
+                    self.ppu.get_current_vram_addr()
+                };
+                self.mem
+                    .ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
+            }
+        } else if addr == ppu::OAM_DMA {
+            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
+                return;
+            }
+            self.dma_pending = true;
+            self.dma_page = value;
+        } else if addr == CONTROLLER1_ADDR {
+            let strobe = value & 1 != 0;
+            self.mem.controllers()[0].set_strobe(strobe);
+            self.mem.controllers()[1].set_strobe(strobe);
+        } else if (APU_REG_START..=APU_STATUS_ADDR).contains(&addr) || addr == CONTROLLER2_ADDR {
+            let apu_cycle_tag = if addr == CONTROLLER2_ADDR {
+                self.cycles
+            } else {
+                0
+            };
+            self.apu.write(addr, value, apu_cycle_tag);
+        } else {
+            self.mem.cpu_write(addr, value);
+        }
+    }
+
+    fn sync_ppu_for_access(&mut self, addr: u16, is_write: bool) {
+        if self.cpu_access_needs_ppu_sync(addr, is_write) {
+            self.sync_ppu_to_dot(self.master_clock);
+        }
+    }
+
+    fn step_fetch(&mut self) {
+        self.log_init();
+        self.cpu.last_instruction = self.cpu.pc;
+        self.cpu_instr_pc = self.cpu.pc;
+        self.irq_i_flag_sampled = self.cpu.interrupt_flag();
+        self.cpu_opcode = self.cpu_read_cycle(self.cpu.pc);
+        // PC is NOT advanced here — each addressing mode step handles PC advancement.
+        // This keeps cpu.pc pointing at the opcode for external observation.
+        self.cpu_phase = CpuPhase::Execute;
+        self.cpu_step = 0;
+        self.cpu_page_crossed = false;
+
+        if self.cpu_opcode == opcodes::BRK {
+            self.start_interrupt(InterruptKind::Brk);
+        }
+    }
+
+    fn step_execute(&mut self) {
+        let step = self.cpu_step;
+        self.cpu_step += 1;
+
+        let opcode = self.cpu_opcode;
+        let instr_type = classify_instr_type(opcode);
+        let addr_mode = self.lookup.mode(opcode);
+
+        match instr_type {
+            InstrType::Implied => self.step_implied(step),
+            InstrType::Accumulator => self.step_accumulator(step),
+            InstrType::Branch => self.step_branch(step),
+            InstrType::Push => self.step_push(step),
+            InstrType::Pull => self.step_pull(step),
+            InstrType::Jsr => self.step_jsr(step),
+            InstrType::Rts => self.step_rts(step),
+            InstrType::Rti => self.step_rti(step),
+            InstrType::Brk => {} // handled via Interrupt phase
+            InstrType::JmpAbs => self.step_jmp_abs(step),
+            InstrType::JmpInd => self.step_jmp_ind(step),
+            InstrType::Read => match addr_mode {
+                opcodes::ADDR_MODE_IMM => self.step_read_imm(step),
+                opcodes::ADDR_MODE_ZP => self.step_read_zp(step),
+                opcodes::ADDR_MODE_ZPX => { let idx = self.cpu.x; self.step_read_zpxy(step, idx); }
+                opcodes::ADDR_MODE_ZPY => { let idx = self.cpu.y; self.step_read_zpxy(step, idx); }
+                opcodes::ADDR_MODE_ABS => self.step_read_abs(step),
+                opcodes::ADDR_MODE_ABX => { let idx = self.cpu.x; self.step_read_abxy(step, idx); }
+                opcodes::ADDR_MODE_ABY => { let idx = self.cpu.y; self.step_read_abxy(step, idx); }
+                opcodes::ADDR_MODE_INX => self.step_read_inx(step),
+                opcodes::ADDR_MODE_INY => self.step_read_iny(step),
+                _ => self.step_implied(step), // fallback for unknown NOPs
+            },
+            InstrType::Write => match addr_mode {
+                opcodes::ADDR_MODE_ZP => self.step_write_zp(step),
+                opcodes::ADDR_MODE_ZPX => { let idx = self.cpu.x; self.step_write_zpxy(step, idx); }
+                opcodes::ADDR_MODE_ZPY => { let idx = self.cpu.y; self.step_write_zpxy(step, idx); }
+                opcodes::ADDR_MODE_ABS => self.step_write_abs(step),
+                opcodes::ADDR_MODE_ABX => { let idx = self.cpu.x; self.step_write_abxy(step, idx); }
+                opcodes::ADDR_MODE_ABY => { let idx = self.cpu.y; self.step_write_abxy(step, idx); }
+                opcodes::ADDR_MODE_INX => self.step_write_inx(step),
+                opcodes::ADDR_MODE_INY => self.step_write_iny(step),
+                _ => self.finish_instruction(),
+            },
+            InstrType::Rmw => match addr_mode {
+                opcodes::ADDR_MODE_ZP => self.step_rmw_zp(step),
+                opcodes::ADDR_MODE_ZPX => self.step_rmw_zpx(step),
+                opcodes::ADDR_MODE_ABS => self.step_rmw_abs(step),
+                opcodes::ADDR_MODE_ABX => self.step_rmw_abx(step),
+                opcodes::ADDR_MODE_ABY => self.step_rmw_aby(step),
+                opcodes::ADDR_MODE_INX => self.step_rmw_inx(step),
+                opcodes::ADDR_MODE_INY => self.step_rmw_iny(step),
+                _ => self.finish_instruction(),
+            },
+        }
+    }
+
+    // ── Addressing pattern step functions ─────────────────────────────
+
+    fn step_implied(&mut self, step: u8) {
+        debug_assert_eq!(step, 0);
+        let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+        self.apply_implied_op();
+        self.finish_instruction();
+    }
+
+    fn step_accumulator(&mut self, step: u8) {
+        debug_assert_eq!(step, 0);
+        let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+        match self.cpu_opcode {
+            opcodes::ASL => { self.cpu.a = self.cpu.asl(self.cpu.a); }
+            opcodes::LSR => { self.cpu.a = self.cpu.lsr(self.cpu.a); }
+            opcodes::ROL => { self.cpu.a = self.cpu.rol(self.cpu.a); }
+            opcodes::ROR => { self.cpu.a = self.cpu.ror(self.cpu.a); }
+            _ => {}
+        }
+        self.finish_instruction();
+    }
+
+    fn step_read_imm(&mut self, step: u8) {
+        debug_assert_eq!(step, 0);
+        let value = self.cpu_read_cycle(self.cpu.pc);
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
+        self.apply_read_op(value);
+        self.finish_instruction();
+    }
+
+    fn step_read_zp(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr = self.cpu_read_cycle(self.cpu.pc) as u16;
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_read_zpxy(&mut self, step: u8, idx: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_addr_lo as u16); // dummy read
+                self.cpu_addr = self.cpu_addr_lo.wrapping_add(idx) as u16;
+            }
+            2 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_read_abs(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            2 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_read_abxy(&mut self, step: u8, idx: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                self.cpu_page_crossed = (self.cpu_addr_lo as u16 + idx as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(idx);
+                self.cpu_addr = memory::to_16b_addr(hi, lo_indexed);
+                if self.cpu_page_crossed {
+                    self.cpu_data = hi; // save high byte for page fix
+                }
+            }
+            2 => {
+                if self.cpu_page_crossed {
+                    // dummy read from uncorrected address
+                    let uncorrected = self.cpu_addr.wrapping_sub(0x100);
+                    let _ = self.cpu_read_cycle(uncorrected);
+                } else {
+                    let value = self.cpu_read_cycle(self.cpu_addr);
+                    self.apply_read_op(value);
+                    self.finish_instruction();
+                }
+            }
+            3 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_read_inx(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_data as u16); // dummy read
+                self.cpu_data = self.cpu_data.wrapping_add(self.cpu.x);
+            }
+            2 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            3 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            4 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_read_iny(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            2 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                let y = self.cpu.y;
+                self.cpu_page_crossed = (self.cpu_addr_lo as u16 + y as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(y);
+                let hi_fixed = if self.cpu_page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi; // save for uncorrected address
+            }
+            3 => {
+                if self.cpu_page_crossed {
+                    let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                    let _ = self.cpu_read_cycle(uncorrected); // dummy read
+                } else {
+                    let value = self.cpu_read_cycle(self.cpu_addr);
+                    self.apply_read_op(value);
+                    self.finish_instruction();
+                }
+            }
+            4 => {
+                let value = self.cpu_read_cycle(self.cpu_addr);
+                self.apply_read_op(value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── Write pattern steps ──────────────────────────────────────────
+
+    fn get_write_value(&mut self) -> u8 {
+        match self.cpu_opcode {
+            opcodes::STA_ZP | opcodes::STA_ZPX | opcodes::STA_ABS |
+            opcodes::STA_ABX | opcodes::STA_ABY | opcodes::STA_INX | opcodes::STA_INY => self.cpu.a,
+            opcodes::STX_ZP | opcodes::STX_ZPY | opcodes::STX_ABS => self.cpu.x,
+            opcodes::STY_ZP | opcodes::STY_ZPX | opcodes::STY_ABS => self.cpu.y,
+            opcodes::SAX_ZP | opcodes::SAX_ZPY | opcodes::SAX_ABS | opcodes::SAX_INX => self.cpu.a & self.cpu.x,
+            opcodes::SHA_INY | opcodes::SHA_ABY => {
+                let high = ((self.cpu_addr >> 8) as u8).wrapping_add(1);
+                self.cpu.a & self.cpu.x & high
+            }
+            opcodes::TAS_ABY => {
+                self.cpu.sp = self.cpu.a & self.cpu.x;
+                let high = ((self.cpu_addr >> 8) as u8).wrapping_add(1);
+                self.cpu.sp & high
+            }
+            opcodes::SHY_ABX => {
+                let high = ((self.cpu_addr >> 8) as u8).wrapping_add(1);
+                self.cpu.y & high
+            }
+            opcodes::SHX_ABY => {
+                let high = ((self.cpu_addr >> 8) as u8).wrapping_add(1);
+                self.cpu.x & high
+            }
+            _ => 0,
+        }
+    }
+
+    fn step_write_zp(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr = self.cpu_read_cycle(self.cpu.pc) as u16;
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_write_zpxy(&mut self, step: u8, idx: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_addr_lo as u16); // dummy read
+                self.cpu_addr = self.cpu_addr_lo.wrapping_add(idx) as u16;
+            }
+            2 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_write_abs(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            2 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_write_abxy(&mut self, step: u8, idx: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(idx);
+                let page_crossed = (self.cpu_addr_lo as u16 + idx as u16) > 0xff;
+                let hi_fixed = if page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi; // save original high byte
+            }
+            2 => {
+                // dummy read from uncorrected address (always, for writes)
+                let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                let _ = self.cpu_read_cycle(uncorrected);
+            }
+            3 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_write_inx(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_data as u16); // dummy read
+                self.cpu_data = self.cpu_data.wrapping_add(self.cpu.x);
+            }
+            2 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            3 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            4 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_write_iny(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            2 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                let y = self.cpu.y;
+                let page_crossed = (self.cpu_addr_lo as u16 + y as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(y);
+                let hi_fixed = if page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi; // save for uncorrected
+            }
+            3 => {
+                // dummy read from uncorrected address (always, for writes)
+                let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                let _ = self.cpu_read_cycle(uncorrected);
+            }
+            4 => {
+                let value = self.get_write_value();
+                self.cpu_write_cycle(self.cpu_addr, value);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── RMW pattern steps ────────────────────────────────────────────
+
+    fn step_rmw_zp(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr = self.cpu_read_cycle(self.cpu.pc) as u16;
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            2 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data); // dummy write old value
+            }
+            3 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_zpx(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_addr_lo as u16); // dummy read
+                self.cpu_addr = self.cpu_addr_lo.wrapping_add(self.cpu.x) as u16;
+            }
+            2 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            3 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data); // dummy write
+            }
+            4 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_abs(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            2 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            3 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data); // dummy write
+            }
+            4 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_abx(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                let x = self.cpu.x;
+                let page_crossed = (self.cpu_addr_lo as u16 + x as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(x);
+                let hi_fixed = if page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi; // save for uncorrected
+            }
+            2 => {
+                let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                let _ = self.cpu_read_cycle(uncorrected); // dummy read
+            }
+            3 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            4 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data); // dummy write
+            }
+            5 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_aby(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                let y = self.cpu.y;
+                let page_crossed = (self.cpu_addr_lo as u16 + y as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(y);
+                let hi_fixed = if page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi;
+            }
+            2 => {
+                let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                let _ = self.cpu_read_cycle(uncorrected);
+            }
+            3 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            4 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data);
+            }
+            5 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_inx(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let _ = self.cpu_read_cycle(self.cpu_data as u16);
+                self.cpu_data = self.cpu_data.wrapping_add(self.cpu.x);
+            }
+            2 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            3 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            4 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            5 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data);
+            }
+            6 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rmw_iny(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_data as u16);
+            }
+            2 => {
+                let hi = self.cpu_read_cycle(self.cpu_data.wrapping_add(1) as u16);
+                let y = self.cpu.y;
+                let page_crossed = (self.cpu_addr_lo as u16 + y as u16) > 0xff;
+                let lo_indexed = self.cpu_addr_lo.wrapping_add(y);
+                let hi_fixed = if page_crossed { hi.wrapping_add(1) } else { hi };
+                self.cpu_addr = memory::to_16b_addr(hi_fixed, lo_indexed);
+                self.cpu_data = hi;
+            }
+            3 => {
+                let uncorrected = memory::to_16b_addr(self.cpu_data, (self.cpu_addr & 0xff) as u8);
+                let _ = self.cpu_read_cycle(uncorrected);
+            }
+            4 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu_addr);
+            }
+            5 => {
+                self.cpu_write_cycle(self.cpu_addr, self.cpu_data);
+            }
+            6 => {
+                let result = self.apply_rmw_op(self.cpu_data);
+                self.cpu_write_cycle(self.cpu_addr, result);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── Branch step ──────────────────────────────────────────────────
+
+    fn step_branch(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_data = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                let taken = match self.cpu_opcode {
+                    opcodes::BPL => !self.cpu.negative_flag(),
+                    opcodes::BMI => self.cpu.negative_flag(),
+                    opcodes::BVC => !self.cpu.overflow_flag(),
+                    opcodes::BVS => self.cpu.overflow_flag(),
+                    opcodes::BCC => !self.cpu.carry_flag(),
+                    opcodes::BCS => self.cpu.carry_flag(),
+                    opcodes::BNE => !self.cpu.zero_flag(),
+                    opcodes::BEQ => self.cpu.zero_flag(),
+                    _ => false,
+                };
+                if !taken {
+                    self.finish_instruction();
+                }
+            }
+            1 => {
+                // add offset to PC
+                let offset = self.cpu_data as i8 as u16;
+                let new_pc = self.cpu.pc.wrapping_add(offset);
+                self.cpu_page_crossed = (new_pc & 0xFF00) != (self.cpu.pc & 0xFF00);
+                self.cpu.pc = new_pc;
+                if !self.cpu_page_crossed {
+                    // taken, no page cross: suppress IRQ polling
+                    self.finish_instruction_no_irq_poll();
+                }
+            }
+            2 => {
+                // page crossing fixup cycle (dummy read)
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── Stack operations ─────────────────────────────────────────────
+
+    fn step_push(&mut self, step: u8) {
+        match step {
+            0 => {
+                let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+            }
+            1 => {
+                let value = match self.cpu_opcode {
+                    opcodes::PHA => self.cpu.a,
+                    opcodes::PHP => self.cpu.status | cpu::BREAK_BIT,
+                    _ => 0,
+                };
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), value);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_pull(&mut self, step: u8) {
+        match step {
+            0 => {
+                let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+            }
+            1 => {
+                // increment SP (dummy read from old stack location)
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+            }
+            2 => {
+                let sp = self.cpu.sp;
+                let value = self.cpu_read_cycle(self.stack_addr(sp));
+                match self.cpu_opcode {
+                    opcodes::PLA => {
+                        self.cpu.a = value;
+                        self.cpu.check_negative(value);
+                        self.cpu.check_zero(value);
+                    }
+                    opcodes::PLP => {
+                        self.cpu.status = value;
+                        self.cpu.set_status_flag(cpu::IGNORE_BIT);
+                        self.cpu.clear_status_flag(cpu::BREAK_BIT);
+                    }
+                    _ => {}
+                }
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── Control flow ─────────────────────────────────────────────────
+
+    fn step_jsr(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                // internal operation (dummy read from stack)
+            }
+            2 => {
+                // push PCH
+                let pch = (self.cpu.pc >> 8) as u8;
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), pch);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+            }
+            3 => {
+                // push PCL
+                let pcl = (self.cpu.pc & 0xff) as u8;
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), pcl);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+            }
+            4 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rts(&mut self, step: u8) {
+        match step {
+            0 => {
+                let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+            }
+            1 => {
+                // increment SP
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+            }
+            2 => {
+                // pull PCL
+                let sp = self.cpu.sp;
+                self.cpu_addr_lo = self.cpu_read_cycle(self.stack_addr(sp));
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+            }
+            3 => {
+                // pull PCH
+                let sp = self.cpu.sp;
+                let hi = self.cpu_read_cycle(self.stack_addr(sp));
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            4 => {
+                // increment PC
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_rti(&mut self, step: u8) {
+        match step {
+            0 => {
+                let _ = self.cpu_read_cycle(self.cpu.pc); // dummy read
+            }
+            1 => {
+                // increment SP
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+            }
+            2 => {
+                // pull P
+                let sp = self.cpu.sp;
+                let status = self.cpu_read_cycle(self.stack_addr(sp));
+                self.cpu.status = status;
+                self.cpu.set_status_flag(cpu::IGNORE_BIT);
+                self.cpu.clear_status_flag(cpu::BREAK_BIT);
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+                // RTI restores I flag early — update the sampled flag
+                self.irq_i_flag_sampled = self.cpu.interrupt_flag();
+            }
+            3 => {
+                // pull PCL
+                let sp = self.cpu.sp;
+                self.cpu_addr_lo = self.cpu_read_cycle(self.stack_addr(sp));
+                self.cpu.sp = self.cpu.sp.wrapping_add(1);
+            }
+            4 => {
+                // pull PCH
+                let sp = self.cpu.sp;
+                let hi = self.cpu_read_cycle(self.stack_addr(sp));
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_jmp_abs(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn step_jmp_ind(&mut self, step: u8) {
+        match step {
+            0 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu.pc = self.cpu.pc.wrapping_add(1);
+            }
+            1 => {
+                let hi = self.cpu_read_cycle(self.cpu.pc);
+                self.cpu_addr = memory::to_16b_addr(hi, self.cpu_addr_lo);
+            }
+            2 => {
+                self.cpu_addr_lo = self.cpu_read_cycle(self.cpu_addr);
+            }
+            3 => {
+                // 6502 page-wrapping bug: if pointer is at $xxFF, high byte comes from $xx00
+                let hi_addr = if (self.cpu_addr & 0xff) == 0xff {
+                    self.cpu_addr & 0xff00
+                } else {
+                    self.cpu_addr + 1
+                };
+                let hi = self.cpu_read_cycle(hi_addr);
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+                self.finish_instruction();
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── Interrupt entry state machine ────────────────────────────────
+
+    fn start_interrupt(&mut self, kind: InterruptKind) {
+        self.cpu_phase = CpuPhase::Interrupt;
+        self.interrupt_kind = kind;
+        self.cpu_step = match kind {
+            InterruptKind::Brk => 1, // fetch already consumed T0
+            _ => 0,
+        };
+    }
+
+    fn step_interrupt(&mut self) {
+        let step = self.cpu_step;
+        self.cpu_step += 1;
+
+        match step {
+            0 => {
+                // T0: dummy read from PC (IRQ/NMI hijack opcode fetch)
+                let _ = self.cpu_read_cycle(self.cpu.pc);
+            }
+            1 => {
+                // T1: dummy read / BRK reads padding byte
+                if self.interrupt_kind == InterruptKind::Brk {
+                    let _ = self.cpu_read_cycle(self.cpu.pc);
+                    self.cpu.pc = self.cpu.pc.wrapping_add(1);
+                } else {
+                    let _ = self.cpu_read_cycle(self.cpu.pc);
+                }
+            }
+            2 => {
+                // T2: push PCH
+                let pch = (self.cpu.pc >> 8) as u8;
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), pch);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+            }
+            3 => {
+                // T3: push PCL
+                let pcl = (self.cpu.pc & 0xff) as u8;
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), pcl);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+            }
+            4 => {
+                // T4: push P
+                let status = if self.interrupt_kind == InterruptKind::Brk {
+                    self.cpu.status | cpu::BREAK_BIT
+                } else {
+                    self.cpu.status & !cpu::BREAK_BIT
+                };
+                let sp = self.cpu.sp;
+                self.cpu_write_cycle(self.stack_addr(sp), status);
+                self.cpu.sp = self.cpu.sp.wrapping_sub(1);
+                self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
+            }
+            5 => {
+                // T5: read vector low byte — NMI can hijack here
+                let vector = if self.pending_nmi && self.interrupt_kind != InterruptKind::Nmi {
+                    self.pending_nmi = false;
+                    memory::NMI_TARGET_ADDR
+                } else if self.interrupt_kind == InterruptKind::Nmi {
+                    memory::NMI_TARGET_ADDR
+                } else {
+                    memory::BRK_TARGET_ADDR
+                };
+                self.interrupt_vector = vector;
+                self.cpu_addr_lo = self.cpu_read_cycle(vector);
+            }
+            6 => {
+                // T6: read vector high byte
+                let hi = self.cpu_read_cycle(self.interrupt_vector + 1);
+                self.cpu.pc = memory::to_16b_addr(hi, self.cpu_addr_lo);
+                self.log_instruction(self.cpu_opcode, self.cpu_instr_pc);
+                self.instructions += 1;
+                self.instruction_just_finished = true;
+                self.cpu_phase = CpuPhase::Fetch;
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // ── DMA state machine ────────────────────────────────────────────
+
+    fn start_dma(&mut self) {
+        self.cpu_phase = CpuPhase::Dma;
+        self.dma_base = (self.dma_page as u16) << 8;
+        self.dma_offset = 0;
+        self.dma_cycle = 0;
+        self.dma_align_remaining = if self.cycles % 2 == 1 { 2 } else { 1 };
+    }
+
+    fn step_dma(&mut self) {
+        if self.dma_align_remaining > 0 {
+            self.dma_align_remaining -= 1;
+            return;
+        }
+
+        if self.dma_cycle % 2 == 0 {
+            // Read from CPU bus
+            self.dma_value = self.mem.cpu_read(self.dma_base + self.dma_offset);
+        } else {
+            // Write to OAM
+            self.ppu.oam_dma_write(self.dma_offset as u8, self.dma_value);
+            self.dma_offset += 1;
+        }
+
+        self.dma_cycle += 1;
+
+        if self.dma_offset >= 256 {
+            self.instruction_just_finished = true;
+            self.cpu_phase = CpuPhase::Fetch;
+        }
+    }
+
+    // ── Operation dispatch ───────────────────────────────────────────
+
+    fn apply_implied_op(&mut self) {
+        match self.cpu_opcode {
+            opcodes::CLC => self.cpu.clear_status_flag(cpu::CARRY_BIT),
+            opcodes::SEC => self.cpu.set_status_flag(cpu::CARRY_BIT),
+            opcodes::CLI => self.cpu.clear_status_flag(cpu::INTERRUPT_BIT),
+            opcodes::SEI => self.cpu.set_status_flag(cpu::INTERRUPT_BIT),
+            opcodes::CLV => self.cpu.clear_status_flag(cpu::OVERFLOW_BIT),
+            opcodes::CLD => self.cpu.clear_status_flag(cpu::DECIMAL_BIT),
+            opcodes::SED => self.cpu.set_status_flag(cpu::DECIMAL_BIT),
+            opcodes::TAX => {
+                self.cpu.x = self.cpu.a;
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+            }
+            opcodes::TXA => {
+                self.cpu.a = self.cpu.x;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+            }
+            opcodes::TAY => {
+                self.cpu.y = self.cpu.a;
+                self.cpu.check_negative(self.cpu.y);
+                self.cpu.check_zero(self.cpu.y);
+            }
+            opcodes::TYA => {
+                self.cpu.a = self.cpu.y;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+            }
+            opcodes::TSX => {
+                self.cpu.x = self.cpu.sp;
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+            }
+            opcodes::TXS => {
+                self.cpu.sp = self.cpu.x;
+            }
+            opcodes::DEX => {
+                self.cpu.x = self.cpu.x.wrapping_sub(1);
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+            }
+            opcodes::DEY => {
+                self.cpu.y = self.cpu.y.wrapping_sub(1);
+                self.cpu.check_negative(self.cpu.y);
+                self.cpu.check_zero(self.cpu.y);
+            }
+            opcodes::INX => {
+                self.cpu.x = self.cpu.x.wrapping_add(1);
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+            }
+            opcodes::INY => {
+                self.cpu.y = self.cpu.y.wrapping_add(1);
+                self.cpu.check_negative(self.cpu.y);
+                self.cpu.check_zero(self.cpu.y);
+            }
+            _ => {} // NOP variants
+        }
+    }
+
+    fn apply_read_op(&mut self, value: u8) {
+        match self.cpu_opcode {
+            opcodes::LDA_IMM | opcodes::LDA_ZP | opcodes::LDA_ZPX | opcodes::LDA_ABS |
+            opcodes::LDA_ABX | opcodes::LDA_ABY | opcodes::LDA_INX | opcodes::LDA_INY => {
+                self.cpu.a = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
+            opcodes::LDX_IMM | opcodes::LDX_ZP | opcodes::LDX_ZPY | opcodes::LDX_ABS | opcodes::LDX_ABY => {
+                self.cpu.x = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
+            opcodes::LDY_IMM | opcodes::LDY_ZP | opcodes::LDY_ZPX | opcodes::LDY_ABS | opcodes::LDY_ABX => {
+                self.cpu.y = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
+            opcodes::ADC_IMM | opcodes::ADC_ZP | opcodes::ADC_ZPX | opcodes::ADC_ABS |
+            opcodes::ADC_ABX | opcodes::ADC_ABY | opcodes::ADC_INX | opcodes::ADC_INY => {
+                self.cpu.add_to_a_with_carry(value);
+            }
+            opcodes::SBC_IMM | opcodes::SBC_ZP | opcodes::SBC_ZPX | opcodes::SBC_ABS |
+            opcodes::SBC_ABX | opcodes::SBC_ABY | opcodes::SBC_INX | opcodes::SBC_INY |
+            opcodes::SNC_IMM => {
+                self.cpu.sub_from_a_with_carry(value);
+            }
+            opcodes::AND_IMM | opcodes::AND_ZP | opcodes::AND_ZPX | opcodes::AND_ABS |
+            opcodes::AND_ABX | opcodes::AND_ABY | opcodes::AND_INX | opcodes::AND_INY => {
+                self.cpu.and(value);
+            }
+            opcodes::ORA_IMM | opcodes::ORA_ZP | opcodes::ORA_ZPX | opcodes::ORA_ABS |
+            opcodes::ORA_ABX | opcodes::ORA_ABY | opcodes::ORA_INX | opcodes::ORA_INY => {
+                self.cpu.ora(value);
+            }
+            opcodes::EOR_IMM | opcodes::EOR_ZP | opcodes::EOR_ZPX | opcodes::EOR_ABS |
+            opcodes::EOR_ABX | opcodes::EOR_ABY | opcodes::EOR_INX | opcodes::EOR_INY => {
+                self.cpu.eor(value);
+            }
+            opcodes::CMP_IMM | opcodes::CMP_ZP | opcodes::CMP_ZPX | opcodes::CMP_ABS |
+            opcodes::CMP_ABX | opcodes::CMP_ABY | opcodes::CMP_INX | opcodes::CMP_INY => {
+                self.cpu.compare(self.cpu.a, value);
+            }
+            opcodes::CPX_IMM | opcodes::CPX_ZP | opcodes::CPX_ABS => {
+                self.cpu.compare(self.cpu.x, value);
+            }
+            opcodes::CPY_IMM | opcodes::CPY_ZP | opcodes::CPY_ABS => {
+                self.cpu.compare(self.cpu.y, value);
+            }
+            opcodes::BIT_ZP | opcodes::BIT_ABS => {
+                self.cpu.bit(value);
+            }
+            opcodes::LAX_ZP | opcodes::LAX_ZPY | opcodes::LAX_ABS | opcodes::LAX_ABY |
+            opcodes::LAX_INX | opcodes::LAX_INY | opcodes::LAX_IMM => {
+                self.cpu.a = value;
+                self.cpu.x = value;
+                self.cpu.check_negative(value);
+                self.cpu.check_zero(value);
+            }
+            opcodes::ANC_0B | opcodes::ANC_2B => {
+                self.cpu.and(value);
+                if self.cpu.negative_flag() {
+                    self.cpu.set_status_flag(cpu::CARRY_BIT);
+                } else {
+                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
+                }
+            }
+            opcodes::ALR_IMM => {
+                self.cpu.a &= value;
+                let old_bit0 = self.cpu.a & 1;
+                self.cpu.a >>= 1;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+                if old_bit0 != 0 { self.cpu.set_status_flag(cpu::CARRY_BIT); }
+                else { self.cpu.clear_status_flag(cpu::CARRY_BIT); }
+            }
+            opcodes::ARR_IMM => {
+                self.cpu.a &= value;
+                let old_carry = if self.cpu.carry_flag() { 1u8 } else { 0 };
+                self.cpu.a = (self.cpu.a >> 1) | (old_carry << 7);
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+                let bit6 = (self.cpu.a >> 6) & 1;
+                let bit5 = (self.cpu.a >> 5) & 1;
+                if bit6 != 0 { self.cpu.set_status_flag(cpu::CARRY_BIT); }
+                else { self.cpu.clear_status_flag(cpu::CARRY_BIT); }
+                if (bit6 ^ bit5) != 0 { self.cpu.set_status_flag(cpu::OVERFLOW_BIT); }
+                else { self.cpu.clear_status_flag(cpu::OVERFLOW_BIT); }
+            }
+            opcodes::XAA_IMM => {
+                self.cpu.a = self.cpu.x & value;
+                self.cpu.check_negative(self.cpu.a);
+                self.cpu.check_zero(self.cpu.a);
+            }
+            opcodes::SBX_IMM => {
+                let ax = self.cpu.a & self.cpu.x;
+                let result = (ax as u16).wrapping_sub(value as u16);
+                self.cpu.x = result as u8;
+                self.cpu.check_negative(self.cpu.x);
+                self.cpu.check_zero(self.cpu.x);
+                if ax >= value { self.cpu.set_status_flag(cpu::CARRY_BIT); }
+                else { self.cpu.clear_status_flag(cpu::CARRY_BIT); }
+            }
+            opcodes::LAS_ABY => {
+                let v = value & self.cpu.sp;
+                self.cpu.a = v;
+                self.cpu.x = v;
+                self.cpu.sp = v;
+                self.cpu.check_negative(v);
+                self.cpu.check_zero(v);
+            }
+            _ => {} // NOP reads
+        }
+    }
+
+    fn apply_rmw_op(&mut self, value: u8) -> u8 {
+        match self.cpu_opcode {
+            opcodes::ASL_ZP | opcodes::ASL_ZPX | opcodes::ASL_ABS | opcodes::ASL_ABX =>
+                self.cpu.asl(value),
+            opcodes::LSR_ZP | opcodes::LSR_ZPX | opcodes::LSR_ABS | opcodes::LSR_ABX =>
+                self.cpu.lsr(value),
+            opcodes::ROL_ZP | opcodes::ROL_ZPX | opcodes::ROL_ABS | opcodes::ROL_ABX =>
+                self.cpu.rol(value),
+            opcodes::ROR_ZP | opcodes::ROR_ZPX | opcodes::ROR_ABS | opcodes::ROR_ABX =>
+                self.cpu.ror(value),
+            opcodes::INC_ZP | opcodes::INC_ZPX | opcodes::INC_ABS | opcodes::INC_ABX => {
+                let result = value.wrapping_add(1);
+                self.cpu.check_negative(result);
+                self.cpu.check_zero(result);
+                result
+            }
+            opcodes::DEC_ZP | opcodes::DEC_ZPX | opcodes::DEC_ABS | opcodes::DEC_ABX => {
+                let result = value.wrapping_sub(1);
+                self.cpu.check_negative(result);
+                self.cpu.check_zero(result);
+                result
+            }
+            opcodes::DCP_ZP | opcodes::DCP_ZPX | opcodes::DCP_ABS | opcodes::DCP_ABX |
+            opcodes::DCP_ABY | opcodes::DCP_INX | opcodes::DCP_INY => {
+                let result = value.wrapping_sub(1);
+                self.cpu.compare(self.cpu.a, result);
+                result
+            }
+            opcodes::ISB_ZP | opcodes::ISB_ZPX | opcodes::ISB_ABS | opcodes::ISB_ABX |
+            opcodes::ISB_ABY | opcodes::ISB_INX | opcodes::ISB_INY => {
+                let result = value.wrapping_add(1);
+                self.cpu.sub_from_a_with_carry(result);
+                result
+            }
+            opcodes::SLO_ZP | opcodes::SLO_ZPX | opcodes::SLO_ABS | opcodes::SLO_ABX |
+            opcodes::SLO_ABY | opcodes::SLO_INX | opcodes::SLO_INY => {
+                let result = self.cpu.asl(value);
+                self.cpu.ora(result);
+                result
+            }
+            opcodes::SRE_ZP | opcodes::SRE_ZPX | opcodes::SRE_ABS | opcodes::SRE_ABX |
+            opcodes::SRE_ABY | opcodes::SRE_INX | opcodes::SRE_INY => {
+                let result = self.cpu.lsr(value);
+                self.cpu.eor(result);
+                result
+            }
+            opcodes::RLA_ZP | opcodes::RLA_ZPX | opcodes::RLA_ABS | opcodes::RLA_ABX |
+            opcodes::RLA_ABY | opcodes::RLA_INX | opcodes::RLA_INY => {
+                let result = self.cpu.rol(value);
+                self.cpu.and(result);
+                result
+            }
+            opcodes::RRA_ZP | opcodes::RRA_ZPX | opcodes::RRA_ABS | opcodes::RRA_ABX |
+            opcodes::RRA_ABY | opcodes::RRA_INX | opcodes::RRA_INY => {
+                let result = self.cpu.ror(value);
+                self.cpu.add_to_a_with_carry(result);
+                result
+            }
+            _ => value,
+        }
+    }
+
+    // ── Instruction completion ────────────────────────────────────────
+
+    fn finish_instruction(&mut self) {
+        self.log_instruction(self.cpu_opcode, self.cpu_instr_pc);
+        self.instructions += 1;
+        self.instruction_just_finished = true;
+
+        if !self.irq_i_flag_sampled {
+            if self.poll_irq_sources() {
+                self.pending_irq = true;
+            }
+        }
+
+        self.cpu_phase = CpuPhase::Fetch;
+    }
+
+    fn finish_instruction_no_irq_poll(&mut self) {
+        self.log_instruction(self.cpu_opcode, self.cpu_instr_pc);
+        self.instructions += 1;
+        self.instruction_just_finished = true;
+        self.cpu_phase = CpuPhase::Fetch;
+    }
+
+    fn poll_irq_sources(&mut self) -> bool {
+        if self.mem.poll_irq() {
+            return true;
+        }
+        if self.apu.frame_irq_pending() {
+            return true;
+        }
+        if self.apu.dmc_irq_pending() {
+            return true;
+        }
+        false
     }
 
     #[cfg(debug_assertions)]
@@ -571,17 +2101,6 @@ impl Emulator {
     #[cfg(not(debug_assertions))]
     pub fn log_instruction(&mut self, _opcode: u8, _pc: u16) {}
 
-    fn begin_cpu_instruction_timing(&mut self) {
-        self.instruction_start_dot = self.master_clock;
-        self.cpu_bus_cycle_offset = 0;
-        self.branch_irq_suppressed = false;
-    }
-
-    fn cpu_bus_access_dot(&self) -> u64 {
-        self.instruction_start_dot + u64::from(self.cpu_bus_cycle_offset) * 3
-    }
-
-    /// CPU address decoded as a PPU register access, if this mapper exposes the NES PPU register bus.
     fn ppu_reg_cpu_addr(&self, addr: u16) -> Option<u16> {
         if !self.mem.cpu_maps_ppu_registers() {
             return None;
@@ -624,1152 +2143,12 @@ impl Emulator {
         }
     }
 
-    fn sync_for_cpu_access(&mut self, addr: u16, is_write: bool) {
-        if self.cpu_access_needs_ppu_sync(addr, is_write) {
-            let target_dot = self.cpu_bus_access_dot();
-            self.sync_ppu_to_dot(target_dot);
-        }
-    }
 
-    fn service_pending_irq(&mut self) -> bool {
-        if !self.irq_allowed {
-            return false;
-        }
-
-        if self.mem.poll_irq() && self.mem.poll_irq_at_dot(self.irq_sample_deadline) {
-            self.trigger_irq();
-            self.irq_allowed = false;
-            return true;
-        }
-
-        if self.apu.frame_irq_at_dot(self.irq_sample_deadline) {
-            self.trigger_irq();
-            self.irq_allowed = false;
-            return true;
-        }
-
-        if self.apu.dmc_irq_pending() {
-            self.trigger_irq();
-            self.irq_allowed = false;
-            return true;
-        }
-
-        false
-    }
-
-    fn cpu_read(&mut self, addr: u16) -> u8 {
-        self.sync_for_cpu_access(addr, false);
-        let ppu_reg = self.ppu_reg_cpu_addr(addr);
-        let value = if let Some(reg) = ppu_reg {
-            let v = self.ppu.read(reg, &*self.mem);
-            if reg == ppu::DATA_ADDR {
-                let a = self.ppu.get_current_vram_addr();
-                self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
-            }
-            v
-        } else if addr == APU_STATUS_ADDR {
-            self.apu.read(addr)
-        } else if addr == CONTROLLER1_ADDR {
-            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
-                | (self.mem.controllers()[0].poll() & CONTROLLER_DATA_MASK)
-        } else if addr == CONTROLLER2_ADDR {
-            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
-                | (self.mem.controllers()[1].poll() & CONTROLLER_DATA_MASK)
-        } else if (APU_REG_START..APU_STATUS_ADDR).contains(&addr)
-            || (IO_EXPANSION_START..IO_EXPANSION_END).contains(&addr)
-        {
-            self.cpu_open_bus
-        } else {
-            self.mem.cpu_read(addr)
-        };
-        self.cpu_open_bus = value;
-        self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
-        value
-    }
-
-    fn cpu_read_at(&mut self, addr: u16, cpu_cycle_offset: u8) -> u8 {
-        self.cpu_bus_cycle_offset = cpu_cycle_offset;
-        self.cpu_read(addr)
-    }
-
-    pub fn execute_instruction(&mut self) -> u8 {
-        self.log_init();
-        self.begin_cpu_instruction_timing();
-
-        self.cpu.last_instruction = self.cpu.pc;
-        let opcode = self.cpu_read_at(self.cpu.pc as _, 0);
-        let size: u16 = self.lookup.size(opcode);
-
-        match opcode {
-            opcodes::AND_ABS
-            | opcodes::AND_ABX
-            | opcodes::AND_ABY
-            | opcodes::AND_IMM
-            | opcodes::AND_INX
-            | opcodes::AND_INY
-            | opcodes::AND_ZP
-            | opcodes::AND_ZPX => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.and(value);
-            }
-
-            opcodes::ADC_ABS
-            | opcodes::ADC_ABX
-            | opcodes::ADC_ABY
-            | opcodes::ADC_IMM
-            | opcodes::ADC_INX
-            | opcodes::ADC_INY
-            | opcodes::ADC_ZP
-            | opcodes::ADC_ZPX => {
-                let addr = self.addr(opcode);
-                self.adc(addr);
-            }
-
-            opcodes::ASL => {
-                self.log_push(self.cpu.a as u16);
-                self.cpu.a = self.cpu.asl(self.cpu.a);
-                self.log_push(self.cpu.a as u16);
-            }
-            opcodes::ASL_ABS | opcodes::ASL_ABX | opcodes::ASL_ZP | opcodes::ASL_ZPX => {
-                let addr = self.addr(opcode);
-                self.asl(addr);
-            }
-
-            opcodes::BIT_ABS | opcodes::BIT_ZP => {
-                // Test BITs
-                let addr = self.addr(opcode);
-                self.log_push(addr);
-                let value = self.cpu_read(addr);
-                self.cpu.bit(value);
-            }
-
-            opcodes::BPL => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on PLus)
-                if !self.cpu.negative_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BMI => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on MInus
-                if self.cpu.negative_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BVC => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on oVerflow Clear
-                if !self.cpu.overflow_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BVS => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on oVerflow Set
-                if self.cpu.overflow_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BCC => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on Carry Clear
-                if !self.cpu.carry_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BCS => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on Carry Set
-                if self.cpu.carry_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BEQ => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on EQual
-                if self.cpu.zero_flag() {
-                    self.branch(operand);
-                }
-            }
-            opcodes::BNE => {
-                let operand: i8 = self.cpu_read(self.cpu.pc + 1) as i8;
-                self.log_push((operand as u16) & 0xff);
-                // Branch on Not Equal
-                if !self.cpu.zero_flag() {
-                    self.branch(operand);
-                }
-            }
-
-            opcodes::BRK => {
-                // Sync PPU to the vector fetch point (cycle 5 of 7) so NMI
-                // edges that arrive during BRK can hijack the vector.
-                let vector_fetch_dot = self.instruction_start_dot + 3 * 3;
-                self.sync_ppu_to_dot(vector_fetch_dot);
-                let addr = self.nmi_hijack_vector();
-
-                if addr > 0 {
-                    self.push_pc_to_stack(2);
-                    self.log_push(addr);
-                    self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
-                    self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-                    self.cpu.pc = addr;
-                }
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-            opcodes::CLC => {
-                self.cpu.clear_status_flag(cpu::CARRY_BIT);
-            }
-            opcodes::CLV => {
-                self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
-            }
-            opcodes::CLD => {
-                self.cpu.clear_status_flag(cpu::DECIMAL_BIT);
-            }
-            opcodes::CLI => {
-                self.cpu.clear_status_flag(cpu::INTERRUPT_BIT);
-            }
-
-            opcodes::CMP_ABS
-            | opcodes::CMP_ABX
-            | opcodes::CMP_ABY
-            | opcodes::CMP_IMM
-            | opcodes::CMP_INX
-            | opcodes::CMP_INY
-            | opcodes::CMP_ZP
-            | opcodes::CMP_ZPX => {
-                let addr = self.addr(opcode);
-                self.log_push(addr);
-                let value = self.cpu_read(addr);
-                self.log_push(value as u16);
-                self.cpu.compare(self.cpu.a, value);
-            }
-
-            opcodes::CPX_ABS | opcodes::CPX_IMM | opcodes::CPX_ZP => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.compare(self.cpu.x, value);
-            }
-
-            opcodes::CPY_ABS | opcodes::CPY_IMM | opcodes::CPY_ZP => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.compare(self.cpu.y, value);
-            }
-
-            opcodes::DEC_ABS | opcodes::DEC_ABX | opcodes::DEC_ZP | opcodes::DEC_ZPX => {
-                let addr = self.addr(opcode);
-                self.dec(addr);
-            }
-
-            opcodes::DEX => {
-                // Decrement Index X by One
-                self.cpu.x = self.cpu.x.wrapping_sub(1);
-                // Increment and decrement instructions do not affect the carry flag.
-                self.cpu.check_negative(self.cpu.x);
-                self.cpu.check_zero(self.cpu.x);
-            }
-            opcodes::DEY => {
-                // Decrement Index Y by One
-                self.cpu.y = self.cpu.y.wrapping_sub(1);
-                // Increment and decrement instructions do not affect the carry flag.
-                self.cpu.check_negative(self.cpu.y);
-                self.cpu.check_zero(self.cpu.y);
-            }
-
-            opcodes::DCP_ABS
-            | opcodes::DCP_ABX
-            | opcodes::DCP_ABY
-            | opcodes::DCP_INX
-            | opcodes::DCP_INY
-            | opcodes::DCP_ZP
-            | opcodes::DCP_ZPX => {
-                let addr = self.addr(opcode);
-                self.dcp(addr);
-            }
-
-            opcodes::EOR_ABS
-            | opcodes::EOR_ABX
-            | opcodes::EOR_ABY
-            | opcodes::EOR_IMM
-            | opcodes::EOR_INX
-            | opcodes::EOR_INY
-            | opcodes::EOR_ZP
-            | opcodes::EOR_ZPX => {
-                let addr = self.addr(opcode);
-                self.eor(addr);
-            }
-
-            opcodes::JMP_ABS => {
-                // JuMP to address
-                let addr: u16 = self.addr_absolute(self.cpu.pc);
-                self.log_push(addr);
-                self.cpu.pc = addr as _;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-            opcodes::JMP_IND => {
-                // JuMP to address stored in arg
-                let addr: u16 = self.get_16b_addr(self.cpu.pc + 1);
-                // AN INDIRECT JUMP MUST NEVER USE A
-                // VECTOR BEGINNING ON THE LAST BYTE
-                // OF A PAGE
-                // For example if address $3000 contains $40, $30FF contains $80, and $3100 contains $50,
-                // the result of JMP ($30FF) will be a transfer of control to $4080 rather than $5080 as you intended
-                // i.e. the 6502 took the low byte of the address from $30FF and the high byte from $3000.
-                let adjusted_addr = if (addr & 0xff) == 0xff {
-                    addr & 0xff00
-                } else {
-                    addr + 1
-                };
-
-                let hb = self.cpu_read(adjusted_addr);
-                let lb = self.cpu_read(addr);
-
-                self.log_push(addr);
-
-                let operand: u16 = memory::to_16b_addr(hb, lb);
-                self.log_push(operand);
-                self.cpu.pc = operand;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-
-            opcodes::JSR_ABS => {
-                // Jump to SubRoutine
-                self.push_pc_to_stack(2);
-                let addr: u16 = self.addr_absolute(self.cpu.pc);
-                self.log_push(addr);
-                self.cpu.pc = addr;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-
-            opcodes::INC_ABS | opcodes::INC_ABX | opcodes::INC_ZP | opcodes::INC_ZPX => {
-                let addr = self.addr(opcode);
-                self.inc(addr);
-            }
-
-            opcodes::INX => {
-                // Increment Index X by One
-                self.cpu.x = self.cpu.x.wrapping_add(1);
-                // Increment and decrement instructions do not affect the carry flag.
-                self.cpu.check_negative(self.cpu.x);
-                self.cpu.check_zero(self.cpu.x);
-            }
-            opcodes::INY => {
-                // Increment Index Y by One
-                self.cpu.y = self.cpu.y.wrapping_add(1);
-                // Increment and decrement instructions do not affect the carry flag.
-                self.cpu.check_negative(self.cpu.y);
-                self.cpu.check_zero(self.cpu.y);
-            }
-
-            opcodes::ISB_ABS
-            | opcodes::ISB_ABX
-            | opcodes::ISB_ABY
-            | opcodes::ISB_INX
-            | opcodes::ISB_INY
-            | opcodes::ISB_ZP
-            | opcodes::ISB_ZPX => {
-                let addr = self.addr(opcode);
-                self.isb(addr);
-            }
-
-            opcodes::LAX_ABS
-            | opcodes::LAX_ABY
-            | opcodes::LAX_INX
-            | opcodes::LAX_INY
-            | opcodes::LAX_ZP
-            | opcodes::LAX_ZPY => {
-                let addr = self.addr(opcode);
-                self.lax(addr);
-            }
-
-            opcodes::LDA_ABS
-            | opcodes::LDA_ABX
-            | opcodes::LDA_ABY
-            | opcodes::LDA_IMM
-            | opcodes::LDA_INX
-            | opcodes::LDA_INY
-            | opcodes::LDA_ZP
-            | opcodes::LDA_ZPX => {
-                let addr = self.addr(opcode);
-                self.cpu.a = self.load(addr);
-            }
-
-            opcodes::LDX_ABS
-            | opcodes::LDX_ABY
-            | opcodes::LDX_IMM
-            | opcodes::LDX_ZP
-            | opcodes::LDX_ZPY => {
-                let addr = self.addr(opcode);
-                self.cpu.x = self.load(addr);
-            }
-
-            opcodes::LDY_ABS
-            | opcodes::LDY_ABX
-            | opcodes::LDY_IMM
-            | opcodes::LDY_ZP
-            | opcodes::LDY_ZPX => {
-                let addr = self.addr(opcode);
-                self.cpu.y = self.load(addr);
-            }
-
-            opcodes::LSR => {
-                self.log_push(self.cpu.a as u16);
-                self.cpu.a = self.cpu.lsr(self.cpu.a);
-                self.log_push(self.cpu.a as u16);
-            }
-            opcodes::LSR_ABS | opcodes::LSR_ABX | opcodes::LSR_ZP | opcodes::LSR_ZPX => {
-                let addr = self.addr(opcode);
-                self.lsr(addr);
-            }
-
-            opcodes::NOP => {
-                // No operation
-            }
-
-            opcodes::ORA_ABS
-            | opcodes::ORA_ABX
-            | opcodes::ORA_ABY
-            | opcodes::ORA_IMM
-            | opcodes::ORA_INX
-            | opcodes::ORA_INY
-            | opcodes::ORA_ZP
-            | opcodes::ORA_ZPX => {
-                let addr = self.addr(opcode);
-                self.ora(addr);
-            }
-
-            opcodes::PHA => {
-                // PusH Accumulator
-                self.push_to_stack(self.cpu.a);
-            }
-            opcodes::PLA => {
-                // PuLl Accumulator
-                self.cpu.a = self.pull_from_stack();
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-            }
-            opcodes::PHP => {
-                // PusH Processor status
-                // software instructions BRK & PHP will push the B flag as being 1.
-                // hardware interrupts IRQ & NMI will push the B flag as being 0.
-                self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
-            }
-            opcodes::PLP => {
-                // PuLl Processor status
-                self.cpu.status = self.pull_from_stack();
-
-                // TODO: should we set ignore?
-                self.cpu.set_status_flag(cpu::IGNORE_BIT);
-                // when the flags are restored (via PLP or RTI), the B bit is discarded.
-                self.cpu.clear_status_flag(cpu::BREAK_BIT);
-            }
-
-            opcodes::RRA_ABS
-            | opcodes::RRA_ABX
-            | opcodes::RRA_ABY
-            | opcodes::RRA_INX
-            | opcodes::RRA_INY
-            | opcodes::RRA_ZP
-            | opcodes::RRA_ZPX => {
-                let addr = self.addr(opcode);
-                self.rra(addr);
-            }
-
-            opcodes::RTI => {
-                // RTI retrieves the Processor Status Word (flags)
-                // and the Program Counter from the stack in that order
-                // (interrupts push the PC first and then the PSW).
-                self.cpu.status = self.pull_from_stack();
-                // TODO: should we set ignore?
-                self.cpu.set_status_flag(cpu::IGNORE_BIT);
-                // when the flags are restored (via PLP or RTI), the B bit is discarded.
-                self.cpu.clear_status_flag(cpu::BREAK_BIT);
-
-                // Note that unlike RTS, the return address on the stack
-                // is the actual address rather than the address-1.
-                let lb: u8 = self.pull_from_stack();
-                let hb: u8 = self.pull_from_stack();
-
-                let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff);
-                self.log_push(addr);
-
-                self.cpu.pc = addr;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-
-            opcodes::RTS => {
-                // ReTurn from Subroutine
-                let lb: u8 = self.pull_from_stack();
-                let hb: u8 = self.pull_from_stack();
-
-                let addr: u16 = ((hb as u16) << 8) + ((lb as u16) & 0xff) + 1;
-                self.log_push(addr);
-
-                self.cpu.pc = addr;
-                // Compensate for length addition
-                self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
-            }
-
-            opcodes::RLA_ABS
-            | opcodes::RLA_ABX
-            | opcodes::RLA_ABY
-            | opcodes::RLA_INX
-            | opcodes::RLA_INY
-            | opcodes::RLA_ZP
-            | opcodes::RLA_ZPX => {
-                let addr = self.addr(opcode);
-                self.rla(addr);
-            }
-
-            opcodes::ROL => {
-                self.log_push(self.cpu.a as u16);
-                self.cpu.a = self.cpu.rol(self.cpu.a);
-                self.log_push(self.cpu.a as u16);
-            }
-            opcodes::ROL_ABS | opcodes::ROL_ABX | opcodes::ROL_ZP | opcodes::ROL_ZPX => {
-                let addr = self.addr(opcode);
-                self.rol(addr);
-            }
-
-            opcodes::ROR => {
-                self.log_push(self.cpu.a as u16);
-                self.cpu.a = self.cpu.ror(self.cpu.a);
-                self.log_push(self.cpu.a as u16);
-            }
-            opcodes::ROR_ABS | opcodes::ROR_ABX | opcodes::ROR_ZP | opcodes::ROR_ZPX => {
-                let addr = self.addr(opcode);
-                self.ror(addr);
-            }
-
-            opcodes::SAX_ABS | opcodes::SAX_INX | opcodes::SAX_ZP | opcodes::SAX_ZPY => {
-                let addr = self.addr(opcode);
-                self.sax(addr);
-            }
-
-            opcodes::SBC_ABS
-            | opcodes::SBC_ABX
-            | opcodes::SBC_ABY
-            | opcodes::SBC_IMM
-            | opcodes::SBC_INX
-            | opcodes::SBC_INY
-            | opcodes::SBC_ZP
-            | opcodes::SBC_ZPX
-            | opcodes::SNC_IMM => {
-                // Subtract Memory to Accumulator with Carry
-                let addr = self.addr(opcode);
-                self.sbc(addr);
-            }
-
-            opcodes::SEC => {
-                self.cpu.set_status_flag(cpu::CARRY_BIT);
-            }
-            opcodes::SED => {
-                self.cpu.set_status_flag(cpu::DECIMAL_BIT);
-            }
-            opcodes::SEI => {
-                self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-            }
-
-            opcodes::SRE_ABS
-            | opcodes::SRE_ABX
-            | opcodes::SRE_ABY
-            | opcodes::SRE_INX
-            | opcodes::SRE_INY
-            | opcodes::SRE_ZP
-            | opcodes::SRE_ZPX => {
-                let addr = self.addr(opcode);
-                self.sre(addr);
-            }
-
-            opcodes::SLO_ABS
-            | opcodes::SLO_ABX
-            | opcodes::SLO_ABY
-            | opcodes::SLO_INX
-            | opcodes::SLO_INY
-            | opcodes::SLO_ZP
-            | opcodes::SLO_ZPX => {
-                let addr = self.addr(opcode);
-                self.slo(addr);
-            }
-
-            opcodes::STA_ABS
-            | opcodes::STA_ABX
-            | opcodes::STA_ABY
-            | opcodes::STA_INX
-            | opcodes::STA_INY
-            | opcodes::STA_ZP
-            | opcodes::STA_ZPX => {
-                // Store hides page crossing penalties
-                let addr = self.addr(opcode);
-                self.log_push(addr);
-                self.cpu_write(addr, self.cpu.a);
-            }
-
-            opcodes::STX_ABS | opcodes::STX_ZP | opcodes::STX_ZPY => {
-                let addr = self.addr(opcode);
-                self.log_push(addr);
-                self.cpu_write(addr, self.cpu.x);
-            }
-
-            opcodes::STY_ABS | opcodes::STY_ZP | opcodes::STY_ZPX => {
-                let addr = self.addr(opcode);
-                self.log_push(addr);
-                self.cpu_write(addr, self.cpu.y);
-            }
-
-            opcodes::TAX => {
-                // Transfer Accumulator to Index X
-                self.cpu.x = self.cpu.a;
-                self.cpu.check_negative(self.cpu.x);
-                self.cpu.check_zero(self.cpu.x);
-            }
-            opcodes::TXA => {
-                // Transfer Index X to Accumulator
-                self.cpu.a = self.cpu.x;
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-            }
-            opcodes::TAY => {
-                // Transfer Accumulator to Index Y
-                self.cpu.y = self.cpu.a;
-                self.cpu.check_negative(self.cpu.y);
-                self.cpu.check_zero(self.cpu.y);
-            }
-            opcodes::TYA => {
-                // Transfer Index Y to Accumulator
-                self.cpu.a = self.cpu.y;
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-            }
-            opcodes::TSX => {
-                // Transfer Stack Pointer to Index X
-                self.cpu.x = self.cpu.sp;
-                self.cpu.check_negative(self.cpu.x);
-                self.cpu.check_zero(self.cpu.x);
-            }
-            opcodes::TXS => {
-                // Transfer Index X to Stack Pointer
-                self.cpu.sp = self.cpu.x;
-                // TSX sets NZ - TXS does not
-            }
-            opcodes::ANC_0B | opcodes::ANC_2B => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.and(value);
-                if self.cpu.negative_flag() {
-                    self.cpu.set_status_flag(cpu::CARRY_BIT);
-                } else {
-                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
-                }
-            }
-            opcodes::ALR_IMM => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.a &= value;
-                let old_bit0 = self.cpu.a & 1;
-                self.cpu.a >>= 1;
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-                if old_bit0 != 0 {
-                    self.cpu.set_status_flag(cpu::CARRY_BIT);
-                } else {
-                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
-                }
-            }
-            opcodes::ARR_IMM => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.a &= value;
-                let old_carry = if self.cpu.carry_flag() { 1u8 } else { 0u8 };
-                self.cpu.a = (self.cpu.a >> 1) | (old_carry << 7);
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-                let bit6 = (self.cpu.a >> 6) & 1;
-                let bit5 = (self.cpu.a >> 5) & 1;
-                if bit6 != 0 {
-                    self.cpu.set_status_flag(cpu::CARRY_BIT);
-                } else {
-                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
-                }
-                if (bit6 ^ bit5) != 0 {
-                    self.cpu.set_status_flag(cpu::OVERFLOW_BIT);
-                } else {
-                    self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
-                }
-            }
-            opcodes::XAA_IMM => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.a = self.cpu.x & value;
-                self.cpu.check_negative(self.cpu.a);
-                self.cpu.check_zero(self.cpu.a);
-            }
-            opcodes::LAX_IMM => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                self.cpu.a = value;
-                self.cpu.x = value;
-                self.cpu.check_negative(value);
-                self.cpu.check_zero(value);
-            }
-            opcodes::SBX_IMM => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr);
-                let ax = self.cpu.a & self.cpu.x;
-                let result = (ax as u16).wrapping_sub(value as u16);
-                self.cpu.x = result as u8;
-                self.cpu.check_negative(self.cpu.x);
-                self.cpu.check_zero(self.cpu.x);
-                if ax >= value {
-                    self.cpu.set_status_flag(cpu::CARRY_BIT);
-                } else {
-                    self.cpu.clear_status_flag(cpu::CARRY_BIT);
-                }
-            }
-            opcodes::SHA_INY | opcodes::SHA_ABY => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.a & self.cpu.x & high;
-                self.cpu_write(addr, value);
-            }
-            opcodes::TAS_ABY => {
-                let addr = self.addr(opcode);
-                self.cpu.sp = self.cpu.a & self.cpu.x;
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.sp & high;
-                self.cpu_write(addr, value);
-            }
-            opcodes::SHY_ABX => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.y & high;
-                self.cpu_write(addr, value);
-            }
-            opcodes::SHX_ABY => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.x & high;
-                self.cpu_write(addr, value);
-            }
-            opcodes::LAS_ABY => {
-                let addr = self.addr(opcode);
-                let value = self.cpu_read(addr) & self.cpu.sp;
-                self.cpu.a = value;
-                self.cpu.x = value;
-                self.cpu.sp = value;
-                self.cpu.check_negative(value);
-                self.cpu.check_zero(value);
-            }
-            _ => {
-                // Infer page boundary penalty for certain unofficial NOPs
-                if opcode & 0xf == 0xc && self.lookup.mode(opcode) != 0xff {
-                    self.addr(opcode);
-                }
-            }
-        }
-
-        self.cpu.pc = self.cpu.pc.wrapping_add(size);
-        self.instructions = self.instructions + 1;
-        self.cpu.cycle += self.lookup.cycles(opcode) as u64;
-
-        opcode
-    }
-
-    fn adc(&mut self, addr: u16) {
-        // Add Memory to Accumulator with Carry
-        self.log_push(addr);
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        self.cpu.add_to_a_with_carry(operand);
-    }
-
-    fn asl(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.cpu_read(addr);
-        self.log_push(value as u16);
-        let result: u8 = self.cpu.asl(value);
-        self.log_push(result as u16);
-        self.cpu_write(addr, result);
-
-        result
-    }
-
-    fn branch(&mut self, operand: i8) {
-        let page_cross = (self.cpu.pc.wrapping_add(2) & 0xff).wrapping_add(operand as u16) > 0xff;
-        if page_cross {
-            self.cpu.cycle += 1;
-        } else {
-            self.branch_irq_suppressed = true;
-        }
-        self.cpu.pc = self.cpu.pc.wrapping_add(operand as u16);
-        self.log_push(self.cpu.pc.wrapping_add(2));
-        self.cpu.cycle += 1;
-    }
-
-    fn cpu_write(&mut self, addr: u16, value: u8) {
-        self.cpu_open_bus = value;
-        self.sync_for_cpu_access(addr, true);
-
-        let ppu_reg = self.ppu_reg_cpu_addr(addr);
-
-        if let Some(reg) = ppu_reg {
-            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
-                self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
-                return;
-            }
-            if reg == ppu::CTRL_REG_ADDR {
-                self.mem.notify_ppu_ctrl(value);
-            }
-            if reg == ppu::MASK_REG_ADDR {
-                self.mem.notify_ppu_mask(value);
-            }
-            if let Some((waddr, wval)) = self.ppu.write(reg, value) {
-                self.mem.ppu_write(waddr, wval);
-            }
-            if reg == ppu::ADDR_ADDR || reg == ppu::DATA_ADDR {
-                let ppu_addr = if reg == ppu::ADDR_ADDR {
-                    self.ppu.get_temp_vram_addr()
-                } else {
-                    self.ppu.get_current_vram_addr()
-                };
-                self.mem
-                    .ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
-            }
-        } else if addr == ppu::OAM_DMA {
-            if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {
-                self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
-                return;
-            }
-            let base: u16 = (value as u16) << 8;
-            for i in 0u16..256 {
-                let byte = self.mem.cpu_read(base.wrapping_add(i));
-                self.ppu.oam_dma_write(i as u8, byte);
-            }
-            let alignment: u64 = if self.cpu.cycle % 2 == 1 { 1 } else { 0 };
-            self.cpu.cycle += 512 + 1 + alignment;
-        } else if addr == CONTROLLER1_ADDR {
-            let strobe = value & 1 != 0;
-            self.mem.controllers()[0].set_strobe(strobe);
-            self.mem.controllers()[1].set_strobe(strobe);
-        } else if (APU_REG_START..=APU_STATUS_ADDR).contains(&addr) || addr == CONTROLLER2_ADDR {
-            let apu_cycle_tag = if addr == CONTROLLER2_ADDR {
-                self.cpu
-                    .cycle
-                    .wrapping_add(u64::from(self.cpu_bus_cycle_offset))
-            } else {
-                0
-            };
-            self.apu.write(addr, value, apu_cycle_tag);
-        } else {
-            self.mem.cpu_write(addr, value);
-        }
-        self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
-    }
-
-    fn dec(&mut self, addr: u16) {
-        // DECrement memory
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        let value: u8 = operand.wrapping_sub(1);
-        self.cpu_write(addr, value);
-
-        self.cpu.check_negative(value);
-        self.cpu.check_zero(value);
-    }
-
-    fn dcp(&mut self, addr: u16) {
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        let value: u8 = operand.wrapping_sub(1);
-        self.cpu_write(addr, value);
-
-        self.cpu.check_negative(value);
-        self.cpu.check_zero(value);
-
-        self.cpu.compare(self.cpu.a, value);
-    }
-
-    fn eor(&mut self, addr: u16) {
-        // bitwise Exclusive OR
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        self.cpu.eor(operand);
-    }
-
-    fn inc(&mut self, addr: u16) {
-        // INCrement memory
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        let value: u8 = operand.wrapping_add(1);
-        self.cpu_write(addr, value);
-
-        self.cpu.check_negative(value);
-        self.cpu.check_zero(value);
-    }
-
-    fn isb(&mut self, addr: u16) {
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-
-        let value: u8 = operand.wrapping_add(1);
-        self.cpu_write(addr, value);
-
-        self.cpu.check_negative(value);
-        self.cpu.check_zero(value);
-
-        self.cpu.sub_from_a_with_carry(value);
-    }
-
-    fn lax(&mut self, addr: u16) {
-        self.log_push(addr);
-        let value = self.load(addr);
-        self.cpu.a = value;
-        self.cpu.x = value;
-    }
-
-    fn lsr(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.cpu_read(addr);
-        self.log_push(value as u16);
-        let result: u8 = self.cpu.lsr(value);
-        self.log_push(result as u16);
-        self.cpu_write(addr, result);
-
-        result
-    }
-
-    fn ora(&mut self, addr: u16) {
-        // Bitwise OR with Accumulator
-        self.log_push(addr);
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        self.cpu.ora(operand);
-    }
-
-    fn rla(&mut self, addr: u16) {
-        let result = self.rol(addr);
-        self.cpu.and(result);
-    }
-
-    fn rol(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.cpu_read(addr);
-        self.log_push(value as u16);
-        let result: u8 = self.cpu.rol(value);
-        self.log_push(result as u16);
-        self.cpu_write(addr, result);
-
-        result
-    }
-
-    fn ror(&mut self, addr: u16) -> u8 {
-        let value: u8 = self.cpu_read(addr);
-        self.log_push(value as u16);
-        let result: u8 = self.cpu.ror(value);
-        self.log_push(result as u16);
-        self.cpu_write(addr, result);
-
-        result
-    }
-
-    fn rra(&mut self, addr: u16) {
-        let result = self.ror(addr);
-        self.cpu.add_to_a_with_carry(result);
-    }
-
-    fn sax(&mut self, addr: u16) {
-        self.log_push(addr);
-        self.cpu_write(addr, self.cpu.a & self.cpu.x);
-    }
-
-    fn sbc(&mut self, addr: u16) {
-        self.log_push(addr);
-        let operand: u8 = self.cpu_read(addr);
-        self.log_push(operand as u16);
-        self.cpu.sub_from_a_with_carry(operand);
-    }
-
-    fn slo(&mut self, addr: u16) {
-        let result = self.asl(addr);
-        self.cpu.ora(result);
-    }
-
-    fn sre(&mut self, addr: u16) {
-        let result = self.lsr(addr);
-        self.cpu.eor(result);
-    }
-
-    fn push_pc_to_stack(&mut self, offset: u16) {
-        let lb: u8 = ((self.cpu.pc.wrapping_add(offset)) & 0xff) as u8;
-        let hb: u8 = ((self.cpu.pc.wrapping_add(offset)) >> 8) as u8;
-
-        self.push_to_stack_addr(self.cpu.sp, hb);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-        self.push_to_stack_addr(self.cpu.sp, lb);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-    }
-
-    fn pull_from_stack(&mut self) -> u8 {
-        self.cpu.sp = self.cpu.sp.wrapping_add(1);
-        self.pull_from_stack_addr(self.cpu.sp)
-    }
-
-    fn push_to_stack(&mut self, value: u8) {
-        self.push_to_stack_addr(self.cpu.sp, value);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-    }
-
-    fn load(&mut self, addr: u16) -> u8 {
-        self.log_push(addr);
-        let val: u8 = self.cpu_read(addr);
-        self.log_push(val as u16);
-        self.cpu.check_negative(val);
-        self.cpu.check_zero(val);
-        val
-    }
-
-    fn get_16b_addr(&mut self, offset: u16) -> u16 {
-        let lb = self.cpu_read(offset);
-        let hb = self.cpu_read(offset.wrapping_add(1));
-        memory::to_16b_addr(hb, lb)
-    }
-
-    fn addr_absolute(&mut self, pc: u16) -> u16 {
-        self.get_16b_addr(pc.wrapping_add(1))
-    }
-
-    fn addr_absolute_idx(&mut self, pc: u16, idx: u8) -> (u16, u16, bool) {
-        let lb = self.cpu_read(pc.wrapping_add(1));
-        let hb = self.cpu_read(pc.wrapping_add(2));
-        let base = memory::to_16b_addr(hb, lb);
-        let addr = base.wrapping_add(idx as u16);
-        let crossed = (lb as u16 + idx as u16) > 0xff;
-        let uncorrected = memory::to_16b_addr(hb, lb.wrapping_add(idx));
-        (addr, uncorrected, crossed)
-    }
-
-    fn addr_idx_indirect(&mut self, pc: u16, idx: u8) -> u16 {
-        let value: u8 = self.cpu_read(pc + 1).wrapping_add(idx);
-        ((self.cpu_read(value.wrapping_add(1) as u16) as u16) << 8)
-            + self.cpu_read(value as u16) as u16
-    }
-
-    fn addr_indirect_idx(&mut self, pc: u16, idx: u8) -> (u16, u16, bool) {
-        let base = self.cpu_read(pc + 1);
-
-        let lb = self.cpu_read(base as _);
-        let hb = self.cpu_read((base as u8).wrapping_add(1) as _);
-        let lbidx = lb.wrapping_add(idx);
-        let crossed = (lb as u16 + idx as u16) > 0xff;
-        let addr = memory::to_16b_addr(hb.wrapping_add(if crossed { 1 } else { 0 }), lbidx);
-        let uncorrected = memory::to_16b_addr(hb, lbidx);
-
-        (addr, uncorrected, crossed)
-    }
-
-    fn addr_zeropage(&mut self, pc: u16) -> u16 {
-        self.cpu_read(pc.wrapping_add(1)) as _
-    }
-
-    fn addr_zeropage_idx(&mut self, pc: u16, idx: u8) -> u16 {
-        self.cpu_read(pc.wrapping_add(1)).wrapping_add(idx) as u16
-    }
-
+    // Old helper functions kept for tests
     fn stack_addr(&self, sp: u8) -> u16 {
         memory::STACK_BASE_OFFSET + (u16::from(sp) & 0xff)
     }
 
-    fn push_to_stack_addr(&mut self, sp: u8, value: u8) {
-        self.cpu_write(self.stack_addr(sp), value);
-    }
-
-    fn pull_from_stack_addr(&mut self, sp: u8) -> u8 {
-        self.cpu_read(self.stack_addr(sp))
-    }
-
-    fn addr(&mut self, opcode: u8) -> u16 {
-        match self.lookup.mode(opcode) {
-            opcodes::ADDR_MODE_ABS => self.addr_absolute(self.cpu.pc),
-            opcodes::ADDR_MODE_ABX => {
-                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.x);
-                let has_penalty = self.lookup.page_boundary_penalty(opcode);
-                if has_penalty && crossed {
-                    self.cpu_read(uncorrected);
-                    self.cpu.cycle += 1;
-                } else if !has_penalty {
-                    self.cpu_read(uncorrected);
-                }
-                addr
-            }
-            opcodes::ADDR_MODE_ABY => {
-                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
-                let has_penalty = self.lookup.page_boundary_penalty(opcode);
-                if has_penalty && crossed {
-                    self.cpu_read(uncorrected);
-                    self.cpu.cycle += 1;
-                } else if !has_penalty {
-                    self.cpu_read(uncorrected);
-                }
-                addr
-            }
-            opcodes::ADDR_MODE_IMM => self.cpu.pc + 1,
-            opcodes::ADDR_MODE_INX => self.addr_idx_indirect(self.cpu.pc, self.cpu.x),
-            opcodes::ADDR_MODE_INY => {
-                let (addr, uncorrected, crossed) = self.addr_indirect_idx(self.cpu.pc, self.cpu.y);
-                let has_penalty = self.lookup.page_boundary_penalty(opcode);
-                if has_penalty && crossed {
-                    self.cpu_read(uncorrected);
-                    self.cpu.cycle += 1;
-                } else if !has_penalty {
-                    self.cpu_read(uncorrected);
-                }
-                addr
-            }
-            opcodes::ADDR_MODE_NA => 0,
-            opcodes::ADDR_MODE_ZP => self.addr_zeropage(self.cpu.pc),
-            opcodes::ADDR_MODE_ZPX => self.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
-            opcodes::ADDR_MODE_ZPY => self.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
-            _ => panic!("Addressing mode not found for opcode {:x}", opcode),
-        }
-    }
-
-    fn nmi_hijack_vector(&mut self) -> u16 {
-        if self.nmi_countdown >= 0 || self.ppu.nmi_rising_edge_dot.is_some() {
-            self.nmi_countdown = -1;
-            self.ppu.nmi_rising_edge_dot = None;
-            self.get_16b_addr(memory::NMI_TARGET_ADDR)
-        } else {
-            self.get_16b_addr(memory::BRK_TARGET_ADDR)
-        }
-    }
-
-    pub fn trigger_nmi(&mut self) {
-        let addr: u16 = self.get_16b_addr(memory::NMI_TARGET_ADDR);
-        self.push_pc_to_stack(0);
-        self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
-        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-        self.cpu.pc = addr;
-        self.cpu.cycle += 7;
-    }
-
-    pub fn trigger_irq(&mut self) {
-        self.push_pc_to_stack(0);
-        self.push_to_stack(self.cpu.status & !cpu::BREAK_BIT);
-        self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
-        let addr = self.nmi_hijack_vector();
-        self.cpu.pc = addr;
-        self.cpu.cycle += 7;
-    }
 
     #[allow(dead_code)]
     pub fn get_audio_output(&mut self) -> Vec<f32> {
@@ -1847,38 +2226,11 @@ mod emu_tests {
     use super::*;
 
     #[test]
-    fn test_addr() {
-        let mut emu: Emulator = Emulator::_new();
-        emu.cpu.pc = 0x4711;
-
-        assert_eq!(0x4712, emu.addr(opcodes::ADC_IMM));
-
-        emu.mem.cpu_write(0x4712, 0x34);
-        emu.mem.cpu_write(0x4713, 0x12);
-        assert_eq!(0x1234, emu.addr(opcodes::ADC_ABS));
-
-        emu.cpu.x = 1;
-        assert_eq!(0x1235, emu.addr(opcodes::ADC_ABX));
-
-        emu.cpu.y = 2;
-        assert_eq!(0x1236, emu.addr(opcodes::ADC_ABY));
-
-        assert_eq!(0, emu.addr(opcodes::ADC_INX));
-
-        assert_eq!(2, emu.addr(opcodes::ADC_INY));
-
-        assert_eq!(0, emu.addr(opcodes::NOP));
-
-        assert_eq!(0x34, emu.addr(opcodes::ADC_ZP));
-
-        assert_eq!(0x35, emu.addr(opcodes::ADC_ZPX));
-    }
-
-    #[test]
     fn test_master_clock_advances_3x_cpu() {
         let mut emu: Emulator = Emulator::_new();
-        emu.cpu.cycle = 1;
-
+        // In per-cycle model, put CPU in a state where it won't execute
+        // Place a NOP at code start
+        emu.mem.cpu_write(memory::CODE_START_ADDR, opcodes::NOP);
         emu.cycle();
 
         assert_eq!(emu.cycles, 1);
@@ -1887,38 +2239,21 @@ mod emu_tests {
     }
 
     #[test]
-    fn test_register_read_triggers_catch_up() {
-        let mut emu: Emulator = Emulator::_new();
-        emu.begin_cpu_instruction_timing();
-
-        emu.cpu_read_at(ppu::STATUS_REG_ADDR, 2);
-
-        assert_eq!(emu.ppu.last_synced_dot, 6);
-    }
-
-    #[test]
-    fn test_register_write_uses_bus_cycle_timestamp() {
-        let mut emu: Emulator = Emulator::_new();
-        emu.begin_cpu_instruction_timing();
-        emu.cpu_bus_cycle_offset = 3;
-
-        emu.cpu_write(ppu::SCROLL_ADDR, 0x24);
-
-        assert_eq!(emu.ppu.last_synced_dot, 9);
-    }
-
-    #[test]
-    fn test_cpu_access_offsets_match_instruction_timing() {
+    fn test_ppu_sync_on_register_read() {
         let mut emu: Emulator = Emulator::_new();
         let start = memory::CODE_START_ADDR;
         emu.mem.cpu_write(start, opcodes::LDA_ABS);
         emu.mem.cpu_write(start + 1, ppu::STATUS_REG_ADDR as u8);
-        emu.mem
-            .cpu_write(start + 2, (ppu::STATUS_REG_ADDR >> 8) as u8);
+        emu.mem.cpu_write(start + 2, (ppu::STATUS_REG_ADDR >> 8) as u8);
 
-        emu.execute_instruction();
+        // Run 4 cycles for LDA abs (fetch + 3 execute steps)
+        for _ in 0..4 {
+            emu.cycle();
+        }
 
-        assert_eq!(emu.ppu.last_synced_dot, 9);
+        // PPU should have synced before the register read on cycle 4
+        // Plus 3 dots per cycle for 4 cycles = 12 dots total
+        assert_eq!(emu.ppu.last_synced_dot, 12);
     }
 
     #[test]

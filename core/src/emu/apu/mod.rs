@@ -547,6 +547,10 @@ impl APU {
         self.frame_irq_since_dot != u64::MAX && self.frame_irq_since_dot < deadline_dot
     }
 
+    pub fn frame_irq_pending(&self) -> bool {
+        self.frame_irq_since_dot != u64::MAX
+    }
+
     pub fn dmc_irq_pending(&self) -> bool {
         self.dmc.get_irq_pending()
     }
