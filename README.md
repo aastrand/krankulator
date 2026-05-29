@@ -199,7 +199,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-507 tests passing, 36 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+512 tests passing, 31 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
@@ -207,7 +207,8 @@ waveform, spectrum, and envelope comparisons.
 | [nestest](http://www.qmtpro.com/~nes/misc/) | CPU instruction correctness (official + unofficial) | ✅ |
 | [Blargg CPU](https://github.com/christopherpow/nes-test-roms) | `official_only` v5 — all official opcodes | ✅ |
 | Blargg PPU | VBlank basics, clear time, NMI control, NMI timing, even/odd frames | ✅ |
-| Blargg PPU | VBL set time, suppression, NMI on/off timing | ❌ |
+| Blargg PPU | VBL set time, suppression, NMI off timing | ✅ |
+| Blargg PPU | NMI on timing | ❌ |
 | Blargg PPU | Even/odd timing | ✅ |
 | Blargg PPU 2005 | palette_ram, sprite_ram, vram_access, vbl_clear_time, power_up_palette | ✅ |
 | Blargg APU | Length counters, length table, IRQ flag, jitter, len timing, IRQ flag timing, DMC basics, DMC rates | ✅ |
@@ -220,12 +221,12 @@ waveform, spectrum, and envelope comparisons.
 | Instruction timing | Branch timing (2-branch_timing) | ✅ |
 | Instruction timing | Full instruction timing (1-instr_timing) | ✅ |
 | CPU timing test | All official instruction cycle counts | ✅ |
-| Instruction misc | abs_x_wrap, branch_wrap, dummy_reads | ✅ |
+| Instruction misc | abs_x_wrap, branch_wrap, dummy_reads, dummy_reads_apu | ✅ |
 | Branch timing | Branch basics, backward, forward | ✅ |
 | CPU interrupts | CLI latency | ✅ |
 | CPU interrupts | NMI/BRK, NMI/IRQ, IRQ/DMA, branch delays IRQ | ❌ |
 | PPU OAM | OAM read | ✅ |
-| PPU OAM | OAM stress | ❌ |
+| PPU OAM | OAM stress | ✅ |
 | PPU open bus | Decay, register refresh | ✅ |
 | CPU registers/RAM | Registers after reset, RAM after reset | ✅ |
 | MMC3 | All 6 tests (mmc3_test) | ✅ |

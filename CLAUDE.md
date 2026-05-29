@@ -119,7 +119,9 @@ cargo clippy --workspace
 **PPU (`emu/ppu/mod.rs`)**
 - Picture Processing Unit for graphics rendering
 - Implements proper VRAM addressing with internal registers (v, t, x, w)
-- Handles NMI generation for VBlank
+- Level-based NMI output signal (`nmi_output`), edge-detected by the emulator each CPU cycle
+- `update_nmi_output()` recalculates the NMI line whenever VBL flag or NMI enable changes
+- `nmi_rising_edge_dot` records rising edges with same-dot cancellation for $2002 race suppression
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
@@ -264,7 +266,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (507 tests, 36 ignored). Desktop has 1 smoke test verifying audio backend wiring.
+All emulation tests live in `core/` (512 tests, 31 ignored). Desktop has 6 tests including audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -293,7 +295,8 @@ All emulation tests live in `core/` (507 tests, 36 ignored). Desktop has 1 smoke
 
 **PPU Implementation**
 - Proper VRAM address handling with internal registers (v, t, x, w)
-- VBlank timing and NMI generation
+- VBlank timing with level-based NMI output signal and CPU edge detection
+- VBL flag suppression when $2002 read races with VBL set (dot 0 prevents flag, same-dot cancels NMI edge)
 - Scroll register updates at correct cycle points during rendering
 - Per-dot cycle-accurate rendering
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
@@ -318,4 +321,4 @@ All emulation tests live in `core/` (507 tests, 36 ignored). Desktop has 1 smoke
 - Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
 - RMW instructions always perform the dummy read regardless of page crossing
 
-The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc, CPU interrupt CLI latency, PPU VBL basics/clear/NMI control/even-odd frames, OAM read, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), advanced PPU VBL timing (suppression, nmi_on/off_timing), DMA cycle stealing, and cpu_dummy_writes.
+The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc (including dummy_reads_apu), CPU interrupt CLI latency, PPU VBL basics/set-time/clear/NMI control/suppression/nmi-off-timing/even-odd frames, OAM read/stress, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), nmi_on_timing (1-dot PPU-CPU alignment), DMA cycle stealing, cpu_dummy_writes, and ppu_read_buffer.
