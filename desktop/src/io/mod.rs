@@ -198,7 +198,7 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
             .append(&PredefinedMenuItem::about(None, Some(about_metadata())))
             .unwrap();
         app_menu.append(&PredefinedMenuItem::separator()).unwrap();
-        app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+        app_menu.append(&quit).unwrap();
         menu.append(&app_menu).unwrap();
     }
 
