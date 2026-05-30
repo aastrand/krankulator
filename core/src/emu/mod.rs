@@ -450,7 +450,7 @@ impl Emulator {
 
         // Cycle the APU and mapper
         self.apu.cycle(self.master_clock, &mut *self.mem);
-        self.mem.cpu_cycle();
+        self.mem.cpu_cycle(self.ppu.last_synced_dot);
         let samples = self.apu.get_audio_samples();
         if !samples.is_empty() {
             self.audio.push_samples(samples);

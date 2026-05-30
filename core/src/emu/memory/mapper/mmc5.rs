@@ -211,11 +211,12 @@ pub struct MMC5Mapper {
     irq_scanline: u8, // $5203
     irq_enabled: bool,
     irq_pending: bool,
+    irq_pending_since_dot: u64,
     in_frame: bool,
     scanline_counter: u8,
     last_ppu_read_addr: u16,
     nt_read_counter: u8,
-    ppu_idle_counter: u8,
+    last_ppu_fetch_dot: u64,
 
     // Multiplier
     multiplicand: u8, // $5205
@@ -328,11 +329,12 @@ impl MMC5Mapper {
             irq_scanline: 0,
             irq_enabled: false,
             irq_pending: false,
+            irq_pending_since_dot: 0,
             in_frame: false,
             scanline_counter: 0,
             last_ppu_read_addr: 0,
             nt_read_counter: 0,
-            ppu_idle_counter: 0,
+            last_ppu_fetch_dot: 0,
             multiplicand: 0,
             multiplier: 0,
             pulse1: Mmc5Pulse::new(),
@@ -611,27 +613,27 @@ impl MMC5Mapper {
         }
     }
 
-    fn detect_scanline(&mut self, addr: u16) {
-        if self.nt_read_counter >= 2 {
-            if !self.in_frame && !self.need_in_frame {
-                self.need_in_frame = true;
-                self.scanline_counter = 0;
-            } else {
-                self.scanline_counter = self.scanline_counter.wrapping_add(1);
-                if self.irq_scanline != 0 && self.irq_scanline == self.scanline_counter {
-                    self.irq_pending = true;
-                }
-            }
-        } else if addr >= 0x2000 && addr <= 0x2FFF {
+    fn detect_scanline(&mut self, addr: u16, dot: u64) {
+        if addr >= 0x2000 && addr <= 0x2FFF {
             if self.last_ppu_read_addr == addr {
                 self.nt_read_counter += 1;
-                if self.nt_read_counter >= 2 {
-                    self.split_tile_number = 0;
+            } else {
+                self.nt_read_counter = 0;
+            }
+            if self.nt_read_counter == 2 {
+                self.split_tile_number = 0;
+                if !self.in_frame && !self.need_in_frame {
+                    self.need_in_frame = true;
+                    self.scanline_counter = 0;
+                } else {
+                    self.scanline_counter = self.scanline_counter.wrapping_add(1);
+                    if self.irq_scanline != 0 && self.irq_scanline == self.scanline_counter {
+                        self.irq_pending = true;
+                        self.irq_pending_since_dot = dot;
+                    }
                 }
             }
-        }
-
-        if self.last_ppu_read_addr != addr {
+        } else {
             self.nt_read_counter = 0;
         }
         self.last_ppu_read_addr = addr;
@@ -754,7 +756,9 @@ impl MemoryMapper for MMC5Mapper {
             0x5102 => self.ram_protect_1 = value & 3,
             0x5103 => self.ram_protect_2 = value & 3,
             0x5104 => self.exram_mode = value & 3,
-            0x5105 => self.nt_mapping = value,
+            0x5105 => {
+                self.nt_mapping = value;
+            }
             0x5106 => self.fill_tile = value,
             0x5107 => self.fill_color = value & 3,
             0x5113 => self.prg_bank_regs[0] = value,
@@ -814,7 +818,9 @@ impl MemoryMapper for MMC5Mapper {
             0x5200 => self.vsplit_mode = value,
             0x5201 => self.vsplit_scroll = value,
             0x5202 => self.vsplit_bank = value,
-            0x5203 => self.irq_scanline = value,
+            0x5203 => {
+                self.irq_scanline = value;
+            }
             0x5204 => {
                 self.irq_enabled = value & 0x80 != 0;
             }
@@ -872,9 +878,9 @@ impl MemoryMapper for MMC5Mapper {
         self.read_nametable(addr)
     }
 
-    fn ppu_fetch(&mut self, addr: u16, _dot: u64) -> u8 {
+    fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
         self.rendering = true;
-        self.ppu_idle_counter = 3;
+        self.last_ppu_fetch_dot = dot;
         let addr = addr % 0x4000;
 
         let is_nt_range = addr >= 0x2000 && addr <= 0x2FFF;
@@ -892,7 +898,7 @@ impl MemoryMapper for MMC5Mapper {
         }
 
         // Step 2: scanline detection (called for ALL PPU reads)
-        self.detect_scanline(addr);
+        self.detect_scanline(addr, dot);
 
         // Nametable/attribute range
         if is_nt_range {
@@ -1015,6 +1021,10 @@ impl MemoryMapper for MMC5Mapper {
         self.irq_pending && self.irq_enabled
     }
 
+    fn poll_irq_at_dot(&self, deadline_dot: u64) -> bool {
+        self.irq_pending && self.irq_pending_since_dot <= deadline_dot
+    }
+
     fn sram_data(&self) -> Option<&[u8]> {
         if self.has_battery {
             Some(&self.prg_ram[..8192])
@@ -1035,11 +1045,14 @@ impl MemoryMapper for MMC5Mapper {
         true
     }
 
-    fn cpu_cycle(&mut self) {
-        // PPU idle detection — only clears in_frame
-        if self.ppu_idle_counter > 0 {
-            self.ppu_idle_counter -= 1;
-            if self.ppu_idle_counter == 0 {
+    fn cpu_cycle(&mut self, ppu_dot: u64) {
+        // PPU idle detection: if 9+ PPU dots have passed since the last
+        // ppu_fetch, the PPU is idle (VBlank). We use the actual dot gap
+        // rather than a CPU-cycle counter to avoid false expirations when
+        // mid-instruction PPU syncs push the PPU ahead of the mapper's
+        // cpu_cycle cadence.
+        if self.last_ppu_fetch_dot > 0 && ppu_dot >= self.last_ppu_fetch_dot + 9 {
+            if self.in_frame {
                 self.in_frame = false;
                 self.rendering = false;
                 self.nt_read_counter = 0;
@@ -1133,11 +1146,12 @@ impl MemoryMapper for MMC5Mapper {
         w.write_u8(self.irq_scanline);
         w.write_bool(self.irq_enabled);
         w.write_bool(self.irq_pending);
+        w.write_u64(self.irq_pending_since_dot);
         w.write_bool(self.in_frame);
         w.write_u8(self.scanline_counter);
         w.write_u16(self.last_ppu_read_addr);
         w.write_u8(self.nt_read_counter);
-        w.write_u8(self.ppu_idle_counter);
+        w.write_u64(self.last_ppu_fetch_dot);
 
         // Multiplier
         w.write_u8(self.multiplicand);
@@ -1209,11 +1223,21 @@ impl MemoryMapper for MMC5Mapper {
         self.irq_scanline = r.read_u8()?;
         self.irq_enabled = r.read_bool()?;
         self.irq_pending = r.read_bool()?;
+        if r.version() >= 7 {
+            self.irq_pending_since_dot = r.read_u64()?;
+        } else {
+            self.irq_pending_since_dot = 0;
+        }
         self.in_frame = r.read_bool()?;
         self.scanline_counter = r.read_u8()?;
         self.last_ppu_read_addr = r.read_u16()?;
         self.nt_read_counter = r.read_u8()?;
-        self.ppu_idle_counter = r.read_u8()?;
+        if r.version() >= 7 {
+            self.last_ppu_fetch_dot = r.read_u64()?;
+        } else {
+            let _old_idle_counter = r.read_u8()?;
+            self.last_ppu_fetch_dot = 0;
+        }
 
         self.multiplicand = r.read_u8()?;
         self.multiplier = r.read_u8()?;
@@ -1452,13 +1476,14 @@ mod tests {
     }
 
     fn simulate_scanline_boundary(m: &mut MMC5Mapper) {
-        // 3 consecutive identical NT reads trigger a scanline boundary
-        // on the NEXT call (the 4th read fires the >= 2 check at the top).
+        // A real scanline has many varied fetches between boundaries.
+        // Reset the consecutive-read counter with a pattern table read,
+        // then 3 consecutive identical NT reads trigger the boundary.
+        m.detect_scanline(0x0000, 0); // pattern fetch resets counter
         let addr = 0x2000;
-        m.detect_scanline(addr);
-        m.detect_scanline(addr);
-        m.detect_scanline(addr);
-        m.detect_scanline(0x2001); // 4th read (different addr) fires the boundary
+        m.detect_scanline(addr, 0);
+        m.detect_scanline(addr, 0);
+        m.detect_scanline(addr, 0);
     }
 
     #[test]
@@ -1546,11 +1571,10 @@ mod tests {
         m.rendering = true;
         m.nt_read_counter = 2;
         m.last_ppu_read_addr = 0x2000;
-        m.ppu_idle_counter = 3;
+        m.last_ppu_fetch_dot = 100;
 
-        m.cpu_cycle();
-        m.cpu_cycle();
-        m.cpu_cycle();
+        // 9 PPU dots after last fetch = idle expiry
+        m.cpu_cycle(109);
 
         assert!(!m.in_frame);
         assert!(!m.rendering);
@@ -1610,35 +1634,36 @@ mod tests {
     }
 
     #[test]
-    fn test_ppu_idle_counter() {
+    fn test_dot_based_idle_detection() {
         let mut m = make_mapper(2, 1);
         m.in_frame = true;
-        m.ppu_idle_counter = 3;
+        m.last_ppu_fetch_dot = 100;
 
-        // Simulate 3 CPU cycles without PPU fetch
-        m.cpu_cycle();
+        // 8 dots later: not yet idle
+        m.cpu_cycle(108);
         assert!(m.in_frame);
-        m.cpu_cycle();
-        assert!(m.in_frame);
-        m.cpu_cycle();
-        assert!(!m.in_frame); // Should exit frame after 3 idle cycles
+
+        // 9 dots later: idle
+        m.cpu_cycle(109);
+        assert!(!m.in_frame);
     }
 
     #[test]
     fn test_ppu_fetch_resets_idle() {
         let mut m = make_mapper(2, 1);
         m.in_frame = true;
-        m.ppu_idle_counter = 1; // About to expire
+        m.last_ppu_fetch_dot = 100;
 
-        // A PPU fetch should reset the counter
-        m.ppu_fetch(0x2000, 0);
-        assert_eq!(m.ppu_idle_counter, 3);
+        // A PPU fetch at dot 108 resets the idle baseline
+        m.ppu_fetch(0x2000, 108);
+        assert_eq!(m.last_ppu_fetch_dot, 108);
 
-        // Now 3 more cycles needed to exit frame
-        m.cpu_cycle();
-        m.cpu_cycle();
+        // 8 dots after new fetch: still in frame
+        m.cpu_cycle(116);
         assert!(m.in_frame);
-        m.cpu_cycle();
+
+        // 9 dots after new fetch: idle
+        m.cpu_cycle(117);
         assert!(!m.in_frame);
     }
 
@@ -1652,7 +1677,7 @@ mod tests {
 
         // Cycle a few times
         for _ in 0..100 {
-            m.cpu_cycle();
+            m.cpu_cycle(0);
         }
 
         let output = m.audio_expansion_output();
@@ -1668,7 +1693,7 @@ mod tests {
         m.cpu_write(0x5003, 0x08);
 
         for _ in 0..100 {
-            m.cpu_cycle();
+            m.cpu_cycle(0);
         }
 
         assert_eq!(m.audio_expansion_output(), 0.0);

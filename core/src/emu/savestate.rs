@@ -1,7 +1,7 @@
 use std::io;
 
 const MAGIC: &[u8; 4] = b"KRNK";
-const VERSION: u8 = 6;
+const VERSION: u8 = 7;
 
 pub struct SavestateWriter {
     buf: Vec<u8>,

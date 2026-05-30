@@ -82,7 +82,7 @@ pub trait MemoryMapper {
         // Default implementation does nothing
     }
 
-    fn cpu_cycle(&mut self) {}
+    fn cpu_cycle(&mut self, _ppu_dot: u64) {}
 
     fn notify_ppu_ctrl(&mut self, _value: u8) {}
 

@@ -259,7 +259,7 @@ impl MemoryMapper for SunsoftFme7Mapper {
         }
     }
 
-    fn cpu_cycle(&mut self) {
+    fn cpu_cycle(&mut self, _ppu_dot: u64) {
         if self.irq_counter_enabled {
             self.irq_counter = self.irq_counter.wrapping_sub(1);
             if self.irq_counter == 0xFFFF && self.irq_enabled {

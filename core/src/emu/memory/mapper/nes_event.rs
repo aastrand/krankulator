@@ -275,7 +275,7 @@ impl MemoryMapper for NesEventMapper {
         }
     }
 
-    fn cpu_cycle(&mut self) {
+    fn cpu_cycle(&mut self, _ppu_dot: u64) {
         if self.irq_enabled {
             self.irq_counter += 1;
             // DIP switch threshold — use tournament default (0x20000000)
