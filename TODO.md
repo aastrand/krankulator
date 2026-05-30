@@ -125,7 +125,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## Emulation Features
 
-- [ ] Rewind (ring buffer of save states, hold a key to scrub back) [L]
+- [x] Rewind (hold W or right trigger to scrub back through 10s of gameplay at 2x speed) [L]
 - [x] Fast-forward (hold Space for uncapped speed) [S]
 - [ ] Slow-motion (0.5x speed toggle) [XS]
 - [ ] Screenshot (save framebuffer as PNG) [S]

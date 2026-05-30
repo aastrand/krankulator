@@ -141,12 +141,17 @@ cargo clippy --workspace
 - Frame buffer (`buf.rs`): 256x240 RGB pixels
 - Palette lookup table (`palette.rs`)
 - Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
-- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state
+- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state, rewind status indicator
 
 **Audio (`emu/audio/`)**
 - `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
 - `SilentAudioOutput`, `CapturingAudioOutput` for headless/test use
 - WAV writer (`wav.rs`) for capturing test output
+
+**Rewind (`emu/rewind.rs`)**
+- `RewindBuffer`: ring buffer of savestate + framebuffer pairs (300 slots = 10s at 30fps capture rate)
+- Captures every other frame to give 2x rewind speed. Rewind activated via `PollResult.rewind` (W key or right trigger)
+- During rewind, emulation is paused; frames are popped and rendered with overlay showing remaining time
 
 **IO (`emu/io/`)**
 - `IOHandler` trait for input/rendering
@@ -226,6 +231,7 @@ Two macros in `core/src/lib.rs`:
 - Desktop: keyboard state tracked in `kb_state: u8`, OR'd with gilrs gamepad state, written via `load_status()`
 - Web: keyboard/touch keys set OR'd with Gamepad API poll result
 - Gamepad meta-actions (save/load/cycle) use edge detection (trigger on press, not hold)
+- Rewind: W key or right trigger (held, not edge-detected)
 
 ## File Structure
 
@@ -233,7 +239,7 @@ Two macros in `core/src/lib.rs`:
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
   src/lib.rs        — Crate root, exports test_input! and test_rom! macros
-  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio)
+  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind)
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point

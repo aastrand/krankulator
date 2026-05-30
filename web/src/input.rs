@@ -21,6 +21,7 @@ pub const MAPPED_KEYS: &[&str] = &[
     "KeyS",
     "KeyA",
     "KeyQ",
+    "KeyW",
     "KeyF",
     "Tab",
 ];
@@ -257,6 +258,7 @@ pub struct GamepadPollResult {
     pub save_state: bool,
     pub load_state: bool,
     pub cycle_slot: bool,
+    pub rewind: bool,
 }
 
 pub fn poll_gamepad() -> Option<GamepadPollResult> {
@@ -312,6 +314,7 @@ pub fn poll_gamepad() -> Option<GamepadPollResult> {
             save_state: btn(5),
             load_state: btn(4),
             cycle_slot: btn(6),
+            rewind: btn(7),
         });
     }
     None

@@ -77,12 +77,17 @@ impl IOHandler for WebIOHandler {
             }
         }
 
+        let mut rewind = keys.contains("KeyW");
         if let Some(gp) = super::input::poll_gamepad() {
             state |= gp.buttons;
+            rewind |= gp.rewind;
         }
 
         mem.controllers()[0].load_status(state);
-        PollResult::default()
+        PollResult {
+            rewind,
+            ..PollResult::default()
+        }
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {

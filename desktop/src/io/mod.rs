@@ -289,6 +289,9 @@ pub(crate) fn apply_gamepad(
         if s.cycle_slot {
             result.cycle_slot = true;
         }
+        if s.rewind {
+            result.rewind = true;
+        }
     }
     mem.controllers()[0].load_status(p0_state);
 
@@ -331,6 +334,7 @@ mod tests {
             save_state: false,
             load_state: false,
             cycle_slot: false,
+            rewind: false,
         }
     }
 
@@ -353,6 +357,7 @@ mod tests {
             save_state: false,
             load_state: false,
             cycle_slot: false,
+            rewind: false,
         };
         let bits = gamepad_state_to_bits(&s);
         assert_eq!(bits, 0xFF);

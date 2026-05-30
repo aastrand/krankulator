@@ -38,6 +38,7 @@ pub struct GtkPixelsIOHandler {
     cycle_slot_flag: Rc<Cell<bool>>,
     reset_flag: Rc<Cell<bool>>,
     toggle_overlay_flag: Rc<Cell<bool>>,
+    rewind_flag: Rc<Cell<bool>>,
     fullscreen_flag: Rc<Cell<bool>>,
     _menu: Menu,
     menu_ids: MenuIds,
@@ -138,6 +139,7 @@ impl GtkPixelsIOHandler {
         let cycle_slot_flag = Rc::new(Cell::new(false));
         let reset_flag = Rc::new(Cell::new(false));
         let toggle_overlay_flag = Rc::new(Cell::new(false));
+        let rewind_flag = Rc::new(Cell::new(false));
         let fullscreen_flag = Rc::new(Cell::new(false));
 
         {
@@ -157,11 +159,13 @@ impl GtkPixelsIOHandler {
             let cycle = cycle_slot_flag.clone();
             let reset = reset_flag.clone();
             let overlay = toggle_overlay_flag.clone();
+            let rw = rewind_flag.clone();
             let fs = fullscreen_flag.clone();
             let pp = pixel_perfect.clone();
             window.connect_key_press_event(move |_, event| {
                 handle_key(
-                    event, true, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &fs, &pp,
+                    event, true, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
+                    &pp,
                 );
                 glib::Propagation::Proceed
             });
@@ -176,11 +180,13 @@ impl GtkPixelsIOHandler {
             let cycle = cycle_slot_flag.clone();
             let reset = reset_flag.clone();
             let overlay = toggle_overlay_flag.clone();
+            let rw = rewind_flag.clone();
             let fs = fullscreen_flag.clone();
             let pp = pixel_perfect.clone();
             window.connect_key_release_event(move |_, event| {
                 handle_key(
-                    event, false, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &fs, &pp,
+                    event, false, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
+                    &pp,
                 );
                 glib::Propagation::Proceed
             });
@@ -203,6 +209,7 @@ impl GtkPixelsIOHandler {
             cycle_slot_flag,
             reset_flag,
             toggle_overlay_flag,
+            rewind_flag,
             fullscreen_flag,
             _menu: menu,
             menu_ids,
@@ -253,6 +260,7 @@ fn handle_key(
     cycle_slot: &Rc<Cell<bool>>,
     reset: &Rc<Cell<bool>>,
     toggle_overlay: &Rc<Cell<bool>>,
+    rewind: &Rc<Cell<bool>>,
     fullscreen: &Rc<Cell<bool>>,
     pixel_perfect: &Rc<Cell<bool>>,
 ) {
@@ -315,6 +323,9 @@ fn handle_key(
             } else {
                 kb &= !controller::DOWN;
             }
+        }
+        k if k == gdk_key::w || k == gdk_key::W => {
+            rewind.set(pressed);
         }
         k if k == gdk_key::space => {
             fast_forward.set(pressed);
@@ -434,6 +445,7 @@ impl IOHandler for GtkPixelsIOHandler {
             cycle_slot,
             reset,
             toggle_overlay,
+            rewind: self.rewind_flag.get(),
             toasts,
             open_rom: open_rom_path,
         };

@@ -18,6 +18,7 @@ pub struct PollResult {
     pub cycle_slot: bool,
     pub reset: bool,
     pub toggle_overlay: bool,
+    pub rewind: bool,
     pub toasts: Vec<String>,
     pub open_rom: Option<String>,
 }

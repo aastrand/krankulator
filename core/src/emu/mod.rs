@@ -6,6 +6,7 @@ pub mod gfx;
 pub mod io;
 pub mod memory;
 pub mod ppu;
+pub mod rewind;
 pub mod savestate;
 
 #[cfg(test)]
@@ -42,6 +43,12 @@ const CONTROLLER_DATA_MASK: u8 = 0x1F;
 
 // Save state slot count
 const SAVESTATE_SLOT_COUNT: u8 = 4;
+
+enum RewindStepResult {
+    Continue,
+    Done,
+    Exit,
+}
 
 #[derive(PartialEq)]
 pub enum CycleState {
@@ -91,6 +98,9 @@ pub struct Emulator {
     last_rendered_frame: u64,
     pub overlay: gfx::overlay::Overlay,
     pending_open_rom: Option<String>,
+    rewind_buffer: rewind::RewindBuffer,
+    rewind_capture_tick: bool,
+    rewinding: bool,
 }
 
 impl Emulator {
@@ -163,6 +173,9 @@ impl Emulator {
             last_rendered_frame: 0,
             overlay: gfx::overlay::Overlay::new(),
             pending_open_rom: None,
+            rewind_buffer: rewind::RewindBuffer::new(),
+            rewind_capture_tick: false,
+            rewinding: false,
         }
     }
 
@@ -197,6 +210,9 @@ impl Emulator {
         self.overlay.set_banner(None);
         self.should_trigger_nmi = true;
         self.should_exit_on_infinite_loop = false;
+        self.rewind_buffer.clear();
+        self.rewind_capture_tick = false;
+        self.rewinding = false;
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -361,6 +377,18 @@ impl Emulator {
         }
 
         loop {
+            if self.rewinding {
+                match self.rewind_step() {
+                    RewindStepResult::Continue => continue,
+                    RewindStepResult::Done => {
+                        self.rewinding = false;
+                        self.overlay.set_rewind_status(None);
+                        self.audio.clear();
+                        continue;
+                    }
+                    RewindStepResult::Exit => break,
+                }
+            }
             if self.cycle() == CycleState::Exiting {
                 break;
             }
@@ -369,7 +397,39 @@ impl Emulator {
         self.exit();
     }
 
+    fn rewind_step(&mut self) -> RewindStepResult {
+        if let Some(savestate) = self.rewind_buffer.pop_into(&mut self.buf.data) {
+            let _ = self.load_state_from_bytes(&savestate);
+        }
+        let secs = self.rewind_buffer.len() as f64 / rewind::CAPTURES_PER_SECOND;
+        self.overlay
+            .set_rewind_status(Some(format!("<< REWIND {:.1}s", secs)));
+        self.overlay.draw(&mut self.buf);
+        self.iohandler.render(&self.buf);
+        let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
+        if result.exit {
+            return RewindStepResult::Exit;
+        }
+        if result.rewind {
+            RewindStepResult::Continue
+        } else {
+            RewindStepResult::Done
+        }
+    }
+
     pub fn run_one_frame(&mut self) -> bool {
+        if self.rewinding {
+            return match self.rewind_step() {
+                RewindStepResult::Continue => true,
+                RewindStepResult::Done => {
+                    self.rewinding = false;
+                    self.overlay.set_rewind_status(None);
+                    self.audio.clear();
+                    true
+                }
+                RewindStepResult::Exit => false,
+            };
+        }
         let target_frame = self.ppu.frames + 1;
         while self.ppu.frames < target_frame {
             if self.cycle() == CycleState::Exiting {
@@ -484,6 +544,13 @@ impl Emulator {
 
         if self.ppu.frames > self.last_rendered_frame {
             self.last_rendered_frame = self.ppu.frames;
+            if !self.rewinding {
+                self.rewind_capture_tick = !self.rewind_capture_tick;
+                if self.rewind_capture_tick {
+                    let state = self.save_state_to_bytes();
+                    self.rewind_buffer.push(&state, &self.buf.data);
+                }
+            }
             if let Some(ms) = self.iohandler.frame_time_ms() {
                 self.overlay.set_frame_time(ms);
             }
@@ -511,6 +578,10 @@ impl Emulator {
                     self.savestate_slot = (self.savestate_slot + 1) % SAVESTATE_SLOT_COUNT;
                     self.overlay.toast(format!("SLOT {}", self.savestate_slot));
                 }
+            }
+            if result.rewind && !self.rewind_buffer.is_empty() {
+                self.rewinding = true;
+                self.audio.clear();
             }
             if result.toggle_overlay {
                 self.overlay.toggle();

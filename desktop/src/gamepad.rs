@@ -10,6 +10,7 @@ pub struct GamepadState {
     pub save_state: bool,
     pub load_state: bool,
     pub cycle_slot: bool,
+    pub rewind: bool,
 }
 
 struct RawState {
@@ -24,6 +25,7 @@ struct RawState {
     left_shoulder: bool,
     right_shoulder: bool,
     left_trigger: bool,
+    right_trigger: bool,
 }
 
 impl Default for RawState {
@@ -40,6 +42,7 @@ impl Default for RawState {
             left_shoulder: false,
             right_shoulder: false,
             left_trigger: false,
+            right_trigger: false,
         }
     }
 }
@@ -98,6 +101,7 @@ impl Gamepads {
                     save_state: save,
                     load_state: load,
                     cycle_slot: cycle,
+                    rewind: s.right_trigger,
                 });
             }
         }
@@ -159,6 +163,7 @@ mod platform {
                             left_shoulder: sw_a,
                             right_shoulder: sw_y,
                             left_trigger: false,
+                            right_trigger: false,
                         });
 
                         let lx = gamepad.leftThumbstick().xAxis().value();
@@ -179,6 +184,7 @@ mod platform {
                             left_shoulder: false,
                             right_shoulder: false,
                             left_trigger: false,
+                            right_trigger: false,
                         });
                     }
                     slot = 2;
@@ -200,6 +206,7 @@ mod platform {
                             left_shoulder: gamepad.leftShoulder().isPressed(),
                             right_shoulder: gamepad.rightShoulder().isPressed(),
                             left_trigger: gamepad.leftTrigger().isPressed(),
+                            right_trigger: gamepad.rightTrigger().isPressed(),
                         });
                     }
                     slot += 1;
@@ -313,6 +320,7 @@ mod platform {
                         left_shoulder: s.left_shoulder,
                         right_shoulder: s.right_shoulder,
                         left_trigger: s.left_trigger,
+                        right_trigger: s.right_trigger,
                     });
                     names[i] = Some(self.gilrs.gamepad(id).name().to_string());
                 }
@@ -334,6 +342,7 @@ mod platform {
                 Button::LeftTrigger => s.left_shoulder = pressed,
                 Button::RightTrigger => s.right_shoulder = pressed,
                 Button::LeftTrigger2 => s.left_trigger = pressed,
+                Button::RightTrigger2 => s.right_trigger = pressed,
                 _ => {}
             }
         }

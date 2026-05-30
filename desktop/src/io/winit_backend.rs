@@ -37,6 +37,7 @@ pub struct WinitPixelsIOHandler {
     kb_state: u8,
     fast_forward: bool,
     pixel_perfect: bool,
+    rewind_held: bool,
     _menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
@@ -132,6 +133,7 @@ impl WinitPixelsIOHandler {
             kb_state: 0,
             fast_forward: false,
             pixel_perfect: true,
+            rewind_held: false,
             _menu: menu,
             menu_ids,
             menu_items,
@@ -177,6 +179,7 @@ struct PollHandler<'a> {
     cycle_slot: bool,
     reset: bool,
     toggle_overlay: bool,
+    rewind: &'a mut bool,
     toasts: Vec<String>,
     open_rom: bool,
     recent_rom_path: Option<String>,
@@ -302,6 +305,9 @@ impl ApplicationHandler for PollHandler<'_> {
                                 self.toggle_overlay = true;
                             }
                         }
+                        KeyCode::KeyW => {
+                            *self.rewind = pressed;
+                        }
                         KeyCode::Space => {
                             *self.fast_forward = pressed;
                         }
@@ -406,6 +412,7 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: false,
             reset: false,
             toggle_overlay: false,
+            rewind: &mut self.rewind_held,
             toasts: Vec::new(),
             open_rom: false,
             recent_rom_path: None,
@@ -463,6 +470,7 @@ impl IOHandler for WinitPixelsIOHandler {
             handler.recent_rom_path.take()
         };
 
+        let rewind = *handler.rewind;
         let mut result = PollResult {
             exit: handler.exit,
             save_state: handler.save_state,
@@ -470,6 +478,7 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: handler.cycle_slot,
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
+            rewind,
             toasts: handler.toasts,
             open_rom,
         };

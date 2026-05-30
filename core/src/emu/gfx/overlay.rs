@@ -17,6 +17,7 @@ pub struct Overlay {
     frame_time_text: String,
     toasts: Vec<Toast>,
     banner: Option<String>,
+    rewind_status: Option<String>,
 }
 
 impl Overlay {
@@ -26,6 +27,7 @@ impl Overlay {
             frame_time_text: String::new(),
             toasts: Vec::new(),
             banner: None,
+            rewind_status: None,
         }
     }
 
@@ -40,6 +42,10 @@ impl Overlay {
 
     pub fn set_banner(&mut self, text: Option<String>) {
         self.banner = text;
+    }
+
+    pub fn set_rewind_status(&mut self, text: Option<String>) {
+        self.rewind_status = text;
     }
 
     pub fn toast(&mut self, text: String) {
@@ -71,6 +77,11 @@ impl Overlay {
         }
 
         let mut y = buf.height as i32 - 12;
+        if let Some(ref text) = self.rewind_status {
+            let x = (buf.width as i32 - text.len() as i32 * 8) / 2;
+            font::draw_string(buf, x, y, text, FG, OUTLINE);
+            y -= TOAST_LINE_SPACING;
+        }
         for toast in self.toasts.iter().rev() {
             let x = (buf.width as i32 - toast.text.len() as i32 * 8) / 2;
             font::draw_string(buf, x, y, &toast.text, FG, OUTLINE);
