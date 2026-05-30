@@ -21,10 +21,9 @@ Coverage: 695/695 licensed NTSC US games (100%)
 - Games (2): Mike Tyson's Punch-Out!!, Punch-Out!!
 - CHR latch-switching via `ppu_fetch()` hook: reading $0FD8/$0FE8 (left) and $1FD8-$1FDF/$1FE8-$1FEF (right) triggers deferred CHR bank switch. PRG: 8KB switchable + 24KB fixed.
 
-**Mapper 5 — MMC5 (ExROM)** [done, known issues]
+**Mapper 5 — MMC5 (ExROM)** [done]
 - Games (~8): Castlevania III: Dracula's Curse, Laser Invasion, Uncharted Waters, Romance of the Three Kingdoms II, Nobunaga's Ambition II, Gemfire, L'Empereur
 - The most complex NES mapper. Multiple PRG/CHR banking modes (4 PRG modes, 4 CHR modes), ExRAM with nametable mapping, hardware 8×8 multiplier, scanline IRQ via PPU fetch detection, fill-mode nametable, two expansion pulse audio channels mixed into APU.
-- **Known issue:** Scanline IRQ timing is not fully accurate — games boot and are playable but scanline-timed effects (e.g. Castlevania III status bar) may glitch. Likely blocked on core IRQ/NMI timing accuracy (see ignored cpu_interrupts_v2 and ppu_vbl_nmi tests).
 
 ### Completed: Priority 3 — MMC3 variants
 

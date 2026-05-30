@@ -128,7 +128,7 @@ cargo clippy --workspace
 - Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
-- Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle()` for per-cycle mapper logic (MMC5 audio/IRQ), `notify_ppu_ctrl()` for sprite size tracking, and `audio_expansion_output()` for expansion audio mixing
+- Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, and `audio_expansion_output()` for expansion audio mixing
 - `PpuBus` shared struct handles CHR read/write, nametable mirroring, palette RAM, and VRAM for simple mappers
 - AND-type bus conflict emulation for discrete logic mappers (BNROM, GxROM)
 
