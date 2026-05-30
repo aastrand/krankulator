@@ -103,7 +103,7 @@ impl WinitPixelsIOHandler {
             p.set_scaling_mode(ScalingMode::PixelPerfect);
         }
 
-        let window = init.window.unwrap();
+        let _window = init.window.unwrap();
         let (menu, menu_ids, menu_items) = build_menu_contents();
 
         #[cfg(target_os = "macos")]
@@ -114,7 +114,7 @@ impl WinitPixelsIOHandler {
         #[cfg(target_os = "windows")]
         {
             use raw_window_handle::HasWindowHandle;
-            if let Ok(handle) = window.window_handle() {
+            if let Ok(handle) = _window.window_handle() {
                 if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
                     unsafe { menu.init_for_hwnd(h.hwnd.get() as _).unwrap() };
                 }
