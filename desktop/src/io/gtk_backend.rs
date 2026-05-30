@@ -18,6 +18,7 @@ use super::{
     populate_recent_submenu, MenuIds, MenuItems,
 };
 use crate::gamepad::Gamepads;
+use crate::settings::Settings;
 const NES_WIDTH: i32 = 256;
 const NES_HEIGHT: i32 = 240;
 
@@ -46,7 +47,7 @@ pub struct GtkPixelsIOHandler {
 }
 
 impl GtkPixelsIOHandler {
-    pub fn new(_width: u32, _height: u32, rom_name: &str) -> Self {
+    pub fn new(_width: u32, _height: u32, rom_name: &str, _settings: &Settings) -> Self {
         gtk::init().expect("Failed to initialize GTK");
 
         let window = gtk::Window::new(gtk::WindowType::Toplevel);

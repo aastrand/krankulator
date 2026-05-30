@@ -9,20 +9,25 @@ use krankulator_core::emu::gfx;
 use krankulator_core::emu::io::{controller, IOHandler, PollResult};
 use krankulator_core::emu::memory::MemoryMapper;
 
+use super::crt_renderer::CrtRenderer;
 use super::document;
 
 pub struct WebIOHandler {
     contexts: Vec<CanvasRenderingContext2d>,
+    crt: Option<CrtRenderer>,
     keys: Rc<RefCell<HashSet<String>>>,
     rgba_buf: Vec<u8>,
+    prev_f9: bool,
 }
 
 impl WebIOHandler {
     pub fn new(keys: Rc<RefCell<HashSet<String>>>) -> Self {
         Self {
             contexts: Vec::new(),
+            crt: None,
             keys,
             rgba_buf: vec![0u8; 256 * 240 * 4],
+            prev_f9: false,
         }
     }
 }
@@ -41,13 +46,21 @@ fn get_canvas_ctx(id: &str) -> Option<CanvasRenderingContext2d> {
 
 impl IOHandler for WebIOHandler {
     fn init(&mut self) -> Result<(), String> {
-        for id in &["nes-canvas", "nes-canvas-touch"] {
-            if let Some(ctx) = get_canvas_ctx(id) {
-                self.contexts.push(ctx);
+        match CrtRenderer::new(&["nes-canvas", "nes-canvas-touch"]) {
+            Ok(crt) => {
+                self.crt = Some(crt);
             }
-        }
-        if self.contexts.is_empty() {
-            return Err("no canvas found".to_string());
+            Err(e) => {
+                web_sys::console::warn_1(&format!("WebGL2 CRT init failed: {e}").into());
+                for id in &["nes-canvas", "nes-canvas-touch"] {
+                    if let Some(ctx) = get_canvas_ctx(id) {
+                        self.contexts.push(ctx);
+                    }
+                }
+                if self.contexts.is_empty() {
+                    return Err("no canvas found".to_string());
+                }
+            }
         }
         Ok(())
     }
@@ -83,24 +96,44 @@ impl IOHandler for WebIOHandler {
             rewind |= gp.rewind;
         }
 
+        let mut toasts = Vec::new();
+        let f9_held = keys.contains("F9");
+        if f9_held && !self.prev_f9 {
+            if let Some(crt) = &mut self.crt {
+                crt.enabled = !crt.enabled;
+                if crt.enabled {
+                    toasts.push("CRT scanlines ON".into());
+                } else {
+                    toasts.push("CRT scanlines OFF".into());
+                }
+            }
+        }
+        self.prev_f9 = f9_held;
+
         mem.controllers()[0].load_status(state);
         PollResult {
             rewind,
+            toasts,
             ..PollResult::default()
         }
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        if self.contexts.is_empty() {
-            return;
-        }
-
         let rgb = &buf.data;
         for i in 0..(256 * 240) {
             self.rgba_buf[i * 4] = rgb[i * 3];
             self.rgba_buf[i * 4 + 1] = rgb[i * 3 + 1];
             self.rgba_buf[i * 4 + 2] = rgb[i * 3 + 2];
             self.rgba_buf[i * 4 + 3] = 255;
+        }
+
+        if let Some(crt) = &mut self.crt {
+            crt.render(&self.rgba_buf);
+            return;
+        }
+
+        if self.contexts.is_empty() {
+            return;
         }
 
         let clamped = wasm_bindgen::Clamped(&self.rgba_buf[..]);

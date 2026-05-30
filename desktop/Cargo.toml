@@ -14,6 +14,8 @@ krankulator-core = { path = "../core" }
 clap = { version = "3.1.1", features = ["derive"] }
 winit = "0.30"
 pixels = "0.17"
+wgpu = "29"
+bytemuck = { version = "1", features = ["derive"] }
 rodio = "0.17"
 rfd = "0.15"
 dirs = "6"

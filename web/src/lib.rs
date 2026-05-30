@@ -1,4 +1,5 @@
 mod audio;
+pub(crate) mod crt_renderer;
 mod input;
 mod io;
 mod persistence;

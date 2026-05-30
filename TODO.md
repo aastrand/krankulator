@@ -140,9 +140,10 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 Currently: pixels crate on macOS/Windows, Cairo software rendering on Linux (GTK3). Integer scaling (default) or fill scaling (I key), fullscreen (F11).
 
-- [ ] Shader/filter support [L]
-  - CRT scanline filter
-  - NTSC composite video simulation (blargg's nes_ntsc or similar)
+- [x] CRT scanline filter (CRT-Lottes-Fast shader, F9 toggle, persisted in settings) [L]
+  - WGSL for wgpu (macOS/Windows), GLSL ES 3.0 for WebGL2 (web)
+  - [ ] Linux: GtkGLArea + OpenGL 3.3 GLSL (deferred — needs test bed)
+- [ ] NTSC composite video simulation (blargg's nes_ntsc or similar) [L]
 - [ ] Configurable window scale (1x-6x) [S]
 - [ ] Aspect ratio correction (8:7 pixel aspect ratio for accurate NES output) [S]
 - [ ] Overscan cropping option (hide top/bottom 8 scanlines like real TVs did) [S]
@@ -320,7 +321,7 @@ Visual demos, interactive tests, or unsupported hardware — cannot use $6000 pr
 
 ## Misc / Maybe
 
-- [ ] Config file (~/.config/krankulator/config.toml) for persistent settings [M]
+- [x] Persistent settings (~/.config/krankulator/settings.txt) for integer scaling and CRT scanlines [M]
 - [ ] Netplay (rollback-based) [XXL]
 - [ ] Input recording/playback (TAS support) [L]
 - [ ] ROM database (hash-based game identification, auto-select mapper) [M]

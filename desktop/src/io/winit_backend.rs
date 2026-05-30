@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use muda::{Menu, MenuEvent};
 use pixels::{Pixels, ScalingMode, SurfaceTexture};
+use wgpu::util::DeviceExt;
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::{
     application::ApplicationHandler,
@@ -25,6 +26,24 @@ use super::{
     populate_recent_submenu, MenuIds, MenuItems,
 };
 use crate::gamepad::Gamepads;
+use crate::settings::{self, Settings};
+
+struct CrtPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    uniform_buf: wgpu::Buffer,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct CrtUniforms {
+    output_size: [f32; 2],
+    texture_size: [f32; 2],
+    input_size: [f32; 2],
+    enabled: f32,
+    _pad: f32,
+}
 
 pub struct WinitPixelsIOHandler {
     pixels: Option<Pixels<'static>>,
@@ -38,6 +57,8 @@ pub struct WinitPixelsIOHandler {
     fast_forward: bool,
     pixel_perfect: bool,
     rewind_held: bool,
+    scanlines: bool,
+    crt: Option<CrtPipeline>,
     _menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
@@ -79,7 +100,7 @@ impl ApplicationHandler for InitHandler {
 }
 
 impl WinitPixelsIOHandler {
-    pub fn new(width: u32, height: u32, rom_name: &str) -> Self {
+    pub fn new(width: u32, height: u32, rom_name: &str, settings: &Settings) -> Self {
         let mut event_loop = EventLoop::new().unwrap();
 
         let mut init = InitHandler {
@@ -101,11 +122,22 @@ impl WinitPixelsIOHandler {
 
         let mut pixels = init.pixels;
         if let Some(p) = pixels.as_mut() {
-            p.set_scaling_mode(ScalingMode::PixelPerfect);
+            if settings.integer_scaling {
+                p.set_scaling_mode(ScalingMode::PixelPerfect);
+            } else {
+                p.set_scaling_mode(ScalingMode::Fill);
+            }
         }
+
+        let crt = pixels.as_ref().map(|p| {
+            let window_size = init.window.unwrap().inner_size();
+            create_crt_pipeline(p, window_size.width, window_size.height, settings.scanlines)
+        });
 
         let _window = init.window.unwrap();
         let (menu, menu_ids, menu_items) = build_menu_contents();
+        menu_items.scaling.set_checked(settings.integer_scaling);
+        menu_items.scanlines.set_checked(settings.scanlines);
 
         #[cfg(target_os = "macos")]
         {
@@ -132,12 +164,151 @@ impl WinitPixelsIOHandler {
             last_frame_ms: 0.0,
             kb_state: 0,
             fast_forward: false,
-            pixel_perfect: true,
+            pixel_perfect: settings.integer_scaling,
             rewind_held: false,
+            scanlines: settings.scanlines,
+            crt,
             _menu: menu,
             menu_ids,
             menu_items,
         }
+    }
+}
+
+fn compute_viewport(
+    win_w: f32,
+    win_h: f32,
+    tex_w: f32,
+    tex_h: f32,
+    integer_scaling: bool,
+) -> (f32, f32, f32, f32) {
+    let scale_x = win_w / tex_w;
+    let scale_y = win_h / tex_h;
+    let scale = if integer_scaling {
+        scale_x.min(scale_y).floor().max(1.0)
+    } else {
+        scale_x.min(scale_y)
+    };
+    let vp_w = tex_w * scale;
+    let vp_h = tex_h * scale;
+    let vp_x = (win_w - vp_w) * 0.5;
+    let vp_y = (win_h - vp_h) * 0.5;
+    (vp_x, vp_y, vp_w, vp_h)
+}
+
+fn create_crt_pipeline(
+    pixels: &Pixels,
+    output_width: u32,
+    output_height: u32,
+    enabled: bool,
+) -> CrtPipeline {
+    let device = pixels.device();
+
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("crt_lottes"),
+        source: wgpu::ShaderSource::Wgsl(
+            include_str!("../../../core/src/emu/gfx/shaders/crt_lottes.wgsl").into(),
+        ),
+    });
+
+    let uniforms = CrtUniforms {
+        output_size: [output_width as f32, output_height as f32],
+        texture_size: [256.0, 240.0],
+        input_size: [256.0, 240.0],
+        enabled: if enabled { 1.0 } else { 0.0 },
+        _pad: 0.0,
+    };
+
+    let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("crt_uniforms"),
+        contents: bytemuck::bytes_of(&uniforms),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("crt_sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("crt_bind_group_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("crt_pipeline_layout"),
+        bind_group_layouts: &[Some(&bind_group_layout)],
+        immediate_size: 0,
+    });
+
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("crt_pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: pixels.surface_texture_format(),
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    });
+
+    CrtPipeline {
+        pipeline,
+        bind_group_layout,
+        sampler,
+        uniform_buf,
     }
 }
 
@@ -171,6 +342,7 @@ struct PollHandler<'a> {
     apu: &'a mut apu::APU,
     muted: &'a mut bool,
     pixel_perfect: &'a mut bool,
+    scanlines: &'a mut bool,
     kb_state: &'a mut u8,
     fast_forward: &'a mut bool,
     exit: bool,
@@ -242,6 +414,10 @@ impl ApplicationHandler for PollHandler<'_> {
                                     self.toasts.push("Fill scaling".into());
                                 }
                                 self.window.request_redraw();
+                                settings::save_settings(&Settings {
+                                    integer_scaling: *self.pixel_perfect,
+                                    scanlines: *self.scanlines,
+                                });
                             }
                         }
                         KeyCode::KeyM => {
@@ -303,6 +479,21 @@ impl ApplicationHandler for PollHandler<'_> {
                         KeyCode::Tab => {
                             if pressed {
                                 self.toggle_overlay = true;
+                            }
+                        }
+                        KeyCode::F9 => {
+                            if pressed {
+                                *self.scanlines = !*self.scanlines;
+                                if *self.scanlines {
+                                    self.toasts.push("CRT scanlines ON".into());
+                                } else {
+                                    self.toasts.push("CRT scanlines OFF".into());
+                                }
+                                self.menu_items.scanlines.set_checked(*self.scanlines);
+                                settings::save_settings(&Settings {
+                                    integer_scaling: *self.pixel_perfect,
+                                    scanlines: *self.scanlines,
+                                });
                             }
                         }
                         KeyCode::KeyW => {
@@ -404,6 +595,7 @@ impl IOHandler for WinitPixelsIOHandler {
             apu,
             muted: &mut self.muted,
             pixel_perfect: &mut self.pixel_perfect,
+            scanlines: &mut self.scanlines,
             kb_state: &mut self.kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
@@ -453,6 +645,22 @@ impl IOHandler for WinitPixelsIOHandler {
                     handler.toasts.push("Fill scaling".into());
                 }
                 handler.window.request_redraw();
+                settings::save_settings(&Settings {
+                    integer_scaling: *handler.pixel_perfect,
+                    scanlines: *handler.scanlines,
+                });
+            } else if *id == handler.menu_ids.scanlines {
+                *handler.scanlines = !*handler.scanlines;
+                self.menu_items.scanlines.set_checked(*handler.scanlines);
+                if *handler.scanlines {
+                    handler.toasts.push("CRT scanlines ON".into());
+                } else {
+                    handler.toasts.push("CRT scanlines OFF".into());
+                }
+                settings::save_settings(&Settings {
+                    integer_scaling: *handler.pixel_perfect,
+                    scanlines: *handler.scanlines,
+                });
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -517,8 +725,82 @@ impl IOHandler for WinitPixelsIOHandler {
                 frame[j + 3] = 255;
             }
         }
-        pixels.render().unwrap();
-        self.window.unwrap().request_redraw();
+
+        if self.scanlines {
+            if let Some(crt) = &self.crt {
+                let (vp_x, vp_y, vp_w, vp_h) = compute_viewport(
+                    size.width as f32,
+                    size.height as f32,
+                    256.0,
+                    240.0,
+                    self.pixel_perfect,
+                );
+                let uniforms = CrtUniforms {
+                    output_size: [vp_w, vp_h],
+                    texture_size: [256.0, 240.0],
+                    input_size: [256.0, 240.0],
+                    enabled: 1.0,
+                    _pad: 0.0,
+                };
+                pixels
+                    .queue()
+                    .write_buffer(&crt.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+
+                let texture_view = pixels
+                    .texture()
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+                let bind_group = pixels
+                    .device()
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("crt_bind_group"),
+                        layout: &crt.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: crt.uniform_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&texture_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&crt.sampler),
+                            },
+                        ],
+                    });
+
+                let pipeline = &crt.pipeline;
+                pixels
+                    .render_with(|encoder, render_target, _context| {
+                        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("crt_render_pass"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: render_target,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                                depth_slice: None,
+                            })],
+                            ..Default::default()
+                        });
+                        rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
+                        rpass.set_pipeline(pipeline);
+                        rpass.set_bind_group(0, Some(&bind_group), &[]);
+                        rpass.draw(0..4, 0..1);
+                        Ok(())
+                    })
+                    .unwrap();
+            } else {
+                pixels.render().unwrap();
+            }
+        } else {
+            pixels.render().unwrap();
+        }
+
+        window.request_redraw();
     }
 
     fn exit(&self, s: String) {

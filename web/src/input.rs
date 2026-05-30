@@ -24,6 +24,7 @@ pub const MAPPED_KEYS: &[&str] = &[
     "KeyW",
     "KeyF",
     "Tab",
+    "F9",
 ];
 
 pub fn setup_keyboard(keys: Rc<RefCell<HashSet<String>>>) {

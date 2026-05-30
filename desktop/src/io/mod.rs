@@ -37,11 +37,13 @@ pub(crate) struct MenuIds {
     pub cycle_slot: muda::MenuId,
     pub fullscreen: muda::MenuId,
     pub scaling: muda::MenuId,
+    pub scanlines: muda::MenuId,
 }
 
 pub(crate) struct MenuItems {
     pub fullscreen: CheckMenuItem,
     pub scaling: CheckMenuItem,
+    pub scanlines: CheckMenuItem,
     pub recent_submenu: Submenu,
     pub recent_items: Vec<(muda::MenuId, String)>,
 }
@@ -175,8 +177,11 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
     let fullscreen_id = fullscreen.id().clone();
     let scaling = CheckMenuItem::new("Integer Scaling", true, true, None::<Accelerator>);
     let scaling_id = scaling.id().clone();
+    let scanlines = CheckMenuItem::new("CRT Scanlines", true, false, None::<Accelerator>);
+    let scanlines_id = scanlines.id().clone();
     view_menu.append(&fullscreen).unwrap();
     view_menu.append(&scaling).unwrap();
+    view_menu.append(&scanlines).unwrap();
 
     let help_menu = Submenu::new("Help", true);
     help_menu
@@ -211,10 +216,12 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         cycle_slot: cycle_slot_id,
         fullscreen: fullscreen_id,
         scaling: scaling_id,
+        scanlines: scanlines_id,
     };
     let items = MenuItems {
         fullscreen,
         scaling,
+        scanlines,
         recent_submenu,
         recent_items,
     };

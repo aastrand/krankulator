@@ -1,6 +1,7 @@
 mod audio;
 mod gamepad;
 mod io;
+pub(crate) mod settings;
 
 use std::io::Read;
 
@@ -94,6 +95,7 @@ struct Args {
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
+    let settings = settings::load_settings();
 
     let mut emu = if let Some(ref input) = args.input {
         match args.loader.as_str() {
@@ -124,7 +126,8 @@ fn main() -> Result<(), String> {
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or(input);
-                        let io = Box::new(io::PlatformIOHandler::new(256, 240, rom_name));
+                        let io =
+                            Box::new(io::PlatformIOHandler::new(256, 240, rom_name, &settings));
                         emu::Emulator::new_with(io, mapper, audio)
                     } else {
                         emu::Emulator::new_headless(mapper)
@@ -153,7 +156,12 @@ fn main() -> Result<(), String> {
             audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
                 .expect("No audio output device available"),
         );
-        let io = Box::new(io::PlatformIOHandler::new(256, 240, "krankulator"));
+        let io = Box::new(io::PlatformIOHandler::new(
+            256,
+            240,
+            "krankulator",
+            &settings,
+        ));
         let mut emu = emu::Emulator::new_with(io, mapper, audio);
         emu.toggle_should_exit_on_infinite_loop(false);
         emu.toggle_should_trigger_nmi(false);

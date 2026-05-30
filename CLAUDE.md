@@ -142,6 +142,7 @@ cargo clippy --workspace
 - Palette lookup table (`palette.rs`)
 - Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
 - Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state, rewind status indicator
+- CRT shaders (`shaders/`): CRT-Lottes-Fast (Timothy Lottes, public domain) in WGSL (`crt_lottes.wgsl`) and GLSL ES 3.0 (`crt_lottes_web.vert`/`.frag`). 8-tap gaussian filter, windowed cosine scanlines, aperture grille mask, barrel distortion, auto-exposure tonemapper. Toggled via F9 key or menu.
 
 **Audio (`emu/audio/`)**
 - `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
@@ -168,16 +169,18 @@ cargo clippy --workspace
 ### Desktop Frontend (`desktop/src/`)
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
+- `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`. Simple key=value format, no serde.
 - `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`)
-- `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, debug shell (shrust)
-- `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + Cairo software rendering (BGRA `ImageSurface`), muda menu via `init_for_gtk_window()`, native Wayland support. Menu bar visible in fullscreen (GTK3/Wayland limitation)
+- `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust)
+- `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + Cairo software rendering (BGRA `ImageSurface`), muda menu via `init_for_gtk_window()`, native Wayland support. Menu bar visible in fullscreen (GTK3/Wayland limitation). No CRT shader yet.
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
 - `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
 ### Web Frontend (`web/`)
 
 - `src/lib.rs` — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
-- `src/io.rs` — `WebIOHandler`: Canvas 2D rendering, controller polling
+- `src/io.rs` — `WebIOHandler`: WebGL2 CRT rendering (with Canvas 2D fallback), controller polling
+- `src/crt_renderer.rs` — `CrtRenderer`: WebGL2 CRT-Lottes-Fast shader pipeline, canvas resize handling, F9 toggle
 - `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction, visibility pause
 - `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle, Gamepad API polling, fullscreen toggle (F key / double-click)
 - `src/persistence.rs` — localStorage save states/SRAM, base64 encoding, beforeunload handler
@@ -240,18 +243,21 @@ Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
   src/lib.rs        — Crate root, exports test_input! and test_rom! macros
   src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind)
+  src/emu/gfx/shaders/ — CRT-Lottes-Fast shader sources (crt_lottes.wgsl, crt_lottes_web.vert/.frag)
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
+  src/settings.rs   — Persistent settings (integer_scaling, scanlines)
   src/io/mod.rs     — Shared menu, recent ROMs, platform re-export
-  src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels)
+  src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels + CRT shader)
   src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + Cairo)
   src/audio.rs      — rodio AudioBackend
   build.rs          — Windows icon embedding (winresource)
   assets/           — icon.png, icon.ico, Info.plist, krankulator.desktop
 web/                — WebAssembly frontend
   src/lib.rs        — wasm-bindgen entry, ROM loading, emulator setup, rAF game loop
-  src/io.rs         — WebIOHandler (Canvas 2D rendering, controller polling)
+  src/io.rs         — WebIOHandler (WebGL2 CRT rendering with Canvas 2D fallback)
+  src/crt_renderer.rs — WebGL2 CRT shader pipeline
   src/audio.rs      — WebAudioBackend (AudioWorklet, context setup)
   src/input.rs      — Keyboard, touch controls, double-tap overlay toggle, Gamepad API
   src/persistence.rs — localStorage save states/SRAM, base64, beforeunload
