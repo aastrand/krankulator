@@ -278,7 +278,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (512 tests, 31 ignored). Desktop has 6 tests including audio backend wiring.
+All emulation tests live in `core/` (523 tests, 31 ignored). Desktop has 6 tests including audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior

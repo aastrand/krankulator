@@ -2652,17 +2652,6 @@ mod tests {
             // Run through the pre-render scanline and scanline 0
             for _ in 0..(341 + 257) {
                 // Before stepping, capture state at key points
-                let next_cycle = if ppu.cycle == CYCLES_PER_SCANLINE {
-                    0
-                } else {
-                    ppu.cycle + 1
-                };
-                let next_scanline = if ppu.cycle == CYCLES_PER_SCANLINE {
-                    (ppu.scanline + 1) % NUM_SCANLINES
-                } else {
-                    ppu.scanline
-                };
-
                 ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
 
                 // Capture fine_y during prefetch pattern low fetch (dot 325)
