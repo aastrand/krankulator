@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
+use std::process::Command;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -25,6 +26,47 @@ use crate::settings::Settings;
 
 extern "C" {
     fn eglGetProcAddress(name: *const std::ffi::c_char) -> *const std::ffi::c_void;
+}
+
+fn screensaver_inhibit() -> Option<u32> {
+    let output = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.ScreenSaver",
+            "--object-path",
+            "/org/freedesktop/ScreenSaver",
+            "--method",
+            "org.freedesktop.ScreenSaver.Inhibit",
+            "krankulator",
+            "NES emulation in progress",
+        ])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .trim()
+        .strip_prefix("(uint32 ")?
+        .strip_suffix(",)")?
+        .parse()
+        .ok()
+}
+
+fn screensaver_uninhibit(cookie: u32) {
+    let _ = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.ScreenSaver",
+            "--object-path",
+            "/org/freedesktop/ScreenSaver",
+            "--method",
+            "org.freedesktop.ScreenSaver.UnInhibit",
+            &cookie.to_string(),
+        ])
+        .output();
 }
 
 const NES_WIDTH: i32 = 256;
@@ -89,6 +131,7 @@ pub struct GtkPixelsIOHandler {
     menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
+    screensaver_cookie: Option<u32>,
 }
 
 impl GtkPixelsIOHandler {
@@ -274,6 +317,7 @@ impl GtkPixelsIOHandler {
             menu,
             menu_ids,
             menu_items,
+            screensaver_cookie: screensaver_inhibit(),
         }
     }
 
@@ -774,6 +818,9 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn exit(&self, s: String) {
+        if let Some(cookie) = self.screensaver_cookie {
+            screensaver_uninhibit(cookie);
+        }
         self.log(s);
     }
 }
