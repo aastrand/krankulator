@@ -168,6 +168,7 @@ fn main() -> Result<(), String> {
         emu.toggle_should_trigger_nmi(false);
         emu.set_overscan(settings.overscan);
         emu.overlay.set_banner(Some("Open a ROM to play".into()));
+        emu.set_static_noise(true);
         emu
     };
 

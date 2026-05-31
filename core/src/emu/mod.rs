@@ -102,6 +102,8 @@ pub struct Emulator {
     rewind_capture_tick: bool,
     rewinding: bool,
     overscan: bool,
+    static_noise: bool,
+    noise_state: u32,
 }
 
 impl Emulator {
@@ -178,7 +180,13 @@ impl Emulator {
             rewind_capture_tick: false,
             rewinding: false,
             overscan: false,
+            static_noise: false,
+            noise_state: 0x1234,
         }
+    }
+
+    pub fn set_static_noise(&mut self, enabled: bool) {
+        self.static_noise = enabled;
     }
 
     pub fn set_overscan(&mut self, enabled: bool) {
@@ -188,6 +196,24 @@ impl Emulator {
         } else {
             0
         });
+    }
+
+    fn fill_static_noise(&mut self) {
+        let data = &mut self.buf.data;
+        let mut state = self.noise_state;
+        let mut i = 0;
+        while i + 2 < data.len() {
+            // 32-bit LFSR with taps at 32,22,2,1 (maximal period)
+            let bit = ((state >> 0) ^ (state >> 1) ^ (state >> 21) ^ (state >> 31)) & 1;
+            state = (state >> 1) | (bit << 31);
+            let luma = (state & 0xFF) as u8;
+            // Slight blue tint like a real no-signal CRT
+            data[i] = (luma as u16 * 200 / 256) as u8;
+            data[i + 1] = (luma as u16 * 210 / 256) as u8;
+            data[i + 2] = luma;
+            i += 3;
+        }
+        self.noise_state = state;
     }
 
     pub fn set_rom_path(&mut self, path: &str) {
@@ -219,6 +245,7 @@ impl Emulator {
         self.savestate_slot = 0;
         self.last_rendered_frame = 0;
         self.overlay.set_banner(None);
+        self.static_noise = false;
         self.should_trigger_nmi = true;
         self.should_exit_on_infinite_loop = false;
         self.rewind_buffer.clear();
@@ -558,6 +585,9 @@ impl Emulator {
 
         if self.ppu.frames > self.last_rendered_frame {
             self.last_rendered_frame = self.ppu.frames;
+            if self.static_noise {
+                self.fill_static_noise();
+            }
             if !self.rewinding {
                 self.rewind_capture_tick = !self.rewind_capture_tick;
                 if self.rewind_capture_tick {
