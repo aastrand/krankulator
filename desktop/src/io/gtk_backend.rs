@@ -18,6 +18,7 @@ use super::{
     populate_recent_submenu, MenuIds, MenuItems,
 };
 use crate::gamepad::Gamepads;
+use crate::settings;
 use crate::settings::Settings;
 const NES_WIDTH: i32 = 256;
 const NES_HEIGHT: i32 = 240;
@@ -41,13 +42,15 @@ pub struct GtkPixelsIOHandler {
     toggle_overlay_flag: Rc<Cell<bool>>,
     rewind_flag: Rc<Cell<bool>>,
     fullscreen_flag: Rc<Cell<bool>>,
+    overscan: Rc<Cell<bool>>,
+    overscan_changed: Cell<bool>,
     _menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
 }
 
 impl GtkPixelsIOHandler {
-    pub fn new(_width: u32, _height: u32, rom_name: &str, _settings: &Settings) -> Self {
+    pub fn new(_width: u32, _height: u32, rom_name: &str, settings: &Settings) -> Self {
         gtk::init().expect("Failed to initialize GTK");
 
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
@@ -142,6 +145,7 @@ impl GtkPixelsIOHandler {
         let toggle_overlay_flag = Rc::new(Cell::new(false));
         let rewind_flag = Rc::new(Cell::new(false));
         let fullscreen_flag = Rc::new(Cell::new(false));
+        let overscan = Rc::new(Cell::new(settings.overscan));
 
         {
             let flag = exit_flag.clone();
@@ -193,6 +197,8 @@ impl GtkPixelsIOHandler {
             });
         }
 
+        menu_items.overscan.set_checked(settings.overscan);
+
         Self {
             window,
             drawing_area,
@@ -212,6 +218,8 @@ impl GtkPixelsIOHandler {
             toggle_overlay_flag,
             rewind_flag,
             fullscreen_flag,
+            overscan,
+            overscan_changed: Cell::new(false),
             _menu: menu,
             menu_ids,
             menu_items,
@@ -420,6 +428,21 @@ impl IOHandler for GtkPixelsIOHandler {
                 } else {
                     toasts.push("Fill scaling".into());
                 }
+            } else if *id == self.menu_ids.overscan {
+                let val = !self.overscan.get();
+                self.overscan.set(val);
+                self.overscan_changed.set(true);
+                self.menu_items.overscan.set_checked(val);
+                if val {
+                    toasts.push("Overscan hidden".into());
+                } else {
+                    toasts.push("Overscan visible".into());
+                }
+                settings::save_settings(&Settings {
+                    integer_scaling: self.pixel_perfect.get(),
+                    scanlines: false,
+                    overscan: val,
+                });
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -449,6 +472,12 @@ impl IOHandler for GtkPixelsIOHandler {
             rewind: self.rewind_flag.get(),
             toasts,
             open_rom: open_rom_path,
+            set_overscan: if self.overscan_changed.get() {
+                self.overscan_changed.set(false);
+                Some(self.overscan.get())
+            } else {
+                None
+            },
         };
 
         if let Some(ref path) = result.open_rom {

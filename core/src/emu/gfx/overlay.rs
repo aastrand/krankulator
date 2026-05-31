@@ -18,6 +18,7 @@ pub struct Overlay {
     toasts: Vec<Toast>,
     banner: Option<String>,
     rewind_status: Option<String>,
+    overscan: u8,
 }
 
 impl Overlay {
@@ -28,6 +29,7 @@ impl Overlay {
             toasts: Vec::new(),
             banner: None,
             rewind_status: None,
+            overscan: 0,
         }
     }
 
@@ -48,6 +50,10 @@ impl Overlay {
         self.rewind_status = text;
     }
 
+    pub fn set_overscan(&mut self, lines: u8) {
+        self.overscan = lines;
+    }
+
     pub fn toast(&mut self, text: String) {
         if self.toasts.len() >= 4 {
             self.toasts.remove(0);
@@ -66,8 +72,9 @@ impl Overlay {
     }
 
     pub fn draw(&self, buf: &mut Buffer) {
+        let os = self.overscan as i32;
         if self.enabled && !self.frame_time_text.is_empty() {
-            font::draw_string(buf, 2, 2, &self.frame_time_text, FG, OUTLINE);
+            font::draw_string(buf, 2, 2 + os, &self.frame_time_text, FG, OUTLINE);
         }
 
         if let Some(ref banner) = self.banner {
@@ -76,7 +83,7 @@ impl Overlay {
             font::draw_string(buf, x, y, banner, FG, OUTLINE);
         }
 
-        let mut y = buf.height as i32 - 12;
+        let mut y = buf.height as i32 - 12 - os;
         if let Some(ref text) = self.rewind_status {
             let x = (buf.width as i32 - text.len() as i32 * 8) / 2;
             font::draw_string(buf, x, y, text, FG, OUTLINE);

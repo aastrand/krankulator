@@ -1,6 +1,7 @@
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
 const BYTES_PER_PIXEL: usize = 3;
+pub const OVERSCAN_LINES: usize = 8;
 
 pub struct Buffer {
     pub data: Vec<u8>,
@@ -25,6 +26,13 @@ impl Buffer {
             self.data[base + 1] = rgb.1;
             self.data[base + 2] = rgb.2;
         }
+    }
+
+    pub fn mask_overscan(&mut self) {
+        let row_bytes = BYTES_PER_PIXEL * self.width;
+        self.data[..OVERSCAN_LINES * row_bytes].fill(0);
+        let bottom_start = (self.height - OVERSCAN_LINES) * row_bytes;
+        self.data[bottom_start..self.height * row_bytes].fill(0);
     }
 
     /// Only used by PPU unit tests; the window path copies [`Self::data`] directly.

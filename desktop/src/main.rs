@@ -137,6 +137,7 @@ fn main() -> Result<(), String> {
                     emu.cpu.sp = 0xfd;
                     emu.toggle_should_trigger_nmi(true);
                     emu.toggle_should_exit_on_infinite_loop(false);
+                    emu.set_overscan(settings.overscan);
                     emu.set_rom_path(input);
                     io::add_recent_rom(input);
 
@@ -165,6 +166,7 @@ fn main() -> Result<(), String> {
         let mut emu = emu::Emulator::new_with(io, mapper, audio);
         emu.toggle_should_exit_on_infinite_loop(false);
         emu.toggle_should_trigger_nmi(false);
+        emu.set_overscan(settings.overscan);
         emu.overlay.set_banner(Some("Open a ROM to play".into()));
         emu
     };

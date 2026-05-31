@@ -101,6 +101,7 @@ pub struct Emulator {
     rewind_buffer: rewind::RewindBuffer,
     rewind_capture_tick: bool,
     rewinding: bool,
+    overscan: bool,
 }
 
 impl Emulator {
@@ -176,7 +177,17 @@ impl Emulator {
             rewind_buffer: rewind::RewindBuffer::new(),
             rewind_capture_tick: false,
             rewinding: false,
+            overscan: false,
         }
+    }
+
+    pub fn set_overscan(&mut self, enabled: bool) {
+        self.overscan = enabled;
+        self.overlay.set_overscan(if enabled {
+            gfx::buf::OVERSCAN_LINES as u8
+        } else {
+            0
+        });
     }
 
     pub fn set_rom_path(&mut self, path: &str) {
@@ -405,6 +416,9 @@ impl Emulator {
         self.overlay
             .set_rewind_status(Some(format!("<< REWIND {:.1}s", secs)));
         self.overlay.draw(&mut self.buf);
+        if self.overscan {
+            self.buf.mask_overscan();
+        }
         self.iohandler.render(&self.buf);
         let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
         if result.exit {
@@ -556,6 +570,9 @@ impl Emulator {
             }
             self.overlay.tick();
             self.overlay.draw(&mut self.buf);
+            if self.overscan {
+                self.buf.mask_overscan();
+            }
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
@@ -585,6 +602,9 @@ impl Emulator {
             }
             if result.toggle_overlay {
                 self.overlay.toggle();
+            }
+            if let Some(overscan) = result.set_overscan {
+                self.overscan = overscan;
             }
             if result.open_rom.is_some() {
                 self.pending_open_rom = result.open_rom;

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 pub struct Settings {
     pub integer_scaling: bool,
     pub scanlines: bool,
+    pub overscan: bool,
 }
 
 impl Default for Settings {
@@ -10,6 +11,7 @@ impl Default for Settings {
         Self {
             integer_scaling: true,
             scanlines: false,
+            overscan: true,
         }
     }
 }
@@ -33,6 +35,7 @@ pub fn load_settings() -> Settings {
         match key.trim() {
             "integer_scaling" => settings.integer_scaling = value.trim() == "true",
             "scanlines" => settings.scanlines = value.trim() == "true",
+            "overscan" => settings.overscan = value.trim() == "true",
             _ => {}
         }
     }
@@ -45,8 +48,8 @@ pub fn save_settings(settings: &Settings) {
         let _ = std::fs::create_dir_all(dir);
     }
     let content = format!(
-        "integer_scaling={}\nscanlines={}\n",
-        settings.integer_scaling, settings.scanlines
+        "integer_scaling={}\nscanlines={}\noverscan={}\n",
+        settings.integer_scaling, settings.scanlines, settings.overscan
     );
     let _ = std::fs::write(path, content);
 }

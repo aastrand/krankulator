@@ -38,12 +38,14 @@ pub(crate) struct MenuIds {
     pub fullscreen: muda::MenuId,
     pub scaling: muda::MenuId,
     pub scanlines: muda::MenuId,
+    pub overscan: muda::MenuId,
 }
 
 pub(crate) struct MenuItems {
     pub fullscreen: CheckMenuItem,
     pub scaling: CheckMenuItem,
     pub scanlines: CheckMenuItem,
+    pub overscan: CheckMenuItem,
     pub recent_submenu: Submenu,
     pub recent_items: Vec<(muda::MenuId, String)>,
 }
@@ -179,9 +181,12 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
     let scaling_id = scaling.id().clone();
     let scanlines = CheckMenuItem::new("CRT Scanlines", true, false, None::<Accelerator>);
     let scanlines_id = scanlines.id().clone();
+    let overscan = CheckMenuItem::new("Hide Overscan", true, true, None::<Accelerator>);
+    let overscan_id = overscan.id().clone();
     view_menu.append(&fullscreen).unwrap();
     view_menu.append(&scaling).unwrap();
     view_menu.append(&scanlines).unwrap();
+    view_menu.append(&overscan).unwrap();
 
     let help_menu = Submenu::new("Help", true);
     help_menu
@@ -217,11 +222,13 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         fullscreen: fullscreen_id,
         scaling: scaling_id,
         scanlines: scanlines_id,
+        overscan: overscan_id,
     };
     let items = MenuItems {
         fullscreen,
         scaling,
         scanlines,
+        overscan,
         recent_submenu,
         recent_items,
     };

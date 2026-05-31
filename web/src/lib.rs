@@ -233,6 +233,7 @@ fn start_emulator(rom_data: Vec<u8>) {
     emu.toggle_should_trigger_nmi(true);
     emu.toggle_should_exit_on_infinite_loop(false);
     emu.toggle_quiet_mode(true);
+    emu.set_overscan(true);
 
     if let Err(msg) = emu.init() {
         set_status(&format!("Init failed: {}", msg));

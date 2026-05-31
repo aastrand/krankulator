@@ -21,6 +21,7 @@ pub struct PollResult {
     pub rewind: bool,
     pub toasts: Vec<String>,
     pub open_rom: Option<String>,
+    pub set_overscan: Option<bool>,
 }
 
 pub struct DebugContext<'a> {

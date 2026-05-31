@@ -58,6 +58,7 @@ pub struct WinitPixelsIOHandler {
     pixel_perfect: bool,
     rewind_held: bool,
     scanlines: bool,
+    overscan: bool,
     crt: Option<CrtPipeline>,
     _menu: Menu,
     menu_ids: MenuIds,
@@ -138,6 +139,7 @@ impl WinitPixelsIOHandler {
         let (menu, menu_ids, menu_items) = build_menu_contents();
         menu_items.scaling.set_checked(settings.integer_scaling);
         menu_items.scanlines.set_checked(settings.scanlines);
+        menu_items.overscan.set_checked(settings.overscan);
 
         #[cfg(target_os = "macos")]
         {
@@ -167,6 +169,7 @@ impl WinitPixelsIOHandler {
             pixel_perfect: settings.integer_scaling,
             rewind_held: false,
             scanlines: settings.scanlines,
+            overscan: settings.overscan,
             crt,
             _menu: menu,
             menu_ids,
@@ -343,6 +346,8 @@ struct PollHandler<'a> {
     muted: &'a mut bool,
     pixel_perfect: &'a mut bool,
     scanlines: &'a mut bool,
+    overscan: &'a mut bool,
+    overscan_changed: bool,
     kb_state: &'a mut u8,
     fast_forward: &'a mut bool,
     exit: bool,
@@ -417,6 +422,7 @@ impl ApplicationHandler for PollHandler<'_> {
                                 settings::save_settings(&Settings {
                                     integer_scaling: *self.pixel_perfect,
                                     scanlines: *self.scanlines,
+                                    overscan: *self.overscan,
                                 });
                             }
                         }
@@ -493,6 +499,7 @@ impl ApplicationHandler for PollHandler<'_> {
                                 settings::save_settings(&Settings {
                                     integer_scaling: *self.pixel_perfect,
                                     scanlines: *self.scanlines,
+                                    overscan: *self.overscan,
                                 });
                             }
                         }
@@ -596,6 +603,8 @@ impl IOHandler for WinitPixelsIOHandler {
             muted: &mut self.muted,
             pixel_perfect: &mut self.pixel_perfect,
             scanlines: &mut self.scanlines,
+            overscan: &mut self.overscan,
+            overscan_changed: false,
             kb_state: &mut self.kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
@@ -648,6 +657,7 @@ impl IOHandler for WinitPixelsIOHandler {
                 settings::save_settings(&Settings {
                     integer_scaling: *handler.pixel_perfect,
                     scanlines: *handler.scanlines,
+                    overscan: *handler.overscan,
                 });
             } else if *id == handler.menu_ids.scanlines {
                 *handler.scanlines = !*handler.scanlines;
@@ -660,6 +670,21 @@ impl IOHandler for WinitPixelsIOHandler {
                 settings::save_settings(&Settings {
                     integer_scaling: *handler.pixel_perfect,
                     scanlines: *handler.scanlines,
+                    overscan: *handler.overscan,
+                });
+            } else if *id == handler.menu_ids.overscan {
+                *handler.overscan = !*handler.overscan;
+                handler.overscan_changed = true;
+                self.menu_items.overscan.set_checked(*handler.overscan);
+                if *handler.overscan {
+                    handler.toasts.push("Overscan hidden".into());
+                } else {
+                    handler.toasts.push("Overscan visible".into());
+                }
+                settings::save_settings(&Settings {
+                    integer_scaling: *handler.pixel_perfect,
+                    scanlines: *handler.scanlines,
+                    overscan: *handler.overscan,
                 });
             } else if let Some(path) = self
                 .menu_items
@@ -689,6 +714,11 @@ impl IOHandler for WinitPixelsIOHandler {
             rewind,
             toasts: handler.toasts,
             open_rom,
+            set_overscan: if handler.overscan_changed {
+                Some(*handler.overscan)
+            } else {
+                None
+            },
         };
 
         if let Some(ref path) = result.open_rom {
