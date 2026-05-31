@@ -9,7 +9,7 @@ use super::document;
 const VERT_SRC: &str = include_str!("../../core/src/emu/gfx/shaders/crt_lottes_web.vert");
 const FRAG_SRC: &str = include_str!("../../core/src/emu/gfx/shaders/crt_lottes_web.frag");
 
-pub struct CrtRenderer {
+struct CrtCanvas {
     gl: GL,
     canvas: HtmlCanvasElement,
     program: WebGlProgram,
@@ -22,12 +22,16 @@ pub struct CrtRenderer {
     canvas_width: u32,
     canvas_height: u32,
     texture_initialized: bool,
+}
+
+pub struct CrtRenderer {
+    targets: Vec<CrtCanvas>,
     pub enabled: bool,
 }
 
-impl CrtRenderer {
-    pub fn new(canvas_ids: &[&str]) -> Result<Self, String> {
-        let (gl, canvas, canvas_width, canvas_height) = get_webgl2_context(canvas_ids)?;
+impl CrtCanvas {
+    fn new(canvas_id: &str) -> Result<Self, String> {
+        let (gl, canvas, canvas_width, canvas_height) = get_webgl2_context(canvas_id)?;
 
         let program = create_program(&gl, VERT_SRC, FRAG_SRC)?;
         gl.use_program(Some(&program));
@@ -72,16 +76,18 @@ impl CrtRenderer {
             canvas_width,
             canvas_height,
             texture_initialized: false,
-            enabled: false,
         })
     }
 
-    pub fn render(&mut self, rgba_buf: &[u8]) {
+    fn render(&mut self, rgba_buf: &[u8], enabled: bool) {
         let gl = &self.gl;
 
         let dpr = super::window().device_pixel_ratio();
         let w = (self.canvas.client_width() as f64 * dpr) as u32;
         let h = (self.canvas.client_height() as f64 * dpr) as u32;
+        if w == 0 || h == 0 {
+            return;
+        }
         if w != self.canvas_width || h != self.canvas_height {
             self.canvas.set_width(w);
             self.canvas.set_height(h);
@@ -94,11 +100,7 @@ impl CrtRenderer {
         gl.active_texture(GL::TEXTURE0);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.texture));
 
-        let filter = if self.enabled {
-            GL::LINEAR
-        } else {
-            GL::NEAREST
-        } as i32;
+        let filter = if enabled { GL::LINEAR } else { GL::NEAREST } as i32;
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, filter);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, filter);
 
@@ -138,31 +140,58 @@ impl CrtRenderer {
         );
         gl.uniform2f(Some(&self.u_texture_size), 256.0, 240.0);
         gl.uniform2f(Some(&self.u_input_size), 256.0, 240.0);
-        gl.uniform1f(Some(&self.u_enabled), if self.enabled { 1.0 } else { 0.0 });
+        gl.uniform1f(Some(&self.u_enabled), if enabled { 1.0 } else { 0.0 });
 
         gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
     }
 }
 
-fn get_webgl2_context(canvas_ids: &[&str]) -> Result<(GL, HtmlCanvasElement, u32, u32), String> {
-    for id in canvas_ids {
-        if let Some(canvas) = document()
-            .get_element_by_id(id)
-            .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok())
-        {
-            if let Ok(Some(ctx)) = canvas.get_context("webgl2") {
-                if let Ok(gl) = ctx.dyn_into::<GL>() {
-                    let dpr = super::window().device_pixel_ratio();
-                    let w = (canvas.client_width() as f64 * dpr) as u32;
-                    let h = (canvas.client_height() as f64 * dpr) as u32;
-                    canvas.set_width(w);
-                    canvas.set_height(h);
-                    return Ok((gl, canvas, w, h));
+impl CrtRenderer {
+    pub fn new(canvas_ids: &[&str]) -> Result<Self, String> {
+        let mut targets = Vec::new();
+        for id in canvas_ids {
+            match CrtCanvas::new(id) {
+                Ok(t) => targets.push(t),
+                Err(e) => {
+                    web_sys::console::warn_1(
+                        &format!("WebGL2 init failed for {id}: {e}").into(),
+                    );
                 }
             }
         }
+        if targets.is_empty() {
+            return Err("No WebGL2 context available on any canvas".into());
+        }
+        Ok(Self {
+            targets,
+            enabled: false,
+        })
     }
-    Err("No WebGL2 context available".into())
+
+    pub fn render(&mut self, rgba_buf: &[u8]) {
+        for target in &mut self.targets {
+            target.render(rgba_buf, self.enabled);
+        }
+    }
+}
+
+fn get_webgl2_context(canvas_id: &str) -> Result<(GL, HtmlCanvasElement, u32, u32), String> {
+    let canvas = document()
+        .get_element_by_id(canvas_id)
+        .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok())
+        .ok_or_else(|| format!("Canvas '{canvas_id}' not found"))?;
+    let gl = canvas
+        .get_context("webgl2")
+        .map_err(|_| "getContext failed")?
+        .ok_or("No WebGL2 support")?
+        .dyn_into::<GL>()
+        .map_err(|_| "Failed to cast to WebGl2RenderingContext")?;
+    let dpr = super::window().device_pixel_ratio();
+    let w = (canvas.client_width() as f64 * dpr) as u32;
+    let h = (canvas.client_height() as f64 * dpr) as u32;
+    canvas.set_width(w);
+    canvas.set_height(h);
+    Ok((gl, canvas, w, h))
 }
 
 fn create_program(gl: &GL, vert_src: &str, frag_src: &str) -> Result<WebGlProgram, String> {
