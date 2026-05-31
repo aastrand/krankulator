@@ -79,7 +79,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Two-player support (Joy-Con pair auto-splits into P1/P2)
   - Edge-detected save/load state and slot cycling on P1
   - All platforms: input sources OR-merged so keyboard and gamepad work simultaneously
-- [ ] Inhibit screensaver/suspend while running (D-Bus `org.freedesktop.ScreenSaver.Inhibit`, needs zbus or similar) [S]
+- [x] Inhibit screensaver/suspend while running (D-Bus `org.freedesktop.ScreenSaver.Inhibit` via gdbus on Linux) [S]
 - [ ] Configurable key/button bindings [S]
   - Save bindings to a config file
   - Per-controller profiles
@@ -117,7 +117,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 - [x] Fullscreen toggle (F11), integer/fill scaling toggle (I) [S]
 - [x] Window title shows loaded ROM name [XS]
 - [x] Recent ROMs submenu (File > Recent, last 10, persisted in ~/.config/krankulator/recent_roms.txt) [M]
-- [x] No-ROM launch shows black screen with "Open a ROM to play" banner [XS]
+- [x] No-ROM launch shows CRT static noise with "Open a ROM to play" banner [XS]
 - [x] Unsupported mapper errors toast on-screen [XS]
 - [ ] Drag-and-drop ROM file onto window to load [S]
 
@@ -138,15 +138,14 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## Video / Rendering
 
-Currently: pixels crate on macOS/Windows, Cairo software rendering on Linux (GTK3). Integer scaling (default) or fill scaling (I key), fullscreen (F11).
+Currently: pixels crate (wgpu) on macOS/Windows, GTK3 GLArea (OpenGL 3.3 via glow) on Linux. Integer scaling (default) or fill scaling (I key), fullscreen (F11).
 
 - [x] CRT scanline filter (CRT-Lottes-Fast shader, F9 toggle, persisted in settings) [L]
-  - WGSL for wgpu (macOS/Windows), GLSL ES 3.0 for WebGL2 (web)
-  - [ ] Linux: GtkGLArea + OpenGL 3.3 GLSL (deferred — needs test bed)
+  - WGSL for wgpu (macOS/Windows), GLSL ES 3.0 for WebGL2 (web), GLSL 3.30 for Linux GLArea
 - [ ] NTSC composite video simulation (blargg's nes_ntsc or similar) [L]
 - [ ] Configurable window scale (1x-6x) [S]
 - [ ] Aspect ratio correction (8:7 pixel aspect ratio for accurate NES output) [S]
-- [ ] Overscan cropping option (hide top/bottom 8 scanlines like real TVs did) [S]
+- [x] Overscan cropping option (hide top/bottom 8 scanlines, toggled via menu, persisted) [S]
 
 ---
 

@@ -17,7 +17,7 @@ The project uses SemVer with auto-incremented patch numbers. The version is `MAJ
 The project is a Cargo workspace with four crates:
 
 - **`core/`** (`krankulator-core`) — Platform-independent emulation library. Compiles to native and wasm32 with zero cfg gates. Only dependency: `hex`.
-- **`desktop/`** (`krankulator-desktop`) — Native frontend. Platform-split IO: winit+pixels on macOS/Windows, GTK3+Cairo on Linux. Produces the `krankulator` binary.
+- **`desktop/`** (`krankulator-desktop`) — Native frontend. Platform-split IO: winit+pixels on macOS/Windows, GTK3+GLArea+glow on Linux. Produces the `krankulator` binary.
 - **`web/`** (`krankulator-web`) — WebAssembly frontend using web-sys, Canvas 2D, AudioWorklet, touch controls. Built with `trunk`.
 - **`libretro/`** (`krankulator-libretro`) — RetroArch/libretro core. Raw C FFI, no extra dependencies. Produces `krankulator_libretro.so/.dll/.dylib`.
 
@@ -142,7 +142,7 @@ cargo clippy --workspace
 - Palette lookup table (`palette.rs`)
 - Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
 - Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state, rewind status indicator
-- CRT shaders (`shaders/`): CRT-Lottes-Fast (Timothy Lottes, public domain) in WGSL (`crt_lottes.wgsl`) and GLSL ES 3.0 (`crt_lottes_web.vert`/`.frag`). 8-tap gaussian filter, windowed cosine scanlines, aperture grille mask, barrel distortion, auto-exposure tonemapper. Toggled via F9 key or menu.
+- CRT shaders (`shaders/`): CRT-Lottes-Fast (Timothy Lottes, public domain) in WGSL (`crt_lottes.wgsl`) and GLSL ES 3.0 (`crt_lottes_web.vert`/`.frag`). 8-tap gaussian filter, windowed cosine scanlines, aperture grille mask, barrel distortion, auto-exposure tonemapper. Toggled via F9 key or menu. GLSL version also used on Linux GTK backend (adapted to GL 3.30 at runtime).
 
 **Audio (`emu/audio/`)**
 - `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
@@ -172,7 +172,7 @@ cargo clippy --workspace
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`. Simple key=value format, no serde.
 - `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`)
 - `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust)
-- `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + Cairo software rendering (BGRA `ImageSurface`), muda menu via `init_for_gtk_window()`, native Wayland support. Menu bar visible in fullscreen (GTK3/Wayland limitation). No CRT shader yet.
+- `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + GLArea (OpenGL 3.3 via glow + eglGetProcAddress), muda menu via `init_for_gtk_window()`, native Wayland support. CRT-Lottes-Fast shader (GLSL 3.30, adapted from web ES 3.0 sources). Menu bar hidden in fullscreen. Screensaver/suspend inhibited via D-Bus `org.freedesktop.ScreenSaver.Inhibit`.
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
 - `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; edge detection for save/load/cycle triggers; filters by SdlMappings to avoid misdetected HID devices
 
@@ -250,7 +250,7 @@ desktop/            — Native frontend binary
   src/settings.rs   — Persistent settings (integer_scaling, scanlines)
   src/io/mod.rs     — Shared menu, recent ROMs, platform re-export
   src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels + CRT shader)
-  src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + Cairo)
+  src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + GLArea + glow)
   src/audio.rs      — rodio AudioBackend
   build.rs          — Windows icon embedding (winresource)
   assets/           — icon.png, icon.ico, Info.plist, krankulator.desktop
