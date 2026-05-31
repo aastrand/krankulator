@@ -27,7 +27,7 @@ pub(crate) static ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
 
 const MAX_RECENT_ROMS: usize = 10;
 
-#[allow(unused_variables)]
+#[allow(dead_code)]
 pub(crate) struct MenuIds {
     pub open_rom: muda::MenuId,
     pub quit: muda::MenuId,
@@ -41,6 +41,7 @@ pub(crate) struct MenuIds {
     pub overscan: muda::MenuId,
 }
 
+#[allow(dead_code)]
 pub(crate) struct MenuItems {
     pub fullscreen: CheckMenuItem,
     pub scaling: CheckMenuItem,
