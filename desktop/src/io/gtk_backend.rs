@@ -676,6 +676,26 @@ impl IOHandler for GtkPixelsIOHandler {
         let toggle_overlay = self.toggle_overlay_flag.get();
         let mut toasts: Vec<String> = Vec::new();
 
+        // Sync menu checkmarks with keyboard-toggled state
+        if self.menu_items.scanlines.is_checked() != self.scanlines.get() {
+            self.menu_items.scanlines.set_checked(self.scanlines.get());
+            if self.scanlines.get() {
+                toasts.push("CRT scanlines ON".into());
+            } else {
+                toasts.push("CRT scanlines OFF".into());
+            }
+        }
+        if self.menu_items.scaling.is_checked() != self.pixel_perfect.get() {
+            self.menu_items
+                .scaling
+                .set_checked(self.pixel_perfect.get());
+            if self.pixel_perfect.get() {
+                toasts.push("Integer scaling".into());
+            } else {
+                toasts.push("Fill scaling".into());
+            }
+        }
+
         if self.fullscreen_flag.get() {
             self.fullscreen_flag.set(false);
             self.toggle_fullscreen(&mut toasts);
@@ -818,6 +838,11 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn exit(&self, s: String) {
+        settings::save_settings(&Settings {
+            integer_scaling: self.pixel_perfect.get(),
+            scanlines: self.scanlines.get(),
+            overscan: self.overscan.get(),
+        });
         if let Some(cookie) = self.screensaver_cookie {
             screensaver_uninhibit(cookie);
         }
