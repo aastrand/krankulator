@@ -1415,10 +1415,10 @@ impl PPU {
             self.v &= !V_FINE_Y_MASK;
             let coarse_y = (self.v & V_COARSE_Y_MASK) >> V_COARSE_Y_SHIFT;
             if coarse_y == V_COARSE_Y_MAX_VISIBLE {
-                self.v &= !(V_COARSE_Y_MASK | V_NAMETABLE_V_BIT);
+                self.v &= !V_COARSE_Y_MASK;
                 self.v ^= V_NAMETABLE_V_BIT;
             } else if coarse_y == V_COARSE_Y_OVERFLOW {
-                self.v &= !(V_COARSE_Y_MASK | V_NAMETABLE_V_BIT);
+                self.v &= !V_COARSE_Y_MASK;
             } else {
                 self.v += 1 << V_COARSE_Y_SHIFT;
             }
@@ -2410,5 +2410,409 @@ mod tests {
 
         ppu.read(STATUS_REG_ADDR, &mem);
         assert!(ppu.nmi_suppress_next_vblank);
+    }
+
+    #[test]
+    fn test_inc_y_toggles_nametable_v_at_coarse_y_29() {
+        let mut ppu = PPU::new();
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+
+        // Starting nametable_v = 0, coarse_y = 29, fine_y = 7
+        ppu.v = (7 << V_FINE_Y_SHIFT) | (29 << V_COARSE_Y_SHIFT);
+        ppu.inc_y();
+        assert_eq!(ppu.v & V_FINE_Y_MASK, 0, "fine_y should wrap to 0");
+        assert_eq!(ppu.v & V_COARSE_Y_MASK, 0, "coarse_y should wrap to 0");
+        assert_eq!(
+            ppu.v & V_NAMETABLE_V_BIT,
+            V_NAMETABLE_V_BIT,
+            "nametable_v should toggle 0→1"
+        );
+
+        // Starting nametable_v = 1, coarse_y = 29, fine_y = 7
+        ppu.v = (7 << V_FINE_Y_SHIFT) | (29 << V_COARSE_Y_SHIFT) | V_NAMETABLE_V_BIT;
+        ppu.inc_y();
+        assert_eq!(ppu.v & V_FINE_Y_MASK, 0, "fine_y should wrap to 0");
+        assert_eq!(ppu.v & V_COARSE_Y_MASK, 0, "coarse_y should wrap to 0");
+        assert_eq!(
+            ppu.v & V_NAMETABLE_V_BIT,
+            0,
+            "nametable_v should toggle 1→0"
+        );
+    }
+
+    #[test]
+    fn test_inc_y_preserves_nametable_v_at_coarse_y_31() {
+        let mut ppu = PPU::new();
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
+
+        // nametable_v = 0 should be preserved
+        ppu.v = (7 << V_FINE_Y_SHIFT) | (31 << V_COARSE_Y_SHIFT);
+        ppu.inc_y();
+        assert_eq!(ppu.v & V_COARSE_Y_MASK, 0, "coarse_y should reset to 0");
+        assert_eq!(
+            ppu.v & V_NAMETABLE_V_BIT,
+            0,
+            "nametable_v=0 should be preserved"
+        );
+
+        // nametable_v = 1 should be preserved
+        ppu.v = (7 << V_FINE_Y_SHIFT) | (31 << V_COARSE_Y_SHIFT) | V_NAMETABLE_V_BIT;
+        ppu.inc_y();
+        assert_eq!(ppu.v & V_COARSE_Y_MASK, 0, "coarse_y should reset to 0");
+        assert_eq!(
+            ppu.v & V_NAMETABLE_V_BIT,
+            V_NAMETABLE_V_BIT,
+            "nametable_v=1 should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_vertical_scroll_change_across_frames() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+
+        // Fill nametable with tile 1
+        for i in 0..960 {
+            mem.ppu_write(0x2000 + i, 1);
+        }
+        // Tile 1: each row has a single lit pixel at column = row number
+        for row in 0..8u16 {
+            let addr = TILE_STRIDE + row;
+            mem.ppu_write(addr, 0x80 >> row as u8);
+            mem.ppu_write(addr + TILE_BITPLANE_OFFSET, 0);
+        }
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+        let lit_color = palette::PALETTE[3];
+        let dots_per_frame: u32 = 341 * 262;
+
+        // Frame 1: scroll_y = 3 (fine_y=3, coarse_y=0)
+        ppu.t = 3u16 << V_FINE_Y_SHIFT;
+        ppu.scanline = PRE_RENDER_SCANLINE;
+        ppu.cycle = 0;
+        ppu.v = 0;
+        for _ in 0..dots_per_frame {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+        // Scanline 0 should show fine_y=3 → lit pixel at x=3
+        assert_eq!(
+            framebuffer.get_pixel(3, 0),
+            lit_color,
+            "frame 1: scanline 0 should have lit pixel at x=3 (fine_y=3)"
+        );
+
+        // Simulate VBlank scroll change: game sets new scroll_y = 2
+        ppu.t = 2u16 << V_FINE_Y_SHIFT;
+
+        // Frame 2: run pre-render + visible scanlines
+        // PPU is now at scanline 0 cycle 0 — run a full frame
+        for _ in 0..dots_per_frame {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+        // Scanline 0 should now show fine_y=2 → lit pixel at x=2
+        assert_eq!(
+            framebuffer.get_pixel(2, 0),
+            lit_color,
+            "frame 2: scanline 0 should have lit pixel at x=2 (fine_y=2)"
+        );
+
+        // Simulate VBlank scroll change: game sets new scroll_y = 7
+        ppu.t = 7u16 << V_FINE_Y_SHIFT;
+        for _ in 0..dots_per_frame {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+        assert_eq!(
+            framebuffer.get_pixel(7, 0),
+            lit_color,
+            "frame 3: scanline 0 should have lit pixel at x=7 (fine_y=7)"
+        );
+
+        // Simulate VBlank scroll change: fine_y wraps from 0 to 7 (scroll up)
+        // scroll_y = 15 means coarse_y=1, fine_y=7
+        ppu.t = (7u16 << V_FINE_Y_SHIFT) | (1u16 << V_COARSE_Y_SHIFT);
+        for _ in 0..dots_per_frame {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+        assert_eq!(
+            framebuffer.get_pixel(7, 0),
+            lit_color,
+            "frame 4: scanline 0 should have lit pixel at x=7 (fine_y=7, coarse_y=1)"
+        );
+    }
+
+    #[test]
+    fn test_vertical_scroll_upward_across_frames() {
+        let mut ppu = PPU::new();
+        let mut mem = memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+
+        ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+
+        // Set up 4 distinct tiles (tiles 0-3), each with a unique solid pattern row
+        // Tile 0: all rows = 0xFF (all lit, pattern value 1)
+        // Tile 1: all rows = 0xAA (alternating, pattern value 1)
+        // Tile 2: all rows = 0x55 (alternating offset, pattern value 1)
+        // Tile 3: all rows = 0xF0 (left half lit, pattern value 1)
+        let tile_patterns: [u8; 4] = [0xFF, 0xAA, 0x55, 0xF0];
+        for tile_id in 0u16..4 {
+            for row in 0..8u16 {
+                let addr = tile_id * TILE_STRIDE + row;
+                mem.ppu_write(addr, tile_patterns[tile_id as usize]);
+                mem.ppu_write(addr + TILE_BITPLANE_OFFSET, 0);
+            }
+        }
+
+        // Fill nametable: each tile row uses a different tile
+        // Row 0 (coarse_y=0): tile 0, Row 1: tile 1, Row 2: tile 2, Row 3: tile 3, then repeat
+        for coarse_y in 0..30u16 {
+            let tile_id = (coarse_y % 4) as u8;
+            for coarse_x in 0..32u16 {
+                mem.ppu_write(0x2000 + coarse_y * 32 + coarse_x, tile_id);
+            }
+        }
+
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0x0F); // black bg
+        mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 0x30); // white fg
+
+        let white = palette::PALETTE[0x30];
+
+        let dots_per_frame: u32 = 341 * 262;
+
+        // Start scrolling down from scroll_y = 10, then scroll upward
+        // scroll_y=10 means coarse_y=1, fine_y=2
+        // The first visible pixel row shows fine_y=2 of tile at coarse_y=1 (tile 1 = 0xAA)
+        let scroll_values: [u8; 6] = [10, 9, 8, 7, 6, 5];
+
+        // Initialize PPU state
+        ppu.scanline = PRE_RENDER_SCANLINE;
+        ppu.cycle = 0;
+        ppu.v = 0;
+
+        for (frame_idx, &scroll_y) in scroll_values.iter().enumerate() {
+            let fine_y = (scroll_y & 0x07) as u16;
+            let coarse_y = (scroll_y >> 3) as u16;
+
+            // Set scroll (as game would do during VBlank via PPUSCROLL writes)
+            ppu.t = (fine_y << V_FINE_Y_SHIFT) | (coarse_y << V_COARSE_Y_SHIFT);
+
+            // Run one full frame
+            for _ in 0..dots_per_frame {
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            }
+
+            // Check scanline 0: should show fine_y of the tile at coarse_y
+            let expected_tile = (coarse_y % 4) as usize;
+            let expected_pattern = tile_patterns[expected_tile];
+
+            // Check first 8 pixels of scanline 0
+            for x in 0..8usize {
+                let bit = 7 - x;
+                let expected_lit = (expected_pattern >> bit) & 1 == 1;
+                let pixel = framebuffer.get_pixel(x, 0);
+                let is_white = pixel == white;
+                assert_eq!(
+                    is_white, expected_lit,
+                    "frame {} (scroll_y={}): scanline 0, x={}: expected {} (tile={}, pattern=0x{:02X}, fine_y={}), got {:?}",
+                    frame_idx, scroll_y, x,
+                    if expected_lit { "lit" } else { "dark" },
+                    expected_tile, expected_pattern, fine_y, pixel
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_scanline0_v_register_matches_prefetch() {
+        // Verify that at scanline 0 dot 1, the v register fine_y matches
+        // what was used during the pre-render prefetch pattern fetches.
+        for scroll_y in [0u8, 1, 3, 5, 7, 8, 15, 23, 31] {
+            let fine_y = (scroll_y & 0x07) as u16;
+            let coarse_y = (scroll_y >> 3) as u16;
+
+            let mut ppu = PPU::new();
+            let mut mem = memory::IdentityMapper::new(0x4000);
+            let mut framebuffer = Buffer::new();
+
+            ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+
+            ppu.t = (fine_y << V_FINE_Y_SHIFT) | (coarse_y << V_COARSE_Y_SHIFT);
+            ppu.scanline = PRE_RENDER_SCANLINE;
+            ppu.cycle = 0;
+            ppu.v = 0;
+
+            // Track fine_y used during prefetch pattern fetches
+            let mut prefetch_fine_y: Option<u16> = None;
+            let mut scanline0_dot1_fine_y: Option<u16> = None;
+            let mut scanline0_dot1_v: Option<u16> = None;
+
+            // Run through the pre-render scanline and scanline 0
+            for _ in 0..(341 + 257) {
+                // Before stepping, capture state at key points
+                let next_cycle = if ppu.cycle == CYCLES_PER_SCANLINE {
+                    0
+                } else {
+                    ppu.cycle + 1
+                };
+                let next_scanline = if ppu.cycle == CYCLES_PER_SCANLINE {
+                    (ppu.scanline + 1) % NUM_SCANLINES
+                } else {
+                    ppu.scanline
+                };
+
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+
+                // Capture fine_y during prefetch pattern low fetch (dot 325)
+                if ppu.scanline == PRE_RENDER_SCANLINE && ppu.cycle == 325 {
+                    prefetch_fine_y = Some((ppu.v >> V_FINE_Y_SHIFT) & 0x07);
+                }
+
+                // Capture v at scanline 0 dot 1 (after the step)
+                if ppu.scanline == 0 && ppu.cycle == 1 {
+                    scanline0_dot1_fine_y = Some((ppu.v >> V_FINE_Y_SHIFT) & 0x07);
+                    scanline0_dot1_v = Some(ppu.v);
+                }
+            }
+
+            let pf_fy = prefetch_fine_y.expect("should have captured prefetch fine_y");
+            let s0_fy = scanline0_dot1_fine_y.expect("should have captured scanline 0 fine_y");
+
+            assert_eq!(
+                pf_fy, fine_y,
+                "scroll_y={}: prefetch fine_y should be {} but was {}",
+                scroll_y, fine_y, pf_fy
+            );
+            assert_eq!(
+                s0_fy, fine_y,
+                "scroll_y={}: scanline 0 dot 1 fine_y should be {} but was {}",
+                scroll_y, fine_y, s0_fy
+            );
+
+            let v = scanline0_dot1_v.unwrap();
+            let v_coarse_y = (v & V_COARSE_Y_MASK) >> V_COARSE_Y_SHIFT;
+            assert_eq!(
+                v_coarse_y, coarse_y,
+                "scroll_y={}: scanline 0 dot 1 coarse_y should be {} but was {}",
+                scroll_y, coarse_y, v_coarse_y
+            );
+        }
+    }
+
+    #[test]
+    fn test_vertical_scroll_scanline_continuity() {
+        for scroll_y in [1u8, 3, 5, 7] {
+            let fine_y = scroll_y & 0x07;
+            let coarse_y = scroll_y >> 3;
+
+            let mut ppu = PPU::new();
+            let mut mem = memory::IdentityMapper::new(0x4000);
+            let mut framebuffer = Buffer::new();
+
+            ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+
+            for i in 0..960 {
+                mem.ppu_write(0x2000 + i, 1);
+            }
+            for row in 0..8u16 {
+                let addr = TILE_STRIDE + row;
+                mem.ppu_write(addr, 0x80 >> row as u8);
+                mem.ppu_write(addr + TILE_BITPLANE_OFFSET, 0);
+            }
+
+            mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+            mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+            ppu.t = ((fine_y as u16) << V_FINE_Y_SHIFT) | ((coarse_y as u16) << V_COARSE_Y_SHIFT);
+
+            ppu.scanline = PRE_RENDER_SCANLINE;
+            ppu.cycle = 0;
+            ppu.v = 0;
+
+            // Run full pre-render + first 10 scanlines
+            for _ in 0..341 {
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            }
+            for _ in 0..(341 * 10) {
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            }
+
+            let lit_color = palette::PALETTE[3];
+            // Each scanline should show a lit pixel at x = (fine_y + scanline) % 8
+            for scanline in 0..10usize {
+                let expected_x = ((fine_y as usize) + scanline) % 8;
+                let actual = framebuffer.get_pixel(expected_x, scanline);
+                assert_eq!(
+                    actual, lit_color,
+                    "scroll_y={}, scanline={}: expected lit pixel at x={}, got {:?}",
+                    scroll_y, scanline, expected_x, actual
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_vertical_scroll_fine_y_on_scanline_0() {
+        for scroll_y in [0u8, 1, 3, 5, 7, 8, 15, 23] {
+            let fine_y = scroll_y & 0x07;
+            let coarse_y = scroll_y >> 3;
+
+            let mut ppu = PPU::new();
+            let mut mem = memory::IdentityMapper::new(0x4000);
+            let mut framebuffer = Buffer::new();
+
+            ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_BACKGROUND_LEFT_ENABLE;
+
+            for i in 0..960 {
+                mem.ppu_write(0x2000 + i, 1);
+            }
+            for row in 0..8u16 {
+                let addr = TILE_STRIDE + row;
+                mem.ppu_write(addr, 0x80 >> row as u8);
+                mem.ppu_write(addr + TILE_BITPLANE_OFFSET, 0);
+            }
+
+            mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
+            mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
+
+            ppu.t = ((fine_y as u16) << V_FINE_Y_SHIFT) | ((coarse_y as u16) << V_COARSE_Y_SHIFT);
+
+            ppu.scanline = PRE_RENDER_SCANLINE;
+            ppu.cycle = 0;
+            ppu.v = 0;
+
+            for _ in 0..341 {
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            }
+            assert_eq!(ppu.scanline, 0, "should be at scanline 0 after pre-render");
+
+            for _ in 0..256 {
+                ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            }
+
+            let expected_lit_x = fine_y as usize;
+            let lit_color = palette::PALETTE[3];
+            let bg_color = palette::PALETTE[0];
+
+            let actual_pixel = framebuffer.get_pixel(expected_lit_x, 0);
+            assert_eq!(
+                actual_pixel, lit_color,
+                "scroll_y={}: expected lit pixel at x={} (fine_y={}), got {:?}",
+                scroll_y, expected_lit_x, fine_y, actual_pixel
+            );
+            if expected_lit_x > 0 {
+                let adjacent = framebuffer.get_pixel(expected_lit_x - 1, 0);
+                assert_eq!(
+                    adjacent,
+                    bg_color,
+                    "scroll_y={}: expected backdrop at x={}, got {:?}",
+                    scroll_y,
+                    expected_lit_x - 1,
+                    adjacent
+                );
+            }
+        }
     }
 }
