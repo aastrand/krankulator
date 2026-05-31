@@ -153,9 +153,7 @@ impl CrtRenderer {
             match CrtCanvas::new(id) {
                 Ok(t) => targets.push(t),
                 Err(e) => {
-                    web_sys::console::warn_1(
-                        &format!("WebGL2 init failed for {id}: {e}").into(),
-                    );
+                    web_sys::console::warn_1(&format!("WebGL2 init failed for {id}: {e}").into());
                 }
             }
         }

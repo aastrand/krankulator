@@ -1,9 +1,11 @@
 use std::cell::{Cell, RefCell};
+use std::ffi::CStr;
 use std::rc::Rc;
 use std::time::Instant;
 
 use gdk::keys::constants as gdk_key;
 use gdk::prelude::*;
+use glow::HasContext;
 use gtk::prelude::*;
 use muda::{Menu, MenuEvent};
 
@@ -20,13 +22,52 @@ use super::{
 use crate::gamepad::Gamepads;
 use crate::settings;
 use crate::settings::Settings;
+
+extern "C" {
+    fn eglGetProcAddress(name: *const std::ffi::c_char) -> *const std::ffi::c_void;
+}
+
 const NES_WIDTH: i32 = 256;
 const NES_HEIGHT: i32 = 240;
 
+const VERT_SRC: &str = "#version 330 core
+out vec2 v_uv;
+void main() {
+    float x = float((gl_VertexID & 1) * 2 - 1);
+    float y = float((gl_VertexID >> 1) * 2 - 1);
+    gl_Position = vec4(x, y, 0.0, 1.0);
+    v_uv = vec2((x + 1.0) * 0.5, (1.0 - y) * 0.5);
+}
+";
+
+const FRAG_SRC: &str = include_str!("../../../core/src/emu/gfx/shaders/crt_lottes_web.frag");
+
+fn desktop_frag_src() -> String {
+    FRAG_SRC.replace("#version 300 es\n", "#version 330 core\n")
+}
+
+struct GlState {
+    program: glow::Program,
+    vao: glow::VertexArray,
+    texture: glow::Texture,
+    u_output_size: glow::UniformLocation,
+    u_texture_size: glow::UniformLocation,
+    u_input_size: glow::UniformLocation,
+    u_enabled: glow::UniformLocation,
+}
+
+struct GlContext {
+    gl: glow::Context,
+    state: GlState,
+    texture_initialized: bool,
+}
+
 pub struct GtkPixelsIOHandler {
     window: gtk::Window,
-    drawing_area: gtk::DrawingArea,
-    surface_buf: Rc<RefCell<Vec<u8>>>,
+    gl_area: gtk::GLArea,
+    #[allow(dead_code)]
+    gl_ctx: Rc<RefCell<Option<GlContext>>>,
+    rgba_buf: Rc<RefCell<Vec<u8>>>,
     gamepads: Gamepads,
     muted: Rc<Cell<bool>>,
     last_frame_time: Instant,
@@ -34,6 +75,7 @@ pub struct GtkPixelsIOHandler {
     kb_state: Rc<Cell<u8>>,
     fast_forward: Rc<Cell<bool>>,
     pixel_perfect: Rc<Cell<bool>>,
+    scanlines: Rc<Cell<bool>>,
     exit_flag: Rc<Cell<bool>>,
     save_state_flag: Rc<Cell<bool>>,
     load_state_flag: Rc<Cell<bool>>,
@@ -44,7 +86,7 @@ pub struct GtkPixelsIOHandler {
     fullscreen_flag: Rc<Cell<bool>>,
     overscan: Rc<Cell<bool>>,
     overscan_changed: Cell<bool>,
-    _menu: Menu,
+    menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
 }
@@ -68,67 +110,68 @@ impl GtkPixelsIOHandler {
         let (menu, menu_ids, menu_items) = build_menu_contents();
         menu.init_for_gtk_window(&window, Some(&vbox)).unwrap();
 
-        let drawing_area = gtk::DrawingArea::new();
-        drawing_area.set_can_focus(true);
-        vbox.pack_end(&drawing_area, true, true, 0);
+        let gl_area = gtk::GLArea::new();
+        gl_area.set_can_focus(true);
+        gl_area.set_has_depth_buffer(false);
+        gl_area.set_has_stencil_buffer(false);
+        gl_area.set_required_version(3, 3);
+        gl_area.set_auto_render(false);
+        vbox.pack_end(&gl_area, true, true, 0);
 
-        // BGRA framebuffer for Cairo (NES_WIDTH x NES_HEIGHT)
-        let surface_buf = Rc::new(RefCell::new(vec![
+        let rgba_buf = Rc::new(RefCell::new(vec![
             0u8;
             (NES_WIDTH * NES_HEIGHT * 4) as usize
         ]));
+        let gl_ctx: Rc<RefCell<Option<GlContext>>> = Rc::new(RefCell::new(None));
+        let pixel_perfect = Rc::new(Cell::new(settings.integer_scaling));
+        let scanlines = Rc::new(Cell::new(settings.scanlines));
 
-        let pixel_perfect = Rc::new(Cell::new(true));
-
-        // Draw signal — Cairo software render
         {
-            let buf = surface_buf.clone();
-            let pp = pixel_perfect.clone();
-            drawing_area.connect_draw(move |da, cr| {
-                let alloc = da.allocation();
-                let w = alloc.width() as f64;
-                let h = alloc.height() as f64;
-
-                let data = buf.borrow();
-                let surface = gtk::cairo::ImageSurface::create_for_data(
-                    data.clone(),
-                    gtk::cairo::Format::ARgb32,
-                    NES_WIDTH,
-                    NES_HEIGHT,
-                    NES_WIDTH * 4,
-                )
-                .unwrap();
-
-                let scale_x = w / NES_WIDTH as f64;
-                let scale_y = h / NES_HEIGHT as f64;
-
-                let scale = if pp.get() {
-                    (scale_x.min(scale_y)).floor().max(1.0)
-                } else {
-                    scale_x.min(scale_y)
+            let ctx = gl_ctx.clone();
+            gl_area.connect_realize(move |area| {
+                area.make_current();
+                if area.error().is_some() {
+                    return;
+                }
+                let gl = unsafe {
+                    glow::Context::from_loader_function_cstr(|name: &CStr| {
+                        eglGetProcAddress(name.as_ptr())
+                    })
                 };
-                let render_w = NES_WIDTH as f64 * scale;
-                let render_h = NES_HEIGHT as f64 * scale;
-                let offset_x = (w - render_w) / 2.0;
-                let offset_y = (h - render_h) / 2.0;
+                let state = unsafe { init_gl(&gl) };
+                *ctx.borrow_mut() = Some(GlContext {
+                    gl,
+                    state,
+                    texture_initialized: false,
+                });
+            });
+        }
 
-                cr.set_source_rgb(0.0, 0.0, 0.0);
-                cr.paint().unwrap();
-
-                cr.translate(offset_x, offset_y);
-                cr.scale(scale, scale);
-
-                cr.set_source_surface(&surface, 0.0, 0.0).unwrap();
-                let pattern = cr.source();
-                pattern.set_filter(gtk::cairo::Filter::Nearest);
-                cr.paint().unwrap();
-
+        {
+            let buf = rgba_buf.clone();
+            let ctx = gl_ctx.clone();
+            let pp = pixel_perfect.clone();
+            let sl = scanlines.clone();
+            gl_area.connect_render(move |area, _gl_ctx| {
+                let mut ctx_ref = ctx.borrow_mut();
+                let Some(gl_ctx) = ctx_ref.as_mut() else {
+                    return glib::Propagation::Stop;
+                };
+                let alloc = area.allocation();
+                render_gl(
+                    gl_ctx,
+                    &buf.borrow(),
+                    alloc.width() as u32,
+                    alloc.height() as u32,
+                    pp.get(),
+                    sl.get(),
+                );
                 glib::Propagation::Stop
             });
         }
 
         window.show_all();
-        drawing_area.grab_focus();
+        gl_area.grab_focus();
 
         while gtk::events_pending() {
             gtk::main_iteration();
@@ -166,11 +209,13 @@ impl GtkPixelsIOHandler {
             let overlay = toggle_overlay_flag.clone();
             let rw = rewind_flag.clone();
             let fs = fullscreen_flag.clone();
+            let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
+            let sl = scanlines.clone();
             window.connect_key_press_event(move |_, event| {
                 handle_key(
                     event, true, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
-                    &pp,
+                    &ex, &pp, &sl,
                 );
                 glib::Propagation::Proceed
             });
@@ -187,22 +232,27 @@ impl GtkPixelsIOHandler {
             let overlay = toggle_overlay_flag.clone();
             let rw = rewind_flag.clone();
             let fs = fullscreen_flag.clone();
+            let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
+            let sl = scanlines.clone();
             window.connect_key_release_event(move |_, event| {
                 handle_key(
                     event, false, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
-                    &pp,
+                    &ex, &pp, &sl,
                 );
                 glib::Propagation::Proceed
             });
         }
 
         menu_items.overscan.set_checked(settings.overscan);
+        menu_items.scaling.set_checked(settings.integer_scaling);
+        menu_items.scanlines.set_checked(settings.scanlines);
 
         Self {
             window,
-            drawing_area,
-            surface_buf,
+            gl_area,
+            gl_ctx,
+            rgba_buf,
             gamepads: Gamepads::new(),
             muted,
             last_frame_time: Instant::now(),
@@ -210,6 +260,7 @@ impl GtkPixelsIOHandler {
             kb_state,
             fast_forward,
             pixel_perfect,
+            scanlines,
             exit_flag,
             save_state_flag,
             load_state_flag,
@@ -220,7 +271,7 @@ impl GtkPixelsIOHandler {
             fullscreen_flag,
             overscan,
             overscan_changed: Cell::new(false),
-            _menu: menu,
+            menu,
             menu_ids,
             menu_items,
         }
@@ -234,9 +285,11 @@ impl GtkPixelsIOHandler {
             .unwrap_or(false);
         if is_fullscreen {
             self.window.unfullscreen();
+            let _ = self.menu.show_for_gtk_window(&self.window);
             self.menu_items.fullscreen.set_checked(false);
             toasts.push("Windowed".into());
         } else {
+            let _ = self.menu.hide_for_gtk_window(&self.window);
             self.window.fullscreen();
             self.menu_items.fullscreen.set_checked(true);
             toasts.push("Fullscreen".into());
@@ -257,6 +310,185 @@ fn load_gtk_icon() -> Option<gdk::gdk_pixbuf::Pixbuf> {
     loader.pixbuf()
 }
 
+unsafe fn init_gl(gl: &glow::Context) -> GlState {
+    let frag_src = desktop_frag_src();
+    let program = gl.create_program().expect("create program");
+
+    let vert = gl.create_shader(glow::VERTEX_SHADER).expect("create vert");
+    gl.shader_source(vert, VERT_SRC);
+    gl.compile_shader(vert);
+    if !gl.get_shader_compile_status(vert) {
+        panic!("Vertex shader: {}", gl.get_shader_info_log(vert));
+    }
+
+    let frag = gl
+        .create_shader(glow::FRAGMENT_SHADER)
+        .expect("create frag");
+    gl.shader_source(frag, &frag_src);
+    gl.compile_shader(frag);
+    if !gl.get_shader_compile_status(frag) {
+        panic!("Fragment shader: {}", gl.get_shader_info_log(frag));
+    }
+
+    gl.attach_shader(program, vert);
+    gl.attach_shader(program, frag);
+    gl.link_program(program);
+    if !gl.get_program_link_status(program) {
+        panic!("Program link: {}", gl.get_program_info_log(program));
+    }
+    gl.delete_shader(vert);
+    gl.delete_shader(frag);
+
+    gl.use_program(Some(program));
+
+    let vao = gl.create_vertex_array().expect("create vao");
+    gl.bind_vertex_array(Some(vao));
+
+    let texture = gl.create_texture().expect("create texture");
+    gl.active_texture(glow::TEXTURE0);
+    gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MIN_FILTER,
+        glow::NEAREST as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MAG_FILTER,
+        glow::NEAREST as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_S,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_T,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+
+    let u_texture_loc = gl.get_uniform_location(program, "u_texture");
+    gl.uniform_1_i32(u_texture_loc.as_ref(), 0);
+
+    let u_output_size = gl.get_uniform_location(program, "u_output_size").unwrap();
+    let u_texture_size = gl.get_uniform_location(program, "u_texture_size").unwrap();
+    let u_input_size = gl.get_uniform_location(program, "u_input_size").unwrap();
+    let u_enabled = gl.get_uniform_location(program, "u_enabled").unwrap();
+
+    GlState {
+        program,
+        vao,
+        texture,
+        u_output_size,
+        u_texture_size,
+        u_input_size,
+        u_enabled,
+    }
+}
+
+fn compute_viewport(
+    win_w: f32,
+    win_h: f32,
+    tex_w: f32,
+    tex_h: f32,
+    integer_scaling: bool,
+) -> (i32, i32, i32, i32) {
+    let scale_x = win_w / tex_w;
+    let scale_y = win_h / tex_h;
+    let scale = if integer_scaling {
+        scale_x.min(scale_y).floor().max(1.0)
+    } else {
+        scale_x.min(scale_y)
+    };
+    let vp_w = tex_w * scale;
+    let vp_h = tex_h * scale;
+    let vp_x = (win_w - vp_w) * 0.5;
+    let vp_y = (win_h - vp_h) * 0.5;
+    (vp_x as i32, vp_y as i32, vp_w as i32, vp_h as i32)
+}
+
+fn render_gl(
+    ctx: &mut GlContext,
+    rgba: &[u8],
+    win_w: u32,
+    win_h: u32,
+    integer_scaling: bool,
+    scanlines: bool,
+) {
+    let gl = &ctx.gl;
+    let state = &ctx.state;
+    unsafe {
+        gl.use_program(Some(state.program));
+        gl.bind_vertex_array(Some(state.vao));
+        gl.active_texture(glow::TEXTURE0);
+        gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
+
+        let filter = if scanlines {
+            glow::LINEAR
+        } else {
+            glow::NEAREST
+        } as i32;
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, filter);
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, filter);
+
+        if ctx.texture_initialized {
+            gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                0,
+                0,
+                NES_WIDTH,
+                NES_HEIGHT,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(rgba)),
+            );
+        } else {
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                NES_WIDTH,
+                NES_HEIGHT,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(rgba)),
+            );
+            ctx.texture_initialized = true;
+        }
+
+        let (vp_x, vp_y, vp_w, vp_h) = compute_viewport(
+            win_w as f32,
+            win_h as f32,
+            NES_WIDTH as f32,
+            NES_HEIGHT as f32,
+            integer_scaling,
+        );
+
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl.viewport(0, 0, win_w as i32, win_h as i32);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+
+        gl.viewport(vp_x, vp_y, vp_w, vp_h);
+        gl.uniform_2_f32(Some(&state.u_output_size), vp_w as f32, vp_h as f32);
+        gl.uniform_2_f32(
+            Some(&state.u_texture_size),
+            NES_WIDTH as f32,
+            NES_HEIGHT as f32,
+        );
+        gl.uniform_2_f32(
+            Some(&state.u_input_size),
+            NES_WIDTH as f32,
+            NES_HEIGHT as f32,
+        );
+        gl.uniform_1_f32(Some(&state.u_enabled), if scanlines { 1.0 } else { 0.0 });
+
+        gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_key(
     event: &gdk::EventKey,
@@ -271,10 +503,22 @@ fn handle_key(
     toggle_overlay: &Rc<Cell<bool>>,
     rewind: &Rc<Cell<bool>>,
     fullscreen: &Rc<Cell<bool>>,
+    exit: &Rc<Cell<bool>>,
     pixel_perfect: &Rc<Cell<bool>>,
+    scanlines: &Rc<Cell<bool>>,
 ) {
     let key = event.keyval();
+    let ctrl = event.state().contains(gdk::ModifierType::CONTROL_MASK);
     let mut kb = kb_state.get();
+
+    if pressed && ctrl {
+        match key {
+            k if k == gdk_key::f || k == gdk_key::F => fullscreen.set(true),
+            k if k == gdk_key::q || k == gdk_key::Q => exit.set(true),
+            _ => {}
+        }
+        return;
+    }
 
     match key {
         k if k == gdk_key::z || k == gdk_key::Z => {
@@ -348,6 +592,7 @@ fn handle_key(
                     k if k == gdk_key::r || k == gdk_key::R => reset.set(true),
                     k if k == gdk_key::m || k == gdk_key::M => muted.set(!muted.get()),
                     k if k == gdk_key::Tab => toggle_overlay.set(true),
+                    k if k == gdk_key::F9 => scanlines.set(!scanlines.get()),
                     k if k == gdk_key::F11 => fullscreen.set(true),
                     k if k == gdk_key::i || k == gdk_key::I => {
                         pixel_perfect.set(!pixel_perfect.get());
@@ -392,10 +637,6 @@ impl IOHandler for GtkPixelsIOHandler {
             self.toggle_fullscreen(&mut toasts);
         }
 
-        // Handle scaling toggle from keyboard
-        // (pixel_perfect is toggled directly in handle_key via Rc<Cell>)
-
-        // Clear one-shot flags
         self.save_state_flag.set(false);
         self.load_state_flag.set(false);
         self.cycle_slot_flag.set(false);
@@ -409,7 +650,6 @@ impl IOHandler for GtkPixelsIOHandler {
             } else if *id == self.menu_ids.quit {
                 exit = true;
             } else if *id == self.menu_ids.reset {
-                // reset already captured from keyboard flag
             } else if *id == self.menu_ids.save_state {
                 save_state = true;
             } else if *id == self.menu_ids.load_state {
@@ -428,6 +668,24 @@ impl IOHandler for GtkPixelsIOHandler {
                 } else {
                     toasts.push("Fill scaling".into());
                 }
+                settings::save_settings(&Settings {
+                    integer_scaling: self.pixel_perfect.get(),
+                    scanlines: self.scanlines.get(),
+                    overscan: self.overscan.get(),
+                });
+            } else if *id == self.menu_ids.scanlines {
+                self.scanlines.set(!self.scanlines.get());
+                self.menu_items.scanlines.set_checked(self.scanlines.get());
+                if self.scanlines.get() {
+                    toasts.push("CRT scanlines ON".into());
+                } else {
+                    toasts.push("CRT scanlines OFF".into());
+                }
+                settings::save_settings(&Settings {
+                    integer_scaling: self.pixel_perfect.get(),
+                    scanlines: self.scanlines.get(),
+                    overscan: self.overscan.get(),
+                });
             } else if *id == self.menu_ids.overscan {
                 let val = !self.overscan.get();
                 self.overscan.set(val);
@@ -440,7 +698,7 @@ impl IOHandler for GtkPixelsIOHandler {
                 }
                 settings::save_settings(&Settings {
                     integer_scaling: self.pixel_perfect.get(),
-                    scanlines: false,
+                    scanlines: self.scanlines.get(),
                     overscan: val,
                 });
             } else if let Some(path) = self
@@ -497,23 +755,22 @@ impl IOHandler for GtkPixelsIOHandler {
     fn render(&mut self, buf: &gfx::buf::Buffer) {
         self.last_frame_ms = frame_pace(&mut self.last_frame_time, self.fast_forward.get());
 
-        // Convert RGB to BGRA (Cairo's native format on little-endian)
         {
-            let mut surface = self.surface_buf.borrow_mut();
+            let mut rgba = self.rgba_buf.borrow_mut();
             let pixel_count = buf.data.len() / 3;
             for i in 0..pixel_count {
                 let src = i * 3;
                 let dst = i * 4;
-                if dst + 3 < surface.len() {
-                    surface[dst] = buf.data[src + 2]; // B
-                    surface[dst + 1] = buf.data[src + 1]; // G
-                    surface[dst + 2] = buf.data[src]; // R
-                    surface[dst + 3] = 255; // A
+                if dst + 3 < rgba.len() {
+                    rgba[dst] = buf.data[src];
+                    rgba[dst + 1] = buf.data[src + 1];
+                    rgba[dst + 2] = buf.data[src + 2];
+                    rgba[dst + 3] = 255;
                 }
             }
         }
 
-        self.drawing_area.queue_draw();
+        self.gl_area.queue_render();
     }
 
     fn exit(&self, s: String) {
