@@ -473,11 +473,11 @@ impl APU {
         triangle: f32,
         noise: f32,
         dmc: f32,
-        expansion_pulse: f32,
+        expansion: f32,
     ) -> f32 {
         // NES nonlinear mixer (NESdev); inputs are raw DAC counts:
         // pulse/noise 0–15, triangle 0–15, DMC 0–127
-        let pulse_sum = pulse1 + pulse2 + expansion_pulse;
+        let pulse_sum = pulse1 + pulse2;
         let pulse_out = if pulse_sum > 0.0 {
             95.88 / (8128.0 / pulse_sum + 100.0)
         } else {
@@ -489,8 +489,7 @@ impl APU {
         } else {
             0.0
         };
-        // Output in [0, ~1]; the high-pass filters remove DC offset
-        pulse_out + tnd_out
+        pulse_out + tnd_out + expansion
     }
 
     pub fn get_audio_samples(&mut self) -> &[f32] {

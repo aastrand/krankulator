@@ -134,7 +134,7 @@ cargo clippy --workspace
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM, Namco 175/340, Taito TC0190, Taito TC0690, Simple discrete: 78/87/140/152/180/184/185)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Simple discrete: 78/87/140/152/180/184/185)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, and `audio_expansion_output()` for expansion audio mixing
@@ -330,7 +330,7 @@ All emulation tests live in `core/` (586 tests, 21 ignored). Desktop has 6 tests
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM (88/206), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Simple discrete (78/87/140/152/180/184/185)
+- NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Simple discrete (78/87/140/152/180/184/185)
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo
@@ -340,6 +340,7 @@ All emulation tests live in `core/` (586 tests, 21 ignored). Desktop has 6 tests
 - VRC3 (mapper 73): 16KB PRG banking, 16-bit/8-bit IRQ counter with latch, CHR RAM only
 - Namco108Mapper (88/206): direct CHR/VRAM/palette management with 1KB CHR granularity; mapper 88 forces bit 6 on 1KB CHR bank writes
 - Taito33Mapper (33/48): 8KB PRG + 2KB/1KB CHR banking; mapper 33 has mirroring via PRG register bit 6; mapper 48 adds A12-based scanline IRQ and mirroring via $E000
+- Namco163Mapper (19): 3 switchable 8KB PRG + 8 independent 1KB CHR + 4 nametable banks; CHR-ROM as nametables (banks $00-$DF → CHR-ROM, $E0-$FF → CIRAM); 15-bit CPU-cycle IRQ counter; 128-byte internal sound RAM; 8-channel wavetable expansion audio; WRAM write protection
 - Namco175_340Mapper (210): 3 switchable 8KB PRG + 8 independent 1KB CHR banks; submapper 1 (175) has hardwired mirroring + PRG RAM, submapper 2 (340) has software mirroring
 - VRC2/VRC4 (mappers 21/22/23/25): unified implementation with address-line remapping variants, 9 sub-variants, 8KB PRG + 1KB CHR banking, VRC4 adds scanline/cycle IRQ and PRG swap mode
 

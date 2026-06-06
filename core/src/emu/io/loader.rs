@@ -302,6 +302,14 @@ fn load_nes_from_bytes_inner(
             combine_prg_banks_32k(&prg_banks),
         )),
         9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
+        19 => Box::new(mapper::namco163::Namco163Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+            submapper,
+        )),
         21 | 22 | 23 | 25 => Box::new(mapper::vrc2_4::Vrc2_4Mapper::new(
             flags,
             prg_banks,

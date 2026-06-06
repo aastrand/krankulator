@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 33 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~114 Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Mappers** — 34 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~114 Famicom exclusives (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -40,6 +40,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 5 | MMC5 | Nintendo | Most complex NES mapper, expansion audio |
 | 7 | AxROM | Nintendo | 32KB PRG banking, single-screen mirroring |
 | 9 | MMC2 | Nintendo | CHR latch switching (Punch-Out!!) |
+| 19 | Namco 163 | Namco | 8-ch wavetable audio, IRQ, CHR-ROM nametables |
 | 21 | VRC4a/VRC4c | Konami | 8KB PRG + 1KB CHR banking, IRQ |
 | 22 | VRC2a | Konami | Half-resolution CHR banking |
 | 23 | VRC2b/VRC4e/VRC4f | Konami | Crisis Force, Tiny Toon (JP) |
@@ -90,6 +91,7 @@ graph TD
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
     Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM, 78/87/140/152/180/184/185"]
     Mem --> Namco108["Namco 108<br/>DxROM (206), Namcot 3433 (88)"]
+    Mem --> Namco163["Namco 163<br/>wavetable audio + IRQ"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
     Emu --> IO["IOHandler<br/>trait object"]
