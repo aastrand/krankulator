@@ -16,7 +16,8 @@ use std::rc::Rc;
 
 const NES_WIDTH: c_uint = 256;
 const NES_HEIGHT: c_uint = 240;
-const NES_FPS: f64 = 60.0988;
+const NTSC_FPS: f64 = 60.0988;
+const PAL_FPS: f64 = 50.0070;
 const SAMPLE_RATE: f64 = 44100.0;
 const SERIALIZE_MAX_SIZE: usize = 256 * 1024;
 
@@ -38,6 +39,7 @@ struct RetroState {
     frame_buf: Rc<RefCell<Vec<u32>>>,
     audio_buf: Rc<RefCell<Vec<i16>>>,
     has_battery: bool,
+    region: emu::Region,
 }
 
 static mut STATE: Option<RetroState> = None;
@@ -212,8 +214,12 @@ pub unsafe extern "C" fn retro_get_system_av_info(info: *mut RetroSystemAvInfo) 
         max_height: NES_HEIGHT,
         aspect_ratio: 4.0 / 3.0,
     };
+    let fps = match STATE.as_ref().map(|s| s.region) {
+        Some(emu::Region::Pal) => PAL_FPS,
+        _ => NTSC_FPS,
+    };
     (*info).timing = RetroSystemTiming {
-        fps: NES_FPS,
+        fps,
         sample_rate: SAMPLE_RATE,
     };
 }
@@ -286,6 +292,14 @@ pub unsafe extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
 
     let rom_data = std::slice::from_raw_parts((*game).data as *const u8, (*game).size);
 
+    let path = if (*game).path.is_null() {
+        None
+    } else {
+        std::ffi::CStr::from_ptr((*game).path).to_str().ok()
+    };
+    let filename = path.and_then(|p| p.rsplit('/').next());
+    let region = loader::detect_region_with_filename(rom_data, filename);
+
     let has_battery = loader::rom_has_battery(rom_data);
 
     let mapper = match loader::load_nes_from_bytes(rom_data) {
@@ -303,7 +317,7 @@ pub unsafe extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
         buf: Rc::clone(&audio_buf),
     });
 
-    let mut emulator = emu::Emulator::new_with(io, mapper, audio);
+    let mut emulator = emu::Emulator::new_with_region(io, mapper, audio, region);
     emulator.cpu.status = 0x34;
     emulator.cpu.sp = 0xfd;
     emulator.toggle_should_trigger_nmi(true);
@@ -311,6 +325,7 @@ pub unsafe extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
 
     STATE = Some(RetroState {
         emulator,
+        region,
         frame_buf,
         audio_buf,
         has_battery,
@@ -446,7 +461,10 @@ pub unsafe extern "C" fn retro_get_memory_size(id: c_uint) -> usize {
 
 #[no_mangle]
 pub unsafe extern "C" fn retro_get_region() -> c_uint {
-    RETRO_REGION_NTSC
+    match STATE.as_ref().map(|s| s.region) {
+        Some(emu::Region::Pal) => RETRO_REGION_PAL,
+        _ => RETRO_REGION_NTSC,
+    }
 }
 
 #[no_mangle]
