@@ -314,6 +314,9 @@ fn load_nes_from_bytes_inner(
         33 => Box::new(mapper::taito::Taito33Mapper::new(
             flags, prg_banks, chr_banks,
         )),
+        48 => Box::new(mapper::taito::Taito33Mapper::new_mapper48(
+            flags, prg_banks, chr_banks,
+        )),
         34 => {
             if is_nes2_header && submapper != 0 && submapper != 2 {
                 return Err(format!(
@@ -420,6 +423,9 @@ fn load_nes_from_bytes_inner(
         )),
         206 => Box::new(mapper::namco108::Namco108Mapper::new(
             flags, prg_banks, chr_banks, false,
+        )),
+        210 => Box::new(mapper::namco175_340::Namco175_340Mapper::new(
+            flags, prg_banks, chr_banks, submapper,
         )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };

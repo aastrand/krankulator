@@ -9,15 +9,6 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
-/// Mapper 33 (Taito TC0190) — 8KB PRG + 2KB/1KB CHR banking, mirroring control, no IRQ.
-/// $8000: PRG bank 0 + mirroring (bit 6)
-/// $8001: PRG bank 1
-/// $8002: 2KB CHR at $0000 (value selects 2KB page)
-/// $8003: 2KB CHR at $0800
-/// $A000: 1KB CHR at $1000
-/// $A001: 1KB CHR at $1400
-/// $A002: 1KB CHR at $1800
-/// $A003: 1KB CHR at $1C00
 pub struct Taito33Mapper {
     controllers: [io::controller::Controller; 2],
 
@@ -25,9 +16,17 @@ pub struct Taito33Mapper {
     chr_rom: Vec<[u8; CHR_BANK_SIZE]>,
 
     prg_banks: [u8; 2],
-    // 8 x 1KB CHR bank indices: slots 0-1 from 2KB reg, 2-3 from 2KB reg, 4-7 from 1KB regs
     chr_banks: [u8; 8],
     mirroring: NametableMirror,
+    is_mapper48: bool,
+
+    irq_counter: u8,
+    irq_latch: u8,
+    irq_enable: bool,
+    irq_reload: bool,
+    irq_pending: bool,
+    irq_pending_since_dot: u64,
+    last_a12_low_dot: u64,
 
     vram: Box<[u8; VRAM_SIZE as usize]>,
     cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
@@ -36,6 +35,23 @@ pub struct Taito33Mapper {
 
 impl Taito33Mapper {
     pub fn new(flags: u8, prg_banks_16k: Vec<[u8; 16384]>, chr_banks_8k: Vec<[u8; 8192]>) -> Self {
+        Self::new_variant(flags, prg_banks_16k, chr_banks_8k, false)
+    }
+
+    pub fn new_mapper48(
+        flags: u8,
+        prg_banks_16k: Vec<[u8; 16384]>,
+        chr_banks_8k: Vec<[u8; 8192]>,
+    ) -> Self {
+        Self::new_variant(flags, prg_banks_16k, chr_banks_8k, true)
+    }
+
+    fn new_variant(
+        flags: u8,
+        prg_banks_16k: Vec<[u8; 16384]>,
+        chr_banks_8k: Vec<[u8; 8192]>,
+        is_mapper48: bool,
+    ) -> Self {
         let mut prg_rom = vec![];
         for bank in &prg_banks_16k {
             prg_rom.push(<[u8; PRG_BANK_SIZE]>::try_from(&bank[0..PRG_BANK_SIZE]).unwrap());
@@ -72,6 +88,14 @@ impl Taito33Mapper {
             prg_banks: [0, 1],
             chr_banks: [0, 1, 2, 3, 4, 5, 6, 7],
             mirroring,
+            is_mapper48,
+            irq_counter: 0,
+            irq_latch: 0,
+            irq_enable: false,
+            irq_reload: false,
+            irq_pending: false,
+            irq_pending_since_dot: 0,
+            last_a12_low_dot: 0,
             vram: Box::new([0; VRAM_SIZE as usize]),
             cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
             palette_ram: [0x0F; PALETTE_SIZE],
@@ -80,6 +104,33 @@ impl Taito33Mapper {
 
     fn chr_1k_index(&self, slot: usize) -> usize {
         self.chr_banks[slot] as usize % self.chr_rom.len().max(1)
+    }
+
+    fn check_a12_transition(&mut self, addr: u16, dot: u64) {
+        let current_a12 = (addr & 0x1000) != 0;
+        if current_a12 {
+            if self.last_a12_low_dot > 0 && dot.saturating_sub(self.last_a12_low_dot) >= 16 {
+                self.clock_irq_counter(dot);
+            }
+            self.last_a12_low_dot = 0;
+        } else if self.last_a12_low_dot == 0 {
+            self.last_a12_low_dot = dot;
+        }
+    }
+
+    fn clock_irq_counter(&mut self, dot: u64) {
+        if self.irq_reload || self.irq_counter == 0 {
+            self.irq_counter = self.irq_latch;
+        } else {
+            self.irq_counter = self.irq_counter.wrapping_sub(1);
+        }
+        self.irq_reload = false;
+        if self.irq_counter == 0 && self.irq_enable {
+            if !self.irq_pending {
+                self.irq_pending_since_dot = dot;
+            }
+            self.irq_pending = true;
+        }
     }
 }
 
@@ -119,14 +170,16 @@ impl MemoryMapper for Taito33Mapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x8000..=0xFFFF => match addr & 0xA003 {
+            0x8000..=0xFFFF => match addr & 0xE003 {
                 0x8000 => {
                     self.prg_banks[0] = value & 0x3F;
-                    self.mirroring = if value & 0x40 != 0 {
-                        NametableMirror::Horizontal
-                    } else {
-                        NametableMirror::Vertical
-                    };
+                    if !self.is_mapper48 {
+                        self.mirroring = if value & 0x40 != 0 {
+                            NametableMirror::Horizontal
+                        } else {
+                            NametableMirror::Vertical
+                        };
+                    }
                 }
                 0x8001 => self.prg_banks[1] = value & 0x3F,
                 0x8002 => {
@@ -143,6 +196,20 @@ impl MemoryMapper for Taito33Mapper {
                 0xA001 => self.chr_banks[5] = value,
                 0xA002 => self.chr_banks[6] = value,
                 0xA003 => self.chr_banks[7] = value,
+                0xC000 if self.is_mapper48 => self.irq_latch = value ^ 0xFF,
+                0xC001 if self.is_mapper48 => self.irq_reload = true,
+                0xC002 if self.is_mapper48 => self.irq_enable = true,
+                0xC003 if self.is_mapper48 => {
+                    self.irq_enable = false;
+                    self.irq_pending = false;
+                }
+                0xE000 if self.is_mapper48 => {
+                    self.mirroring = if value & 0x40 != 0 {
+                        NametableMirror::Horizontal
+                    } else {
+                        NametableMirror::Vertical
+                    };
+                }
                 _ => {}
             },
             _ => {}
@@ -223,11 +290,32 @@ impl MemoryMapper for Taito33Mapper {
     }
 
     fn poll_irq(&mut self) -> bool {
-        false
+        self.irq_pending
+    }
+
+    fn poll_irq_at_dot(&self, deadline_dot: u64) -> bool {
+        self.irq_pending && self.irq_pending_since_dot <= deadline_dot
+    }
+
+    fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
+        if self.is_mapper48 {
+            self.check_a12_transition(addr, dot);
+        }
+        self.ppu_read(addr)
+    }
+
+    fn ppu_a12_transition(&mut self, addr: u16, dot: u64) {
+        if self.is_mapper48 {
+            self.check_a12_transition(addr, dot);
+        }
     }
 
     fn mapper_id(&self) -> u8 {
-        33
+        if self.is_mapper48 {
+            48
+        } else {
+            33
+        }
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
@@ -242,6 +330,13 @@ impl MemoryMapper for Taito33Mapper {
         }
         super::save_mirroring(w, self.mirroring);
         super::save_controllers(w, &self.controllers);
+        if self.is_mapper48 {
+            w.write_u8(self.irq_counter);
+            w.write_u8(self.irq_latch);
+            w.write_bool(self.irq_enable);
+            w.write_bool(self.irq_reload);
+            w.write_bool(self.irq_pending);
+        }
     }
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -256,6 +351,13 @@ impl MemoryMapper for Taito33Mapper {
         }
         self.mirroring = super::load_mirroring(r)?;
         super::load_controllers(r, &mut self.controllers)?;
+        if self.is_mapper48 {
+            self.irq_counter = r.read_u8()?;
+            self.irq_latch = r.read_u8()?;
+            self.irq_enable = r.read_bool()?;
+            self.irq_reload = r.read_bool()?;
+            self.irq_pending = r.read_bool()?;
+        }
         Ok(())
     }
 }
@@ -265,6 +367,18 @@ mod tests {
     use super::*;
 
     fn make_mapper(num_prg_16k: usize, num_chr_8k: usize) -> Box<dyn MemoryMapper> {
+        make_mapper_variant(num_prg_16k, num_chr_8k, false)
+    }
+
+    fn make_mapper48(num_prg_16k: usize, num_chr_8k: usize) -> Box<dyn MemoryMapper> {
+        make_mapper_variant(num_prg_16k, num_chr_8k, true)
+    }
+
+    fn make_mapper_variant(
+        num_prg_16k: usize,
+        num_chr_8k: usize,
+        is_mapper48: bool,
+    ) -> Box<dyn MemoryMapper> {
         let mut prg = Vec::new();
         for i in 0..num_prg_16k {
             let mut bank = [0u8; 16384];
@@ -282,7 +396,7 @@ mod tests {
             chr.push(bank);
         }
 
-        Box::new(Taito33Mapper::new(0, prg, chr))
+        Box::new(Taito33Mapper::new_variant(0, prg, chr, is_mapper48))
     }
 
     #[test]
@@ -377,5 +491,62 @@ mod tests {
         assert_eq!(m2.cpu_read(0x8000), m.cpu_read(0x8000));
         assert_eq!(m2.ppu_read(0x0000), m.ppu_read(0x0000));
         assert_eq!(m2.ppu_read(0x1000), m.ppu_read(0x1000));
+    }
+
+    #[test]
+    fn test_mapper48_mirroring_at_e000() {
+        let mut m = make_mapper48(2, 1);
+
+        m.ppu_write(0x2000, 0xAA);
+        assert_eq!(m.ppu_read(0x2400), 0xAA);
+
+        m.cpu_write(0xE000, 0x00);
+        m.ppu_write(0x2000, 0xBB);
+        assert_eq!(m.ppu_read(0x2800), 0xBB);
+
+        m.cpu_write(0xE000, 0x40);
+        m.ppu_write(0x2000, 0xCC);
+        assert_eq!(m.ppu_read(0x2400), 0xCC);
+    }
+
+    #[test]
+    fn test_mapper48_prg_no_mirroring_bit() {
+        let mut m = make_mapper48(4, 1);
+
+        m.cpu_write(0x8000, 0x42);
+        assert_eq!(m.cpu_read(0x8000), m.cpu_read(0x8000));
+        assert_eq!(m.mapper_id(), 48);
+
+        m.ppu_write(0x2000, 0xAA);
+        assert_eq!(m.ppu_read(0x2400), 0xAA);
+    }
+
+    #[test]
+    fn test_mapper48_irq_disable_clears_pending() {
+        let mut m = make_mapper48(2, 2);
+
+        m.cpu_write(0xC002, 0x00);
+        m.cpu_write(0xC003, 0x00);
+        assert!(!m.poll_irq());
+    }
+
+    #[test]
+    fn test_mapper48_savestate_roundtrip() {
+        let mut m = make_mapper48(2, 2);
+        m.cpu_write(0x8000, 2);
+        m.cpu_write(0x8002, 5);
+        m.cpu_write(0xC000, 0x10);
+        m.cpu_write(0xC002, 0x00);
+
+        let mut w = SavestateWriter::new();
+        m.save_state(&mut w);
+        let data = w.finish();
+
+        let mut m2 = make_mapper48(2, 2);
+        let mut r = SavestateReader::new(&data).unwrap();
+        m2.load_state(&mut r).unwrap();
+
+        assert_eq!(m2.cpu_read(0x8000), m.cpu_read(0x8000));
+        assert_eq!(m2.ppu_read(0x0000), m.ppu_read(0x0000));
     }
 }
