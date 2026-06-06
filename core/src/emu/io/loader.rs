@@ -361,6 +361,7 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        71 => Box::new(mapper::camerica::CamericaMapper::new(flags, prg_banks)),
         73 => {
             let chr = if num_chr_blocks > 0 {
                 chr_banks
