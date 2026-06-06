@@ -10,6 +10,7 @@ const PRG_ROM_ADDR: usize = 0x8000;
 
 #[derive(Copy, Clone, PartialEq)]
 enum Type {
+    M78,
     M87,
     M152,
     M184,
@@ -69,7 +70,7 @@ impl SimpleMapper {
                         .copy_from_slice(&prg_banks_16k[last]);
                 }
             }
-            Type::M152 => {
+            Type::M78 | Type::M152 => {
                 if !prg_banks_16k.is_empty() {
                     mem[PRG_ROM_ADDR..PRG_ROM_ADDR + PRG_16K].copy_from_slice(&prg_banks_16k[0]);
                     let last = prg_banks_16k.len() - 1;
@@ -114,6 +115,22 @@ impl SimpleMapper {
             ppu,
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
+    }
+
+    pub fn mapper78(
+        flags: u8,
+        prg: Vec<[u8; PRG_16K]>,
+        chr: Vec<[u8; CHR_8K]>,
+        submapper: u8,
+    ) -> Self {
+        let mirroring = if submapper == 3 {
+            mirroring_from_flags(flags)
+        } else {
+            NametableMirror::Lower
+        };
+        let mut m = Self::new_inner(Type::M78, prg, chr, mirroring);
+        m.submapper = submapper;
+        m
     }
 
     pub fn mapper87(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
@@ -222,6 +239,28 @@ impl MemoryMapper for SimpleMapper {
         let page = addr_to_page(addr);
 
         match self.mapper_type {
+            Type::M78 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    let value = self.bus_conflict(addr, value);
+                    if self.submapper == 3 {
+                        self.ppu.mirroring = if value & 0x08 != 0 {
+                            NametableMirror::Horizontal
+                        } else {
+                            NametableMirror::Vertical
+                        };
+                    } else {
+                        self.ppu.mirroring = if value & 0x08 != 0 {
+                            NametableMirror::Higher
+                        } else {
+                            NametableMirror::Lower
+                        };
+                    }
+                    self.switch_prg_16k_low((value & 0x07) as usize);
+                    self.switch_chr_8k(((value >> 4) & 0x0F) as usize);
+                }
+                _ => {}
+            },
             Type::M87 => match page {
                 0x0 | 0x10 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
                 0x60 | 0x70 => {
@@ -327,12 +366,13 @@ impl MemoryMapper for SimpleMapper {
 
     fn mapper_id(&self) -> u8 {
         match self.mapper_type {
+            Type::M78 => 78,
             Type::M87 => 87,
+            Type::M140 => 140,
             Type::M152 => 152,
+            Type::M180 => 180,
             Type::M184 => 184,
             Type::M185 => 185,
-            Type::M140 => 140,
-            Type::M180 => 180,
         }
     }
 
