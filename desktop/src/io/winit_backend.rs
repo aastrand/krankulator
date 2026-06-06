@@ -23,7 +23,7 @@ use krankulator_core::util;
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
-    populate_recent_submenu, MenuIds, MenuItems,
+    populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
 };
 use crate::gamepad::Gamepads;
 use crate::settings::{self, Settings};
@@ -60,6 +60,7 @@ pub struct WinitPixelsIOHandler {
     scanlines: bool,
     overscan: bool,
     crt: Option<CrtPipeline>,
+    frame_duration: Duration,
     _menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
@@ -171,6 +172,7 @@ impl WinitPixelsIOHandler {
             scanlines: settings.scanlines,
             overscan: settings.overscan,
             crt,
+            frame_duration: NTSC_FRAME_DURATION,
             _menu: menu,
             menu_ids,
             menu_items,
@@ -736,8 +738,23 @@ impl IOHandler for WinitPixelsIOHandler {
         Some(self.last_frame_ms)
     }
 
+    fn set_frame_duration_nanos(&mut self, nanos: u64) {
+        self.frame_duration = Duration::from_nanos(nanos);
+    }
+
+    fn set_overscan_available(&mut self, available: bool) {
+        self.menu_items.overscan.set_enabled(available);
+        if !available {
+            self.overscan = false;
+        }
+    }
+
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        self.last_frame_ms = frame_pace(&mut self.last_frame_time, self.fast_forward);
+        self.last_frame_ms = frame_pace(
+            &mut self.last_frame_time,
+            self.fast_forward,
+            self.frame_duration,
+        );
 
         let window = self.window.unwrap();
         let pixels = self.pixels.as_mut().unwrap();

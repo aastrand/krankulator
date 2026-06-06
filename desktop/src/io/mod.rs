@@ -21,7 +21,7 @@ use krankulator_core::emu::memory;
 
 use crate::gamepad::Gamepads;
 
-const NES_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
+pub(crate) const NTSC_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
 pub(crate) static ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
 
@@ -315,15 +315,19 @@ pub(crate) fn apply_gamepad(
     }
 }
 
-pub(crate) fn frame_pace(last_frame_time: &mut Instant, fast_forward: bool) -> f64 {
+pub(crate) fn frame_pace(
+    last_frame_time: &mut Instant,
+    fast_forward: bool,
+    frame_duration: Duration,
+) -> f64 {
     let elapsed = last_frame_time.elapsed();
     let frame_ms = elapsed.as_secs_f64() * 1000.0;
-    if !fast_forward && elapsed < NES_FRAME_DURATION {
-        let sleep_duration = NES_FRAME_DURATION - elapsed;
+    if !fast_forward && elapsed < frame_duration {
+        let sleep_duration = frame_duration - elapsed;
         if sleep_duration > Duration::from_millis(1) {
             std::thread::sleep(sleep_duration - Duration::from_millis(1));
         }
-        while last_frame_time.elapsed() < NES_FRAME_DURATION {
+        while last_frame_time.elapsed() < frame_duration {
             std::hint::spin_loop();
         }
     }
@@ -393,7 +397,7 @@ mod tests {
     #[test]
     fn test_frame_pace_fast_forward_skips_sleep() {
         let mut t = Instant::now();
-        let ms = frame_pace(&mut t, true);
+        let ms = frame_pace(&mut t, true, NTSC_FRAME_DURATION);
         assert!(ms < 1.0);
     }
 
@@ -401,7 +405,7 @@ mod tests {
     fn test_frame_pace_normal_sleeps_to_frame_budget() {
         let mut t = Instant::now();
         let before = Instant::now();
-        frame_pace(&mut t, false);
+        frame_pace(&mut t, false, NTSC_FRAME_DURATION);
         let wall = before.elapsed();
         assert!(
             wall.as_millis() >= 14,
