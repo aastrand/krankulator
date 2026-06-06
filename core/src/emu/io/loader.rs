@@ -308,10 +308,27 @@ fn load_nes_from_bytes_inner(
             submapper,
         )),
         9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
+        10 => Box::new(mapper::mmc4::MMC4Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
         11 => Box::new(mapper::color_dreams::ColorDreamsMapper::new(
             flags,
             combine_prg_banks_32k(&prg_banks),
             chr_banks,
+        )),
+        16 => Box::new(mapper::bandai_fcg::BandaiFcgMapper::new(
+            flags, prg_banks, chr_banks, submapper, sram_data,
+        )),
+        18 => Box::new(mapper::jaleco_ss88006::JalecoSS88006Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
         )),
         19 => Box::new(mapper::namco163::Namco163Mapper::new(
             flags,

@@ -1,14 +1,17 @@
 pub mod action53;
 pub mod axrom;
+pub mod bandai_fcg;
 pub mod bnrom;
 pub mod camerica;
 pub mod cnrom;
 pub mod color_dreams;
 pub mod gxrom;
+pub mod jaleco_ss88006;
 pub mod mapper31;
 pub mod mmc1;
 pub mod mmc2;
 pub mod mmc3;
+pub mod mmc4;
 pub mod mmc5;
 pub mod namco108;
 pub mod namco163;
