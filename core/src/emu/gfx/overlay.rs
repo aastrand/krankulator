@@ -3,7 +3,6 @@ use super::font;
 
 const TOAST_DURATION: u32 = 120;
 const TOAST_LINE_SPACING: i32 = 10;
-const NTSC_FRAME_MS: f64 = 16.64;
 const FG: (u8, u8, u8) = (255, 255, 255);
 const OUTLINE: (u8, u8, u8) = (0, 0, 0);
 
@@ -15,6 +14,7 @@ struct Toast {
 pub struct Overlay {
     enabled: bool,
     frame_time_text: String,
+    frame_budget_ms: f64,
     toasts: Vec<Toast>,
     banner: Option<String>,
     rewind_status: Option<String>,
@@ -26,6 +26,7 @@ impl Overlay {
         Self {
             enabled: false,
             frame_time_text: String::new(),
+            frame_budget_ms: 16.64,
             toasts: Vec::new(),
             banner: None,
             rewind_status: None,
@@ -37,8 +38,12 @@ impl Overlay {
         self.enabled = !self.enabled;
     }
 
+    pub fn set_frame_budget_ms(&mut self, ms: f64) {
+        self.frame_budget_ms = ms;
+    }
+
     pub fn set_frame_time(&mut self, emu_ms: f64) {
-        let budget_pct = (emu_ms / NTSC_FRAME_MS) * 100.0;
+        let budget_pct = (emu_ms / self.frame_budget_ms) * 100.0;
         self.frame_time_text = format!("{:.1}ms ({:.0}%)", emu_ms, budget_pct);
     }
 
