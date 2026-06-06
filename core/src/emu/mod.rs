@@ -1588,9 +1588,10 @@ impl Emulator {
                 self.cpu.check_zero(value);
             }
             _ => {
-                // Infer page boundary penalty for certain unofficial NOPs
-                if opcode & 0xf == 0xc && self.lookup.mode(opcode) != 0xff {
-                    self.addr(opcode);
+                let mode = self.lookup.mode(opcode);
+                if mode != opcodes::ADDR_MODE_NA {
+                    let addr = self.addr(opcode);
+                    self.cpu_read(addr);
                 }
             }
         }
@@ -3203,6 +3204,69 @@ mod emu_tests {
         assert_eq!(emu.cpu.y, 0x0);
         assert_eq!(emu.cpu.sp, 0xff);
         assert_eq!(emu.cpu.status, 0b0010_0000);
+    }
+
+    #[test]
+    fn test_nop_abs_reads_target_clears_vbl() {
+        let mut emu: Emulator = Emulator::_new();
+        let start = memory::CODE_START_ADDR;
+
+        emu.ppu.set_vblank_for_test(true);
+        assert!(emu.ppu.is_in_vblank());
+
+        emu.mem.cpu_write(start, opcodes::NOP_0C);
+        emu.mem.cpu_write(start + 1, ppu::STATUS_REG_ADDR as u8);
+        emu.mem
+            .cpu_write(start + 2, (ppu::STATUS_REG_ADDR >> 8) as u8);
+        // LDA $2002 after NOP to read back the status
+        emu.mem.cpu_write(start + 3, opcodes::LDA_ABS);
+        emu.mem.cpu_write(start + 4, ppu::STATUS_REG_ADDR as u8);
+        emu.mem
+            .cpu_write(start + 5, (ppu::STATUS_REG_ADDR >> 8) as u8);
+
+        emu.execute_instruction(); // NOP $2002
+        emu.execute_instruction(); // LDA $2002
+
+        assert_eq!(
+            emu.cpu.a & ppu::STATUS_VERTICAL_BLANK_BIT,
+            0,
+            "NOP abs targeting $2002 must clear VBL flag"
+        );
+    }
+
+    #[test]
+    fn test_nop_abs_does_not_modify_registers() {
+        let mut emu: Emulator = Emulator::_new();
+        let start = memory::CODE_START_ADDR;
+        emu.cpu.a = 0x42;
+        emu.cpu.x = 0x11;
+        emu.cpu.y = 0x22;
+
+        emu.mem.cpu_write(start, opcodes::NOP_0C);
+        emu.mem.cpu_write(start + 1, 0x00);
+        emu.mem.cpu_write(start + 2, 0x00);
+
+        emu.execute_instruction();
+
+        assert_eq!(emu.cpu.a, 0x42);
+        assert_eq!(emu.cpu.x, 0x11);
+        assert_eq!(emu.cpu.y, 0x22);
+        assert_eq!(emu.cpu.pc, start + 3);
+    }
+
+    #[test]
+    fn test_nop_zp_reads_target_address() {
+        let mut emu: Emulator = Emulator::_new();
+        let start = memory::CODE_START_ADDR;
+
+        emu.mem.cpu_write(0x42, 0xAA);
+        emu.mem.cpu_write(start, opcodes::NOP_04);
+        emu.mem.cpu_write(start + 1, 0x42);
+
+        emu.execute_instruction();
+
+        assert_eq!(emu.cpu.pc, start + 2);
+        assert_eq!(emu.cpu.a, 0);
     }
 
     #[test]

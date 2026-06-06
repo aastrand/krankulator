@@ -91,6 +91,11 @@ fn load_mirroring(r: &mut SavestateReader) -> std::io::Result<NametableMirror> {
 
 pub const MAX_VRAM_ADDR: u16 = 0x4000;
 
+pub unsafe fn bus_conflict(addr_space_ptr: *const u8, addr: u16, value: u8) -> u8 {
+    let rom_byte = *addr_space_ptr.offset(addr as isize);
+    value & rom_byte
+}
+
 pub fn mirror_addr(addr: u16) -> u16 {
     if addr < 0x2000 {
         addr % CPU_RAM_SIZE

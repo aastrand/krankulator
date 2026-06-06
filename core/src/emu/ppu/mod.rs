@@ -1521,6 +1521,15 @@ impl PPU {
         (self.ppu_status & STATUS_VERTICAL_BLANK_BIT) == STATUS_VERTICAL_BLANK_BIT
     }
 
+    #[cfg(test)]
+    pub fn set_vblank_for_test(&mut self, on: bool) {
+        if on {
+            self.ppu_status |= STATUS_VERTICAL_BLANK_BIT;
+        } else {
+            self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
+        }
+    }
+
     fn update_nmi_output(&mut self) {
         let new = self.vblank_nmi_is_enabled() && self.is_in_vblank();
         if new && !self.nmi_output {

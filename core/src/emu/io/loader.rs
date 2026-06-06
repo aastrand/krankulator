@@ -300,6 +300,7 @@ fn load_nes_from_bytes_inner(
         7 => Box::new(mapper::axrom::AxROMMapper::new(
             flags,
             combine_prg_banks_32k(&prg_banks),
+            submapper,
         )),
         9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
         11 => Box::new(mapper::color_dreams::ColorDreamsMapper::new(

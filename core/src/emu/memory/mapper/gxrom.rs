@@ -74,8 +74,7 @@ impl GxROMMapper {
     }
 
     fn bus_conflict(&self, addr: u16, value: u8) -> u8 {
-        let rom_byte = unsafe { *self.addr_space_ptr.offset(addr as isize) };
-        value & rom_byte
+        unsafe { super::bus_conflict(self.addr_space_ptr, addr, value) }
     }
 }
 

@@ -12,13 +12,14 @@ pub struct AxROMMapper {
 
     _prg_banks: Vec<[u8; AXROM_PRG_BANK_SIZE]>,
     selected_prg_bank: usize,
+    has_bus_conflicts: bool,
 
     ppu: PpuBus,
     pub controllers: [controller::Controller; 2],
 }
 
 impl AxROMMapper {
-    pub fn new(flags: u8, prg_banks: Vec<[u8; AXROM_PRG_BANK_SIZE]>) -> AxROMMapper {
+    pub fn new(flags: u8, prg_banks: Vec<[u8; AXROM_PRG_BANK_SIZE]>, submapper: u8) -> AxROMMapper {
         if prg_banks.is_empty() {
             panic!("AxROM requires at least one PRG bank");
         }
@@ -35,6 +36,7 @@ impl AxROMMapper {
             addr_space_ptr,
             _prg_banks: prg_banks,
             selected_prg_bank: 0,
+            has_bus_conflicts: submapper == 2,
             ppu: PpuBus::new_ram(CHR_SIZE, NametableMirror::Lower),
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
@@ -53,6 +55,10 @@ impl AxROMMapper {
             }
         }
     }
+
+    fn bus_conflict(&self, addr: u16, value: u8) -> u8 {
+        unsafe { super::bus_conflict(self.addr_space_ptr, addr, value) }
+    }
 }
 
 impl MemoryMapper for AxROMMapper {
@@ -68,9 +74,13 @@ impl MemoryMapper for AxROMMapper {
         match page {
             0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
             0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
-                self.switch_prg_bank(value & 0x07);
-                // Bit 4 selects single-screen nametable page
-                self.ppu.mirroring = if value & 0x10 != 0 {
+                let effective = if self.has_bus_conflicts {
+                    self.bus_conflict(addr, value)
+                } else {
+                    value
+                };
+                self.switch_prg_bank(effective & 0x0F);
+                self.ppu.mirroring = if effective & 0x10 != 0 {
                     NametableMirror::Higher
                 } else {
                     NametableMirror::Lower
@@ -140,7 +150,7 @@ mod tests {
         let bank3 = [3; AXROM_PRG_BANK_SIZE];
 
         let mut mapper: Box<dyn MemoryMapper> =
-            Box::new(AxROMMapper::new(0, vec![bank1, bank2, bank3]));
+            Box::new(AxROMMapper::new(0, vec![bank1, bank2, bank3], 0));
 
         // Initially bank 0 should be selected
         assert_eq!(mapper.cpu_read(0x8000), 1);
@@ -162,7 +172,7 @@ mod tests {
     #[test]
     fn test_axrom_single_screen_mirroring() {
         let bank1 = [0; AXROM_PRG_BANK_SIZE];
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank1]));
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank1], 0));
 
         // Write to nametable $2000
         mapper.ppu_write(0x2000, 0x42);
@@ -194,7 +204,7 @@ mod tests {
     #[test]
     fn test_axrom_chr_ram_write() {
         let bank1 = [0; AXROM_PRG_BANK_SIZE];
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank1]));
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank1], 0));
 
         mapper.ppu_write(0x0100, 0x55);
         assert_eq!(mapper.ppu_read(0x0100), 0x55);
@@ -208,7 +218,8 @@ mod tests {
         let bank1 = [1; AXROM_PRG_BANK_SIZE];
         let bank2 = [2; AXROM_PRG_BANK_SIZE];
 
-        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank1, bank2]));
+        let mut mapper: Box<dyn MemoryMapper> =
+            Box::new(AxROMMapper::new(0, vec![bank1, bank2], 0));
 
         // 0x11 = PRG bank 1, single-screen page 1
         mapper.cpu_write(0x8000, 0x11);
@@ -221,5 +232,51 @@ mod tests {
         mapper.cpu_write(0x8000, 0x00);
         assert_eq!(mapper.cpu_read(0x8000), 1);
         assert_ne!(mapper.ppu_read(0x2000), 0x33);
+    }
+
+    #[test]
+    fn test_axrom_4bit_bank_select() {
+        let banks: Vec<[u8; AXROM_PRG_BANK_SIZE]> =
+            (0u8..16).map(|i| [i; AXROM_PRG_BANK_SIZE]).collect();
+
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, banks, 0));
+
+        mapper.cpu_write(0x8000, 0x08);
+        assert_eq!(mapper.cpu_read(0x8000), 8);
+
+        mapper.cpu_write(0x8000, 0x0F);
+        assert_eq!(mapper.cpu_read(0x8000), 15);
+    }
+
+    #[test]
+    fn test_axrom_bus_conflicts_submapper_2() {
+        let mut bank = [0xFF_u8; AXROM_PRG_BANK_SIZE];
+        bank[0] = 0x03;
+        let bank1 = [1; AXROM_PRG_BANK_SIZE];
+
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank, bank1], 2));
+
+        // Write 0x01 to $8000 where ROM byte is 0x03: AND = 0x01 -> bank 1
+        mapper.cpu_write(0x8000, 0x01);
+        assert_eq!(mapper.cpu_read(0x8000), 1);
+
+        // Switch back to bank 0
+        mapper.cpu_write(0x8000, 0x00);
+        // Write 0x01 to $8000 where ROM byte is 0x03: AND = 0x01 -> bank 1
+        mapper.cpu_write(0x8000, 0x05);
+        assert_eq!(mapper.cpu_read(0x8000), 1); // 0x05 & 0x03 = 0x01
+    }
+
+    #[test]
+    fn test_axrom_no_bus_conflicts_submapper_0() {
+        let mut bank = [0x00_u8; AXROM_PRG_BANK_SIZE];
+        bank[0] = 0x00;
+        let bank1 = [1; AXROM_PRG_BANK_SIZE];
+
+        let mut mapper: Box<dyn MemoryMapper> = Box::new(AxROMMapper::new(0, vec![bank, bank1], 0));
+
+        // Without bus conflicts, ROM byte doesn't matter
+        mapper.cpu_write(0x8000, 0x01);
+        assert_eq!(mapper.cpu_read(0x8000), 1);
     }
 }
