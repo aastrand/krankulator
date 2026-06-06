@@ -110,16 +110,29 @@ pub struct Emulator {
 
 impl Emulator {
     pub fn new_headless(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
+        Self::new_headless_with_region(mapper, Region::Ntsc)
+    }
+
+    pub fn new_headless_with_region(
+        mapper: Box<dyn memory::MemoryMapper>,
+        region: Region,
+    ) -> Emulator {
         let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
         let iohandler = Box::new(io::HeadlessIOHandler {});
-
-        Emulator::new_with(iohandler, mapper, audio)
+        Emulator::new_with_region(iohandler, mapper, audio, region)
     }
 
     pub fn new_capturing(mapper: Box<dyn memory::MemoryMapper>) -> Emulator {
+        Self::new_capturing_with_region(mapper, Region::Ntsc)
+    }
+
+    pub fn new_capturing_with_region(
+        mapper: Box<dyn memory::MemoryMapper>,
+        region: Region,
+    ) -> Emulator {
         let audio = Box::new(CapturingAudioOutput::new()) as Box<dyn AudioBackend>;
         let iohandler = Box::new(io::HeadlessIOHandler {});
-        Emulator::new_with(iohandler, mapper, audio)
+        Emulator::new_with_region(iohandler, mapper, audio, region)
     }
 
     pub fn drain_captured_audio(&mut self) -> Vec<f32> {
@@ -672,7 +685,7 @@ impl Emulator {
             }
             self.overlay.tick();
             self.overlay.draw(&mut self.buf);
-            if self.overscan {
+            if self.overscan && self.region.region != region::Region::Pal {
                 self.buf.mask_overscan();
             }
             self.iohandler.render(&self.buf);
