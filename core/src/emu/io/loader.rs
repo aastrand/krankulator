@@ -290,10 +290,6 @@ fn load_nes_from_bytes_inner(
                 submapper,
             ))
         }
-        7 => Box::new(mapper::axrom::AxROMMapper::new(
-            flags,
-            combine_prg_banks_32k(&prg_banks),
-        )),
         5 => Box::new(MMC5Mapper::new(
             flags,
             prg_banks,
@@ -301,7 +297,23 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        7 => Box::new(mapper::axrom::AxROMMapper::new(
+            flags,
+            combine_prg_banks_32k(&prg_banks),
+        )),
         9 => Box::new(mapper::mmc2::MMC2Mapper::new(flags, prg_banks, chr_banks)),
+        21 | 22 | 23 | 25 => Box::new(mapper::vrc2_4::Vrc2_4Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+            mapper_id as u8,
+            submapper,
+        )),
+        33 => Box::new(mapper::taito::Taito33Mapper::new(
+            flags, prg_banks, chr_banks,
+        )),
         34 => {
             if is_nes2_header && submapper != 0 && submapper != 2 {
                 return Err(format!(
@@ -314,6 +326,32 @@ fn load_nes_from_bytes_inner(
                 combine_prg_banks_32k(&prg_banks),
             ))
         }
+        66 => Box::new(mapper::gxrom::GxROMMapper::new(
+            flags,
+            combine_prg_banks_32k(&prg_banks),
+            chr_banks,
+        )),
+        68 => Box::new(mapper::sunsoft4::Sunsoft4Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
+        69 => Box::new(mapper::sunsoft_fme7::SunsoftFme7Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
+        87 => Box::new(mapper::simple::SimpleMapper::mapper87(
+            flags, prg_banks, chr_banks,
+        )),
+        88 => Box::new(mapper::namco108::Namco108Mapper::new(
+            flags, prg_banks, chr_banks, true,
+        )),
+        105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
         118 => {
             let mmc3_chr = if num_chr_blocks > 0 {
                 chr_banks
@@ -346,34 +384,30 @@ fn load_nes_from_bytes_inner(
                 MMC3Variant::TQROM,
             ))
         }
-        66 => Box::new(mapper::gxrom::GxROMMapper::new(
-            flags,
-            combine_prg_banks_32k(&prg_banks),
-            chr_banks,
+        140 => Box::new(mapper::simple::SimpleMapper::mapper140(
+            flags, prg_banks, chr_banks,
         )),
-        68 => Box::new(mapper::sunsoft4::Sunsoft4Mapper::new(
-            flags,
-            prg_banks,
-            chr_banks,
-            has_battery,
-            sram_data,
+        152 => Box::new(mapper::simple::SimpleMapper::mapper152(
+            prg_banks, chr_banks,
         )),
-        69 => Box::new(mapper::sunsoft_fme7::SunsoftFme7Mapper::new(
-            flags,
-            prg_banks,
-            chr_banks,
-            has_battery,
-            sram_data,
+        180 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper180(
+                flags, prg_banks, chr,
+            ))
+        }
+        184 => Box::new(mapper::simple::SimpleMapper::mapper184(
+            flags, prg_banks, chr_banks,
         )),
-        105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
-        21 | 22 | 23 | 25 => Box::new(mapper::vrc2_4::Vrc2_4Mapper::new(
-            flags,
-            prg_banks,
-            chr_banks,
-            has_battery,
-            sram_data,
-            mapper_id as u8,
-            submapper,
+        185 => Box::new(mapper::simple::SimpleMapper::mapper185(
+            flags, prg_banks, chr_banks, submapper,
+        )),
+        206 => Box::new(mapper::namco108::Namco108Mapper::new(
+            flags, prg_banks, chr_banks, false,
         )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
