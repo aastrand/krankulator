@@ -1099,7 +1099,18 @@ impl MemoryMapper for MMC5Mapper {
     }
 
     fn audio_expansion_output(&self) -> f32 {
-        -(self.pulse1.output + self.pulse2.output + self.pcm_output / 16.0)
+        let pulse_sum = self.pulse1.output + self.pulse2.output;
+        let pulse_out = if pulse_sum > 0.0 {
+            95.88 / (8128.0 / pulse_sum + 100.0)
+        } else {
+            0.0
+        };
+        let pcm_out = if self.pcm_output > 0.0 {
+            159.79 / (1.0 / (self.pcm_output / 45276.0) + 100.0)
+        } else {
+            0.0
+        };
+        -(pulse_out + pcm_out)
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
