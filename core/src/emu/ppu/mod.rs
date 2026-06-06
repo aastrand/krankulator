@@ -302,10 +302,18 @@ pub struct PPU {
     /// PPU dot of the most recent nmi_output rising edge.
     /// Cleared when nmi_output goes back to false (cancels the edge before the CPU samples it).
     pub nmi_rising_edge_dot: Option<u64>,
+
+    pub(crate) pre_render_scanline: u16,
+    pub(crate) num_scanlines: u16,
+    odd_frame_skip_enabled: bool,
 }
 
 impl PPU {
     pub fn new() -> PPU {
+        Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
+    }
+
+    pub fn new_with_region(region: &crate::emu::region::RegionConfig) -> PPU {
         let oam_ram = Box::new([0; OAM_DATA_SIZE]);
 
         PPU {
@@ -366,6 +374,10 @@ impl PPU {
             nmi_suppress_next_vblank: false,
             nmi_output: false,
             nmi_rising_edge_dot: None,
+
+            pre_render_scanline: region.pre_render_scanline,
+            num_scanlines: region.num_scanlines,
+            odd_frame_skip_enabled: region.odd_frame_skip,
         }
     }
 
@@ -606,7 +618,7 @@ impl PPU {
             OAM_DATA_ADDR => {
                 // During active rendering, OAMDATA writes do not store to OAM; OAMADDR glitches forward
                 // (high 6 bits increment) per nesdev Wiki/OAM.
-                let rendering = (self.scanline == PRE_RENDER_SCANLINE
+                let rendering = (self.scanline == self.pre_render_scanline
                     || self.scanline < SCREEN_HEIGHT as u16)
                     && (self.ppu_mask & (MASK_BACKGROUND_ENABLE | MASK_SPRITES_ENABLE)) != 0;
                 if rendering {
@@ -709,15 +721,16 @@ impl PPU {
         // Latch BG-enable at pre-render dot 337 for the odd-frame skip decision.
         // The skip is at dot 339 but the CPU write that toggles BG on the same
         // CPU cycle (dots 337-339) must not affect this frame's skip.
-        if self.scanline == PRE_RENDER_SCANLINE && self.cycle == CYCLES_PER_SCANLINE - 3 {
-            self.odd_frame_skip_pending = self.frames % 2 == 1
+        if self.scanline == self.pre_render_scanline && self.cycle == CYCLES_PER_SCANLINE - 3 {
+            self.odd_frame_skip_pending = self.odd_frame_skip_enabled
+                && self.frames % 2 == 1
                 && (self.ppu_mask & MASK_BACKGROUND_ENABLE == MASK_BACKGROUND_ENABLE);
         }
 
         self.cycle = self.cycle.wrapping_add(1);
         if self.cycle > CYCLES_PER_SCANLINE {
             self.cycle = 0;
-            self.scanline = self.scanline.wrapping_add(1) % NUM_SCANLINES;
+            self.scanline = self.scanline.wrapping_add(1) % self.num_scanlines;
             if self.scanline == 0 {
                 self.frames += 1;
             }
@@ -746,7 +759,7 @@ impl PPU {
 
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
         let rendering_scanline =
-            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == PRE_RENDER_SCANLINE;
+            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == self.pre_render_scanline;
 
         let mut result = StepResult::default();
 
@@ -827,7 +840,7 @@ impl PPU {
         }
 
         // PPUSTATUS bits 5–7 (O, S, V) clear at dot 1 of prerender; games poll sprite 0 hit across frames.
-        if self.scanline == PRE_RENDER_SCANLINE && self.cycle == FIRST_VISIBLE_DOT {
+        if self.scanline == self.pre_render_scanline && self.cycle == FIRST_VISIBLE_DOT {
             self.ppu_status &= !STATUS_VERTICAL_BLANK_BIT;
             self.ppu_status &= !STATUS_SPRITE_ZERO_HIT;
             self.ppu_status &= !STATUS_SPRITE_OVERFLOW;
@@ -855,7 +868,7 @@ impl PPU {
                 self.next_render_line_v = self.v;
             }
 
-            if self.scanline == PRE_RENDER_SCANLINE
+            if self.scanline == self.pre_render_scanline
                 && self.cycle >= VSCROLL_COPY_START
                 && self.cycle <= VSCROLL_COPY_END
             {
@@ -1073,7 +1086,7 @@ impl PPU {
         self.next_render_line_v = self.v;
 
         let rendering_scanline =
-            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == PRE_RENDER_SCANLINE;
+            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == self.pre_render_scanline;
         let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
         if rendering_scanline
             && rendering_enabled
@@ -1195,7 +1208,7 @@ impl PPU {
     }
 
     fn sprite_eval_target_scanline(&self) -> u16 {
-        if self.scanline == PRE_RENDER_SCANLINE {
+        if self.scanline == self.pre_render_scanline {
             0
         } else {
             self.scanline.wrapping_add(1)
@@ -2488,7 +2501,7 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
 
         let lit_color = palette::PALETTE[3];
-        let dots_per_frame: u32 = 341 * 262;
+        let dots_per_frame: u32 = 341 * NUM_SCANLINES as u32;
 
         // Frame 1: scroll_y = 3 (fine_y=3, coarse_y=0)
         ppu.t = 3u16 << V_FINE_Y_SHIFT;
@@ -2580,7 +2593,7 @@ mod tests {
 
         let white = palette::PALETTE[0x30];
 
-        let dots_per_frame: u32 = 341 * 262;
+        let dots_per_frame: u32 = 341 * NUM_SCANLINES as u32;
 
         // Start scrolling down from scroll_y = 10, then scroll upward
         // scroll_y=10 means coarse_y=1, fine_y=2
