@@ -315,6 +315,7 @@ fn load_nes_from_bytes_inner(
             sram_data,
             submapper,
         )),
+        28 => Box::new(mapper::action53::Action53Mapper::new(flags, prg_banks)),
         21 | 22 | 23 | 25 => Box::new(mapper::vrc2_4::Vrc2_4Mapper::new(
             flags,
             prg_banks,
