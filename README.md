@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 39 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~114 Famicom exclusives and homebrew (see [Mapper support](#mapper-support) below)
+- **Mappers** — 42 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~148 Famicom exclusives and homebrew (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -40,7 +40,10 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 5 | MMC5 | Nintendo | Most complex NES mapper, expansion audio |
 | 7 | AxROM | Nintendo | 32KB PRG banking, single-screen mirroring |
 | 9 | MMC2 | Nintendo | CHR latch switching (Punch-Out!!) |
+| 10 | MMC4 | Nintendo | MMC2 variant with 16KB PRG + PRG RAM (Fire Emblem) |
 | 11 | Color Dreams | Color Dreams | 32KB PRG + 8KB CHR, bus conflicts |
+| 16/159 | Bandai FCG | Bandai | PRG/CHR banking, IRQ, I2C EEPROM (Dragon Ball Z) |
+| 18 | Jaleco SS88006 | Jaleco | Nibble-split banking, configurable IRQ (Ninja Jajamaru) |
 | 19 | Namco 163 | Namco | 8-ch wavetable audio, IRQ, CHR-ROM nametables |
 | 21 | VRC4a/VRC4c | Konami | 8KB PRG + 1KB CHR banking, IRQ |
 | 22 | VRC2a | Konami | Half-resolution CHR banking |
@@ -72,7 +75,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 206 | DxROM/Namco 108 | Namco | Simplified MMC3 subset, 1KB CHR banking |
 | 210 | Namco 175/340 | Namco | 3-bank PRG + 8-bank CHR, two submapper variants |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~114 Famicom exclusives and popular homebrew.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~148 Famicom exclusives and popular homebrew.
 
 ## Architecture
 
@@ -93,6 +96,8 @@ graph TD
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
     Mem --> VRC["VRC1/VRC2/VRC3/VRC4<br/>Konami"]
+    Mem --> Bandai["Bandai FCG<br/>I2C EEPROM + IRQ"]
+    Mem --> Jaleco["Jaleco SS88006<br/>nibble-split banking"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
     Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM, 78/87/140/152/180/184/185"]
     Mem --> Namco108["Namco 108<br/>DxROM (206), Namcot 3433 (88)"]
@@ -252,7 +257,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-577 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+664 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|

@@ -2,7 +2,7 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), Color Dreams (11), Namco 163 (19), Action 53 (28), UNROM 512 (30), Mapper 31, VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), MMC4 (10), Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Namco 163 (19), Action 53 (28), UNROM 512 (30), Mapper 31, VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
 Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives, popular homebrew
 
 ### Completed: Priority 1 quick wins
@@ -20,6 +20,10 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives, popul
 **Mapper 9 — MMC2 (PxROM)** [done]
 - Games (2): Mike Tyson's Punch-Out!!, Punch-Out!!
 - CHR latch-switching via `ppu_fetch()` hook: reading $0FD8/$0FE8 (left) and $1FD8-$1FDF/$1FE8-$1FEF (right) triggers deferred CHR bank switch. PRG: 8KB switchable + 24KB fixed.
+
+**Mapper 10 — MMC4 (FxROM)** [done]
+- Games (3): Fire Emblem, Fire Emblem Gaiden, Famicom Wars
+- MMC2 variant with 16KB switchable PRG ($8000-$BFFF) + 16KB fixed (last bank at $C000-$FFFF), 8KB battery-backed PRG RAM at $6000, range-based left-half latch triggers ($0FD8-$0FDF / $0FE8-$0FEF).
 
 **Mapper 5 — MMC5 (ExROM)** [done]
 - Games (~8): Castlevania III: Dracula's Curse, Laser Invasion, Uncharted Waters, Romance of the Three Kingdoms II, Nobunaga's Ambition II, Gemfire, L'Empereur
@@ -111,23 +115,25 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives, popul
 **Mapper 19 — Namco 163** [done]
 - 8-channel wavetable expansion audio, 15-bit CPU-cycle IRQ counter, CHR-ROM as nametables, 128-byte internal sound RAM, WRAM write protection.
 
-### Priority 6 (remaining): Famicom — Bandai/Taito/Irem
+### Completed: Priority 6b — Famicom Bandai/Jaleco
+
+**Mapper 16/159 — Bandai FCG (LZ93D50)** [done]
+- Games (~19): Dragon Ball Z: Kyoushuu! Saiyajin, Dragon Ball: Dai Maou Fukkatsu, Famicom Jump I&II, SD Gundam Gaiden
+- Two submappers: FCG (submapper 4, registers at $6000) and LZ93D50 (submapper 5, registers at $8000). 16KB switchable PRG + 16KB fixed, 8x1KB CHR, 4-way mirroring. FCG: direct IRQ counter. LZ93D50: latched IRQ + I2C EEPROM (24C02, 256 bytes) with full START/STOP/ACK state machine.
+
+**Mapper 18 — Jaleco SS88006** [done]
+- Games (15): Pizza Pop!, Saiyuuki World 2, Ninja Jajamaru: Ginga Daisakusen, Holy Diver (JP)
+- 3 switchable 8KB PRG + 1 fixed, 8 independent 1KB CHR banks via nibble-split register writes (D0-D3 per write, two writes per register). CPU-cycle IRQ with configurable counter width (4/8/12/16-bit). PRG RAM with chip-enable and write-protect.
+
+### Priority 6 (remaining): Famicom — Taito/Irem
 
 **Mapper 80 — Taito X1-005** [S-M] — 7 games
 - Games: Minelvaton Saga, Mirai Shinwa Jarvas
 - 8KB PRG / 1KB CHR banking, 128-byte on-die RAM.
 
-**Mapper 16/159 — Bandai FCG** [M-L] — ~19 games
-- Games: Dragon Ball Z: Kyoushuu! Saiyajin, Dragon Ball: Dai Maou Fukkatsu, Famicom Jump I&II
-- Serial EEPROM save (24C01/24C02), IRQ counter, PRG/CHR banking.
-
 **Mapper 65 — Irem H-3001** [S-M] — 3 games
 - Games: Spartan X 2 (Kung-Fu Master sequel), Kaiketsu Yanchamaru 3, Daiku no Gen-san 2
 - PRG/CHR banking + IRQ counter.
-
-**Mapper 18 — Jaleco SS8806** [M] — 15 games
-- Games: Pizza Pop!, Saiyuuki World 2, Ninja Jajamaru: Ginga Daisakusen
-- IRQ counter, fine-grained banking. Mostly sports/niche JP titles.
 
 ### Priority 7: Famicom — Quick wins (remaining)
 
@@ -171,9 +177,9 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives, popul
 
 | Priority | Mappers | Category | New games | Highlight titles |
 |----------|---------|----------|-----------|------------------|
-| Done | 0,1,2,3,4,5,7,9,19,21-25,33,34,48,66,68,69,73,75,78,87,88,105,118,119,140,152,180,184,185,206,210 | Licensed NES + Famicom | 695 + ~133 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Irem + trivial |
+| Done | 0,1,2,3,4,5,7,9,10,11,16,18,19,21-25,28,30,31,33,34,48,66,68,69,71,73,75,78,87,88,105,118,119,140,152,159,180,184,185,206,210 | Licensed NES + Famicom + homebrew | 695 + ~167 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Bandai + Jaleco + homebrew |
 | 5 | 24,26,85 | Famicom (Konami VRC) | ~5 | Castlevania III JP, Lagrange Point |
-| 6 | 16,18,65,80,159 | Famicom (other) | ~40 | Dragon Ball Z, Minelvaton Saga |
+| 6 | 65,80 | Famicom (other) | ~10 | Minelvaton Saga, Spartan X 2 |
 | 7 | 67 | Famicom (remaining) | ~2 | Fantasy Zone II |
 | 8 | 11,64,71,79,228 | Unlicensed | ~125 | Micro Machines, Bible Adventures, Shinobi |
 
