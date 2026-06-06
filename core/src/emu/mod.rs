@@ -6,6 +6,7 @@ pub mod gfx;
 pub mod io;
 pub mod memory;
 pub mod ppu;
+pub mod region;
 pub mod rewind;
 pub mod savestate;
 
@@ -17,6 +18,7 @@ use cpu::opcodes;
 use std::collections::HashSet;
 
 use self::audio::{AudioBackend, CapturingAudioOutput, SilentAudioOutput};
+pub use self::region::{Region, RegionConfig};
 
 // CPU initialization values (per NES power-on state)
 const CPU_INIT_SP: u8 = 0xFD;
@@ -24,9 +26,6 @@ const CPU_INIT_STATUS: u8 = 0x34;
 
 // PPU register warmup period — writes to PPU registers are ignored for this many CPU cycles after power-on/reset
 const PPU_WARMUP_CPU_CYCLES: u64 = 29_658;
-
-// Input polling interval (~1000 Hz: 1,789,773 CPU Hz / 1790 ≈ 1ms)
-const INPUT_POLL_INTERVAL: u64 = 1790;
 
 // NES memory-mapped I/O addresses
 const APU_STATUS_ADDR: u16 = 0x4015;
@@ -78,10 +77,13 @@ pub struct Emulator {
     should_exit_on_infinite_loop: bool,
     verbose: bool,
 
+    pub region: RegionConfig,
     pub instructions: u64,
     pub cycles: u64,
     pub master_clock: u64,
+    master_clock_sub: u64,
     instruction_start_dot: u64,
+    instruction_start_sub: u64,
     cpu_bus_cycle_offset: u8,
     cpu_open_bus: u8,
     irq_sample_deadline: u64,
@@ -131,10 +133,23 @@ impl Emulator {
 
     pub fn new_with(
         iohandler: Box<dyn io::IOHandler>,
-        mut mapper: Box<dyn memory::MemoryMapper>,
+        mapper: Box<dyn memory::MemoryMapper>,
         audio: Box<dyn AudioBackend>,
     ) -> Emulator {
+        Self::new_with_region(iohandler, mapper, audio, Region::Ntsc)
+    }
+
+    pub fn new_with_region(
+        mut iohandler: Box<dyn io::IOHandler>,
+        mut mapper: Box<dyn memory::MemoryMapper>,
+        audio: Box<dyn AudioBackend>,
+        region: Region,
+    ) -> Emulator {
         let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
+        let region_config = region.config();
+        let frame_budget_ms = region_config.frame_duration_nanos as f64 / 1_000_000.0;
+        iohandler.set_frame_duration_nanos(region_config.frame_duration_nanos);
+        iohandler.set_overscan_available(region_config.region != Region::Pal);
 
         let mut cpu = cpu::Cpu::new();
         cpu.pc = mapper.code_start();
@@ -145,8 +160,8 @@ impl Emulator {
             cpu: cpu,
             lookup: lookup,
             mem: mapper,
-            ppu: ppu::PPU::new(),
-            apu: apu::APU::new(),
+            ppu: ppu::PPU::new_with_region(&region_config),
+            apu: apu::APU::new_with_region(&region_config),
             buf: Box::new(buf),
             iohandler: iohandler,
             stepping: false,
@@ -157,10 +172,13 @@ impl Emulator {
             should_debug_on_infinite_loop: false,
             should_exit_on_infinite_loop: true,
             verbose: true,
+            region: region_config,
             instructions: 0,
             cycles: 0,
             master_clock: 0,
+            master_clock_sub: 0,
             instruction_start_dot: 0,
+            instruction_start_sub: 0,
             cpu_bus_cycle_offset: 0,
             cpu_open_bus: 0,
             irq_sample_deadline: 0,
@@ -169,12 +187,15 @@ impl Emulator {
             should_trigger_nmi: false,
             nmi_countdown: -1,
             audio: audio,
-            // https://www.nesdev.org/wiki/PPU_power_up_state — model as ignoring host writes briefly after power on.
             ppu_register_warmup_until_cpu_cycle: PPU_WARMUP_CPU_CYCLES,
             rom_path: None,
             savestate_slot: 0,
             last_rendered_frame: 0,
-            overlay: gfx::overlay::Overlay::new(),
+            overlay: {
+                let mut o = gfx::overlay::Overlay::new();
+                o.set_frame_budget_ms(frame_budget_ms);
+                o
+            },
             pending_open_rom: None,
             rewind_buffer: rewind::RewindBuffer::new(),
             rewind_capture_tick: false,
@@ -225,6 +246,16 @@ impl Emulator {
     }
 
     pub fn load_rom(&mut self, mapper: Box<dyn memory::MemoryMapper>, path: &str) {
+        self.load_rom_with_region(mapper, path, self.region.region);
+    }
+
+    pub fn load_rom_with_region(
+        &mut self,
+        mapper: Box<dyn memory::MemoryMapper>,
+        path: &str,
+        region: Region,
+    ) {
+        let region_config = region.config();
         self.mem = mapper;
         self.rom_path = Some(path.to_string());
         self.cpu.pc = self.mem.code_start();
@@ -236,12 +267,13 @@ impl Emulator {
         self.cpu.cycle = 0;
         self.cycles = 0;
         self.master_clock = 0;
+        self.master_clock_sub = 0;
         self.instructions = 0;
-        self.ppu = ppu::PPU::new();
-        self.apu.reset();
+        self.ppu = ppu::PPU::new_with_region(&region_config);
+        self.apu = apu::APU::new_with_region(&region_config);
         self.audio.clear();
         self.nmi_countdown = -1;
-        self.ppu_register_warmup_until_cpu_cycle = 29_658;
+        self.ppu_register_warmup_until_cpu_cycle = PPU_WARMUP_CPU_CYCLES;
         self.savestate_slot = 0;
         self.last_rendered_frame = 0;
         self.overlay.set_banner(None);
@@ -251,6 +283,13 @@ impl Emulator {
         self.rewind_buffer.clear();
         self.rewind_capture_tick = false;
         self.rewinding = false;
+        self.region = region_config;
+        self.iohandler
+            .set_frame_duration_nanos(self.region.frame_duration_nanos);
+        self.iohandler
+            .set_overscan_available(self.region.region != Region::Pal);
+        self.overlay
+            .set_frame_budget_ms(self.region.frame_duration_nanos as f64 / 1_000_000.0);
     }
 
     pub fn toggle_verbose_mode(&mut self, verbose: bool) {
@@ -306,6 +345,9 @@ impl Emulator {
         w.write_i8(self.nmi_countdown);
         w.write_u64(self.ppu_register_warmup_until_cpu_cycle);
         w.write_u64(self.instructions);
+        w.write_u8(self.region.region.to_byte());
+        w.write_u64(self.master_clock_sub);
+        w.write_u64(self.instruction_start_sub);
         w.finish()
     }
 
@@ -373,6 +415,29 @@ impl Emulator {
         self.nmi_countdown = r.read_i8()?;
         self.ppu_register_warmup_until_cpu_cycle = r.read_u64()?;
         self.instructions = r.read_u64()?;
+        if r.version() >= 8 {
+            let region_byte = r.read_u8()?;
+            let saved_region = Region::from_byte(region_byte).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("unknown region byte: {}", region_byte),
+                )
+            })?;
+            if saved_region != self.region.region {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "region mismatch: save={:?} current={:?}",
+                        saved_region, self.region.region
+                    ),
+                ));
+            }
+            self.master_clock_sub = r.read_u64()?;
+            self.instruction_start_sub = r.read_u64()?;
+        } else {
+            self.master_clock_sub = 0;
+            self.instruction_start_sub = 0;
+        }
         Ok(())
     }
 
@@ -443,7 +508,7 @@ impl Emulator {
         self.overlay
             .set_rewind_status(Some(format!("<< REWIND {:.1}s", secs)));
         self.overlay.draw(&mut self.buf);
-        if self.overscan {
+        if self.overscan && self.region.region != region::Region::Pal {
             self.buf.mask_overscan();
         }
         self.iohandler.render(&self.buf);
@@ -523,7 +588,11 @@ impl Emulator {
 
                 let actual_cycles = self.cpu.cycle - cycle_before;
                 let penultimate = actual_cycles.saturating_sub(2);
-                self.irq_sample_deadline = self.instruction_start_dot + penultimate * 3 + 1;
+                let deadline_sub =
+                    self.instruction_start_sub + penultimate * self.region.master_clocks_per_cpu;
+                self.irq_sample_deadline = self.instruction_start_dot
+                    + deadline_sub / self.region.master_clocks_per_ppu
+                    + 1;
 
                 // The 6502 samples the I flag on the penultimate cycle of each instruction.
                 // Most instructions that change I (CLI, SEI, PLP) do so on their last
@@ -545,7 +614,10 @@ impl Emulator {
         }
 
         let ppu_dot_before_step = self.ppu.last_synced_dot;
-        let target_dot = self.master_clock + 3;
+        self.master_clock_sub += self.region.master_clocks_per_cpu;
+        let ppu_advance = self.master_clock_sub / self.region.master_clocks_per_ppu;
+        self.master_clock_sub %= self.region.master_clocks_per_ppu;
+        let target_dot = self.master_clock + ppu_advance;
         self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
 
@@ -606,7 +678,7 @@ impl Emulator {
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
-        if self.cycles % INPUT_POLL_INTERVAL == 0 {
+        if self.cycles % self.region.input_poll_interval == 0 {
             let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
             if result.exit {
                 state = CycleState::Exiting;
@@ -694,12 +766,15 @@ impl Emulator {
 
     fn begin_cpu_instruction_timing(&mut self) {
         self.instruction_start_dot = self.master_clock;
+        self.instruction_start_sub = self.master_clock_sub;
         self.cpu_bus_cycle_offset = 0;
         self.branch_irq_suppressed = false;
     }
 
     fn cpu_bus_access_dot(&self) -> u64 {
-        self.instruction_start_dot + u64::from(self.cpu_bus_cycle_offset) * 3
+        let total_sub = self.instruction_start_sub
+            + u64::from(self.cpu_bus_cycle_offset) * self.region.master_clocks_per_cpu;
+        self.instruction_start_dot + total_sub / self.region.master_clocks_per_ppu
     }
 
     /// CPU address decoded as a PPU register access, if this mapper exposes the NES PPU register bus.
@@ -933,7 +1008,9 @@ impl Emulator {
             opcodes::BRK => {
                 // Sync PPU to the vector fetch point (cycle 5 of 7) so NMI
                 // edges that arrive during BRK can hijack the vector.
-                let vector_fetch_dot = self.instruction_start_dot + 3 * 3;
+                let vf_sub = self.instruction_start_sub + 3 * self.region.master_clocks_per_cpu;
+                let vector_fetch_dot =
+                    self.instruction_start_dot + vf_sub / self.region.master_clocks_per_ppu;
                 self.sync_ppu_to_dot(vector_fetch_dot);
                 let addr = self.nmi_hijack_vector();
 
@@ -1950,7 +2027,7 @@ impl Emulator {
             }
         }
 
-        let elapsed_secs = self.cycles as f64 / 1_789_773.0;
+        let elapsed_secs = self.cycles as f64 / self.region.cpu_clock_rate;
         let fps = if elapsed_secs > 0.0 {
             self.ppu.frames as f64 / elapsed_secs
         } else {
@@ -3571,5 +3648,103 @@ mod emu_tests {
         emu.cpu.cycle = 29_658;
         emu.test_cpu_write(ppu::CTRL_REG_ADDR, 0x80);
         assert_eq!(emu.ppu.ppu_ctrl, 0x80);
+    }
+
+    #[test]
+    fn test_ntsc_master_clock_sub_always_zero() {
+        let mut emu = Emulator::_new();
+        assert_eq!(emu.region.region, region::Region::Ntsc);
+        for _ in 0..100 {
+            emu.cycle();
+            assert_eq!(emu.master_clock_sub, 0, "NTSC sub should always be 0");
+        }
+    }
+
+    #[test]
+    fn test_pal_master_clock_sub_pattern() {
+        let mapper = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let io = Box::new(io::HeadlessIOHandler {});
+        let mut emu = Emulator::new_with_region(io, mapper, audio, region::Region::Pal);
+        assert_eq!(emu.region.region, region::Region::Pal);
+
+        let mut total_ppu_advance: u64 = 0;
+        for i in 0..5 {
+            let before = emu.master_clock;
+            emu.cycle();
+            total_ppu_advance += emu.master_clock - before;
+            if i < 4 {
+                assert_eq!(
+                    emu.master_clock_sub,
+                    (i + 1) as u64,
+                    "sub after cycle {}",
+                    i
+                );
+            }
+        }
+        assert_eq!(emu.master_clock_sub, 0, "sub resets after 5 cycles");
+        assert_eq!(total_ppu_advance, 16, "5 PAL CPU cycles = 16 PPU dots");
+    }
+
+    #[test]
+    fn test_pal_ppu_scanline_count() {
+        let mapper = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let io = Box::new(io::HeadlessIOHandler {});
+        let emu = Emulator::new_with_region(io, mapper, audio, region::Region::Pal);
+        assert_eq!(emu.ppu.pre_render_scanline, 311);
+        assert_eq!(emu.ppu.num_scanlines, 312);
+    }
+
+    #[test]
+    fn test_savestate_region_roundtrip() {
+        let mapper = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let io = Box::new(io::HeadlessIOHandler {});
+        let mut emu = Emulator::new_with_region(io, mapper, audio, region::Region::Pal);
+        for _ in 0..100 {
+            emu.cycle();
+        }
+        let saved = emu.save_state_to_bytes();
+        let mc_before = emu.master_clock;
+        let sub_before = emu.master_clock_sub;
+
+        let mapper2 = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        let audio2 = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let io2 = Box::new(io::HeadlessIOHandler {});
+        let mut emu2 = Emulator::new_with_region(io2, mapper2, audio2, region::Region::Pal);
+        emu2.load_state_from_bytes(&saved).unwrap();
+        assert_eq!(emu2.master_clock, mc_before);
+        assert_eq!(emu2.master_clock_sub, sub_before);
+    }
+
+    #[test]
+    fn test_savestate_region_mismatch_rejected() {
+        let mapper = Box::new(memory::IdentityMapper::new(memory::CODE_START_ADDR));
+        let audio = Box::new(SilentAudioOutput::new()) as Box<dyn AudioBackend>;
+        let io = Box::new(io::HeadlessIOHandler {});
+        let emu = Emulator::new_with_region(io, mapper, audio, region::Region::Pal);
+        let saved = emu.save_state_to_bytes();
+
+        let mut emu_ntsc = Emulator::_new();
+        let result = emu_ntsc.load_state_from_bytes(&saved);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("region mismatch"));
+    }
+
+    #[test]
+    fn test_savestate_v7_loads_as_ntsc() {
+        let mut emu = Emulator::_new();
+        for _ in 0..100 {
+            emu.cycle();
+        }
+        let saved = emu.save_state_to_bytes();
+        // Patch version byte back to 7 and strip the 3 new fields (u8 + u64 + u64 = 17 bytes)
+        let mut v7_data = saved[..saved.len() - 17].to_vec();
+        v7_data[4] = 7;
+        let mut emu2 = Emulator::_new();
+        emu2.load_state_from_bytes(&v7_data).unwrap();
+        assert_eq!(emu2.master_clock_sub, 0);
+        assert_eq!(emu2.instruction_start_sub, 0);
     }
 }
