@@ -18,6 +18,7 @@ pub mod simple;
 pub mod sunsoft4;
 pub mod sunsoft_fme7;
 pub mod taito;
+pub mod unrom512;
 pub mod uxrom;
 pub mod vrc1;
 pub mod vrc2_4;

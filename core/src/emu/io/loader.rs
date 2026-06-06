@@ -324,6 +324,9 @@ fn load_nes_from_bytes_inner(
             mapper_id as u8,
             submapper,
         )),
+        30 => Box::new(mapper::unrom512::Unrom512Mapper::new(
+            flags, prg_banks, submapper,
+        )),
         31 => Box::new(mapper::mapper31::Mapper31::new(flags, prg_banks)),
         33 => Box::new(mapper::taito::Taito33Mapper::new(
             flags, prg_banks, chr_banks,
