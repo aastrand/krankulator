@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 28 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~90 Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Mappers** — 31 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~100 Famicom exclusives (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -49,6 +49,9 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 66 | GxROM | Nintendo | Combined PRG/CHR select, bus conflicts |
 | 68 | Sunsoft 4 | Sunsoft | CHR-mapped nametables |
 | 69 | Sunsoft FME-7 | Sunsoft | CPU-cycle IRQ, versatile banking |
+| 73 | VRC3 | Konami | 16-bit IRQ counter, CHR RAM |
+| 75 | VRC1 | Konami | 8KB PRG + 4KB CHR banking |
+| 78 | Irem 74161/32 | Irem | PRG/CHR select + submapper mirroring |
 | 87 | Jaleco/Konami | Jaleco | CHR bank swap (2-bit swapped latch) |
 | 88 | Namcot 3433 | Namco | Namco 108 subset with CHR offset |
 | 105 | NES-EVENT | Nintendo | MMC1 variant (World Championships 1990) |
@@ -61,7 +64,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 185 | CNROM+protection | Nintendo | CNROM with copy protection diodes |
 | 206 | DxROM/Namco 108 | Namco | Simplified MMC3 subset, 1KB CHR banking |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~90 Famicom exclusives.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~100 Famicom exclusives.
 
 ## Architecture
 
@@ -81,9 +84,9 @@ graph TD
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
-    Mem --> VRC["VRC2/VRC4<br/>Konami, 9 variants"]
+    Mem --> VRC["VRC1/VRC2/VRC3/VRC4<br/>Konami"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
-    Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM, 87/140/152/180/184/185"]
+    Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM, 78/87/140/152/180/184/185"]
     Mem --> Namco108["Namco 108<br/>DxROM (206), Namcot 3433 (88)"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 

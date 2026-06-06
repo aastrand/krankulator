@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119)**
-Coverage: 100% licensed NES games (NTSC and PAL), ~90 Famicom exclusives
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119)**
+Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
 
 ### Completed: Priority 1 quick wins
 
@@ -56,19 +56,21 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~90 Famicom exclusives
 - Games (~20): Crisis Force, Gradius II, Parodius Da!, Contra (JP), Bio Miracle Bokutte Upa, Ganbare Goemon 2/Gaiden/Gaiden 2, Wai Wai World 1&2, Boku Dracula-kun, TwinBee 3, Tiny Toon (JP)
 - VRC2: PRG/CHR banking, VRC2a half-resolution CHR. VRC4 adds scanline/cycle IRQ + PRG swap mode.
 
+### Completed: Priority 5b — Famicom Konami VRC (quick wins)
+
+**Mapper 75 — VRC1 (Konami)** [done]
+- Games: Ganbare Goemon! Karakuri Douchuu (first Goemon), King Kong 2, Tetsuwan Atom (Astro Boy)
+- 8KB PRG + 4KB CHR banking with high bits from $9000, mirroring control, no IRQ.
+
+**Mapper 73 — VRC3 (Konami)** [done]
+- Games: Salamander (Life Force JP)
+- 16KB PRG banking + 16-bit/8-bit IRQ counter, CHR RAM only.
+
 ### Priority 5 (remaining): Famicom — Konami VRC
 
 **Mappers 24/26 — VRC6 (Konami)** [M-L] — 3 games
 - Games: Akumajou Densetsu (Castlevania III JP — the definitive version), Madara, Esper Dream 2
 - VRC6 expansion audio: 2 pulse + 1 sawtooth channels. Address swap between 24 and 26.
-
-**Mapper 75 — VRC1 (Konami)** [S] — 6 games
-- Games: Ganbare Goemon! Karakuri Douchuu (first Goemon), King Kong 2, Tetsuwan Atom (Astro Boy)
-- Simple: 8KB PRG + 4KB CHR banking, no IRQ, no expansion audio.
-
-**Mapper 73 — VRC3 (Konami)** [S] — 1 game
-- Games: Salamander (Life Force JP)
-- PRG banking + IRQ counter, CHR-RAM only. Very simple.
 
 **Mapper 85 — VRC7 (Konami)** [L] — 2 games
 - Games: Lagrange Point (acclaimed sci-fi RPG with OPLL FM synthesis), Tiny Toon 2 JP
@@ -87,6 +89,12 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~90 Famicom exclusives
 **Mapper 33 — Taito TC0190** [done]
 - 8KB PRG + 2KB/1KB CHR banking, mirroring via PRG register bit 6, no IRQ.
 - Games (9): Don Doko Don, Akira, Power Blazer (JP Power Blade), Insector X, Bakushou Jinsei Gekijou
+
+### Completed: Priority 6a2 — Famicom Irem
+
+**Mapper 78 — Irem 74161/32** [done]
+- Games: Holy Diver (cult classic Castlevania-like)
+- SimpleMapper: PRG/CHR select + submapper-aware mirroring (submapper 1 = single-screen, submapper 3 = H/V). Bus conflicts.
 
 ### Priority 6 (remaining): Famicom — Namco/Bandai/Taito/Irem
 
@@ -113,10 +121,6 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~90 Famicom exclusives
 **Mapper 65 — Irem H-3001** [S-M] — 3 games
 - Games: Spartan X 2 (Kung-Fu Master sequel), Kaiketsu Yanchamaru 3, Daiku no Gen-san 2
 - PRG/CHR banking + IRQ counter.
-
-**Mapper 78 — Irem 74161/32** [XS] — 2 games
-- Games: Holy Diver (cult classic Castlevania-like)
-- Two 74-series chips, PRG/CHR select + mirroring. Extremely simple.
 
 **Mapper 18 — Jaleco SS8806** [M] — 15 games
 - Games: Pizza Pop!, Saiyuuki World 2, Ninja Jajamaru: Ginga Daisakusen
@@ -153,9 +157,9 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~90 Famicom exclusives
 
 | Priority | Mappers | Category | New games | Highlight titles |
 |----------|---------|----------|-----------|------------------|
-| Done | 0,1,2,3,4,5,7,9,21-25,33,34,66,68,69,87,88,105,118,119,140,152,180,184,185,206 | Licensed NES + Famicom | 695 + ~90 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + trivial |
-| 5 | 24,26,73,75,85 | Famicom (Konami VRC) | ~12 | Castlevania III JP, Salamander, Lagrange Point |
-| 6 | 16,18,19,48,65,78,80,159,210 | Famicom (other) | ~76 | Megami Tensei II, Holy Diver, Dragon Ball Z |
+| Done | 0,1,2,3,4,5,7,9,21-25,33,34,66,68,69,73,75,78,87,88,105,118,119,140,152,180,184,185,206 | Licensed NES + Famicom | 695 + ~100 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Irem + trivial |
+| 5 | 24,26,85 | Famicom (Konami VRC) | ~5 | Castlevania III JP, Lagrange Point |
+| 6 | 16,18,19,48,65,80,159,210 | Famicom (other) | ~73 | Megami Tensei II, Dragon Ball Z |
 | 7 | 67 | Famicom (remaining) | ~2 | Fantasy Zone II |
 | 8 | 11,64,71,79,228 | Unlicensed | ~125 | Micro Machines, Bible Adventures, Shinobi |
 
