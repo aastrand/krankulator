@@ -697,6 +697,10 @@ impl PPU {
         self.t
     }
 
+    pub fn write_toggle(&self) -> bool {
+        self.w
+    }
+
     #[cfg(test)]
     pub fn step_dot(&mut self) -> StepResult {
         self.step_dot_inner(None)

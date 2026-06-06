@@ -1,6 +1,6 @@
 use super::super::super::io;
 use super::{
-    mirror_nametable_addr, NametableMirror, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
+    mirror_nametable_addr, NametableMirror, A12_FILTER_DOTS, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
     PALETTE_MIRROR_MASK, PALETTE_SIZE, PALETTE_START, PRG_RAM_8K, RESET_TARGET_ADDR, VRAM_SIZE,
 };
 use crate::emu::memory::MemoryMapper;
@@ -67,6 +67,7 @@ impl MMC3Mapper {
         has_battery: bool,
         sram_data: Option<Vec<u8>>,
         submapper: u8,
+        chr_ram_banks: usize,
     ) -> MMC3Mapper {
         Self::new_variant(
             flags,
@@ -76,6 +77,7 @@ impl MMC3Mapper {
             sram_data,
             submapper,
             MMC3Variant::Standard,
+            chr_ram_banks,
         )
     }
 
@@ -87,6 +89,7 @@ impl MMC3Mapper {
         sram_data: Option<Vec<u8>>,
         submapper: u8,
         variant: MMC3Variant,
+        chr_ram_banks: usize,
     ) -> MMC3Mapper {
         let mut prg_rom = vec![];
         for bank in prg_banks.iter() {
@@ -116,7 +119,8 @@ impl MMC3Mapper {
             MMC3Variant::TQROM => (chr_rom_banks, vec![[0; CHR_BANK_SIZE]; 8], false),
             _ => {
                 if chr_rom_banks.is_empty() {
-                    (vec![], vec![[0; CHR_BANK_SIZE]; 8], true)
+                    let num_banks = if chr_ram_banks > 0 { chr_ram_banks } else { 8 };
+                    (vec![], vec![[0; CHR_BANK_SIZE]; num_banks], true)
                 } else {
                     (chr_rom_banks, vec![], false)
                 }
@@ -339,7 +343,9 @@ impl MMC3Mapper {
         let current_a12 = (addr & 0x1000) != 0;
 
         if current_a12 {
-            if self.last_a12_low_dot > 0 && dot.saturating_sub(self.last_a12_low_dot) >= 16 {
+            if self.last_a12_low_dot > 0
+                && dot.saturating_sub(self.last_a12_low_dot) >= A12_FILTER_DOTS
+            {
                 self.clock_irq_counter(dot);
             }
             self.last_a12_low_dot = 0;
@@ -665,7 +671,15 @@ mod tests {
     use crate::test_rom;
 
     fn test_mapper() -> MMC3Mapper {
-        MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0)
+        MMC3Mapper::new(
+            0,
+            vec![[0; 16384]; 2],
+            vec![[0; 8192]; 1],
+            false,
+            None,
+            0,
+            0,
+        )
     }
 
     #[test]
@@ -689,21 +703,21 @@ mod tests {
         mapper.irq_enable = true;
         mapper.irq_reload = true;
 
-        // Gap of 10 dots (< 16 threshold) — filtered, no clock
+        // Gap of 5 dots (< 10 threshold) — filtered, no clock
         mapper.ppu_fetch(0x0000, 10);
-        mapper.ppu_fetch(0x1000, 20);
+        mapper.ppu_fetch(0x1000, 15);
         assert_eq!(mapper.irq_reload, true);
 
-        // Gap of 20 dots (>= 16 threshold) — clocks, reload from latch
-        mapper.ppu_fetch(0x0000, 30);
-        mapper.ppu_fetch(0x1000, 50);
+        // Gap of 20 dots (>= 10 threshold) — clocks, reload from latch
+        mapper.ppu_fetch(0x0000, 25);
+        mapper.ppu_fetch(0x1000, 45);
         assert_eq!(mapper.irq_counter, 1);
         assert_eq!(mapper.irq_reload, false);
         assert_eq!(mapper.poll_irq(), false);
 
         // Another valid edge — counter decrements to 0, IRQ fires
-        mapper.ppu_fetch(0x0000, 60);
-        mapper.ppu_fetch(0x1000, 80);
+        mapper.ppu_fetch(0x0000, 55);
+        mapper.ppu_fetch(0x1000, 75);
         assert_eq!(mapper.poll_irq(), true);
     }
 
@@ -899,7 +913,7 @@ mod tests {
 
     #[test]
     fn test_mmc3_chr_ram_writable() {
-        let mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+        let mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0, 0);
         assert!(mapper.chr_is_ram);
         assert_eq!(mapper.chr_ram.len(), 8);
     }
@@ -913,6 +927,7 @@ mod tests {
             false,
             None,
             0,
+            0,
         );
         assert!(!mapper.chr_is_ram);
         assert_eq!(mapper.chr_rom.len(), 8);
@@ -920,7 +935,7 @@ mod tests {
 
     #[test]
     fn test_mmc3_chr_ram_ppu_write_read_roundtrip() {
-        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0, 0);
 
         mapper.ppu_write(0x0000, 0x42);
         mapper.ppu_write(0x0100, 0xAB);
@@ -933,8 +948,15 @@ mod tests {
 
     #[test]
     fn test_mmc3_chr_rom_ppu_write_ignored() {
-        let mut mapper =
-            MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![[0; 8192]; 1], false, None, 0);
+        let mut mapper = MMC3Mapper::new(
+            0,
+            vec![[0; 16384]; 2],
+            vec![[0; 8192]; 1],
+            false,
+            None,
+            0,
+            0,
+        );
 
         mapper.ppu_write(0x0000, 0x42);
         assert_eq!(mapper.ppu_read(0x0000), 0x00);
@@ -942,19 +964,19 @@ mod tests {
 
     #[test]
     fn test_mmc3_initial_mirroring_horizontal() {
-        let mapper = MMC3Mapper::new(0b0000_0000, vec![[0; 16384]; 2], vec![], false, None, 0);
+        let mapper = MMC3Mapper::new(0b0000_0000, vec![[0; 16384]; 2], vec![], false, None, 0, 0);
         assert_eq!(mapper.mirroring, NametableMirror::Horizontal);
     }
 
     #[test]
     fn test_mmc3_initial_mirroring_vertical() {
-        let mapper = MMC3Mapper::new(0b0000_0001, vec![[0; 16384]; 2], vec![], false, None, 0);
+        let mapper = MMC3Mapper::new(0b0000_0001, vec![[0; 16384]; 2], vec![], false, None, 0, 0);
         assert_eq!(mapper.mirroring, NametableMirror::Vertical);
     }
 
     #[test]
     fn test_mmc3_mirroring_register_write() {
-        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0);
+        let mut mapper = MMC3Mapper::new(0, vec![[0; 16384]; 2], vec![], false, None, 0, 0);
 
         mapper.cpu_write(0xA000, 0x01);
         assert_eq!(mapper.mirroring, NametableMirror::Horizontal);

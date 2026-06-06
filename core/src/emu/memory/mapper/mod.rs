@@ -40,6 +40,7 @@ pub const PALETTE_MIRROR_CLEAR: usize = 0x10;
 // Common memory sizes
 pub const VRAM_SIZE: u16 = 0x0800; // 2KB nametable VRAM
 pub const PRG_RAM_8K: usize = 0x2000; // 8KB PRG RAM
+pub const A12_FILTER_DOTS: u64 = 10;
 
 // PPU register mirror count (8 registers mirrored through $2000-$3FFF)
 pub const PPU_REG_COUNT: u16 = 0x8;

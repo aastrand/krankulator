@@ -1,6 +1,6 @@
 use super::super::super::io;
 use super::{
-    mirror_nametable_addr, NametableMirror, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
+    mirror_nametable_addr, NametableMirror, A12_FILTER_DOTS, CPU_RAM_SIZE, PALETTE_MIRROR_CLEAR,
     PALETTE_MIRROR_MASK, PALETTE_SIZE, PALETTE_START, RESET_TARGET_ADDR, VRAM_SIZE,
 };
 use crate::emu::memory::MemoryMapper;
@@ -109,7 +109,9 @@ impl Taito33Mapper {
     fn check_a12_transition(&mut self, addr: u16, dot: u64) {
         let current_a12 = (addr & 0x1000) != 0;
         if current_a12 {
-            if self.last_a12_low_dot > 0 && dot.saturating_sub(self.last_a12_low_dot) >= 16 {
+            if self.last_a12_low_dot > 0
+                && dot.saturating_sub(self.last_a12_low_dot) >= A12_FILTER_DOTS
+            {
                 self.clock_irq_counter(dot);
             }
             self.last_a12_low_dot = 0;

@@ -1653,14 +1653,12 @@ impl Emulator {
             if let Some((waddr, wval)) = self.ppu.write(reg, value) {
                 self.mem.ppu_write(waddr, wval);
             }
-            if reg == ppu::ADDR_ADDR || reg == ppu::DATA_ADDR {
-                let ppu_addr = if reg == ppu::ADDR_ADDR {
-                    self.ppu.get_temp_vram_addr()
-                } else {
-                    self.ppu.get_current_vram_addr()
-                };
+            if reg == ppu::DATA_ADDR {
                 self.mem
-                    .ppu_a12_transition(ppu_addr, self.ppu.last_synced_dot);
+                    .ppu_a12_transition(self.ppu.get_current_vram_addr(), self.ppu.last_synced_dot);
+            } else if reg == ppu::ADDR_ADDR && !self.ppu.write_toggle() {
+                self.mem
+                    .ppu_a12_transition(self.ppu.get_current_vram_addr(), self.ppu.last_synced_dot);
             }
         } else if addr == ppu::OAM_DMA {
             if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {

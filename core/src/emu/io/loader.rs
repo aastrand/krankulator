@@ -216,11 +216,15 @@ fn load_nes_from_bytes_inner(
     let prg_offset: usize = INES_HEADER_SIZE + if has_trainer { TRAINER_SIZE } else { 0 };
     let chr_offset: usize = prg_offset + (num_prg_blocks as usize * PRG_BANK_SIZE);
 
-    let chr_ram_size = if is_nes2_header {
+    let chr_ram_size: usize = if is_nes2_header {
         let ram_shift = bytes[11] & 0b0000_1111;
         let nvram_shift = (bytes[11] & 0b1111_0000) >> 4;
         let shift = std::cmp::max(ram_shift, nvram_shift);
-        64 << shift
+        if shift > 0 {
+            64 << shift
+        } else {
+            0
+        }
     } else {
         8192
     };
@@ -276,10 +280,10 @@ fn load_nes_from_bytes_inner(
             Box::new(mapper::cnrom::CNROMMapper::new(flags, prg_32k, chr_banks))
         }
         4 => {
-            let mmc3_chr = if num_chr_blocks > 0 {
-                chr_banks
+            let (mmc3_chr, mmc3_chr_ram_banks) = if num_chr_blocks > 0 {
+                (chr_banks, 0)
             } else {
-                vec![]
+                (vec![], chr_ram_size / 1024)
             };
             Box::new(MMC3Mapper::new(
                 flags,
@@ -288,6 +292,7 @@ fn load_nes_from_bytes_inner(
                 has_battery,
                 sram_data,
                 submapper,
+                mmc3_chr_ram_banks,
             ))
         }
         5 => Box::new(MMC5Mapper::new(
@@ -388,10 +393,10 @@ fn load_nes_from_bytes_inner(
         )),
         105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
         118 => {
-            let mmc3_chr = if num_chr_blocks > 0 {
-                chr_banks
+            let (mmc3_chr, mmc3_chr_ram_banks) = if num_chr_blocks > 0 {
+                (chr_banks, 0)
             } else {
-                vec![]
+                (vec![], chr_ram_size / 1024)
             };
             Box::new(MMC3Mapper::new_variant(
                 flags,
@@ -401,13 +406,14 @@ fn load_nes_from_bytes_inner(
                 sram_data,
                 submapper,
                 MMC3Variant::TxSROM,
+                mmc3_chr_ram_banks,
             ))
         }
         119 => {
-            let mmc3_chr = if num_chr_blocks > 0 {
-                chr_banks
+            let (mmc3_chr, mmc3_chr_ram_banks) = if num_chr_blocks > 0 {
+                (chr_banks, 0)
             } else {
-                vec![]
+                (vec![], chr_ram_size / 1024)
             };
             Box::new(MMC3Mapper::new_variant(
                 flags,
@@ -417,6 +423,7 @@ fn load_nes_from_bytes_inner(
                 sram_data,
                 submapper,
                 MMC3Variant::TQROM,
+                mmc3_chr_ram_banks,
             ))
         }
         140 => Box::new(mapper::simple::SimpleMapper::mapper140(
