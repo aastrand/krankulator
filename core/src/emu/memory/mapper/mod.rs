@@ -6,10 +6,13 @@ pub mod mmc1;
 pub mod mmc2;
 pub mod mmc3;
 pub mod mmc5;
+pub mod namco108;
 pub mod nes_event;
 pub mod nrom;
+pub mod simple;
 pub mod sunsoft4;
 pub mod sunsoft_fme7;
+pub mod taito;
 pub mod uxrom;
 pub mod vrc2_4;
 
