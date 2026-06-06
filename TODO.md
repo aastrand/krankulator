@@ -2,7 +2,7 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119)**
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
 Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
 
 ### Completed: Priority 1 quick wins
@@ -96,19 +96,21 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
 - Games: Holy Diver (cult classic Castlevania-like)
 - SimpleMapper: PRG/CHR select + submapper-aware mirroring (submapper 1 = single-screen, submapper 3 = H/V). Bus conflicts.
 
-### Priority 6 (remaining): Famicom — Namco/Bandai/Taito/Irem
+### Completed: Priority 6a3 — Famicom Namco/Taito
 
-**Mapper 210 — Namco 175/340** [S-M] — 12 games
-- Games: Splatterhouse: Wanpaku Graffiti, Dream Master, Wagyan Land 2&3, Famista '91-'94
-- Banking only (no IRQ, no expansion audio). Two sub-variants: 175 (hardwired mirroring), 340 (mapper-controlled).
+**Mapper 210 — Namco 175/340** [done]
+- Games (12): Splatterhouse: Wanpaku Graffiti, Dream Master, Wagyan Land 2&3, Famista '91-'94
+- Banking only (no IRQ, no expansion audio). Two sub-variants: 175 (hardwired mirroring, PRG RAM), 340 (mapper-controlled mirroring).
+
+**Mapper 48 — Taito TC0690** [done]
+- Games (2): Don Doko Don 2, Bakushou Jinsei Gekijou 3
+- Mapper 33 + A12-based scanline IRQ (latch XOR $FF), mirroring via $E000.
+
+### Priority 6 (remaining): Famicom — Namco/Bandai/Taito/Irem
 
 **Mapper 19 — Namco 163** [L] — ~19 games
 - Games: Megami Tensei II, Rolling Thunder (JP), Sangokushi I&II, Final Lap
 - Complex: 8-channel wavetable expansion audio, IRQ counter, fine-grained CHR banking.
-
-**Mapper 48 — Taito TC0190+PAL16R4** [S-M] — 2 games
-- Games: Don Doko Don 2, Bakushou Jinsei Gekijou 3
-- Mapper 33 + IRQ counter.
 
 **Mapper 80 — Taito X1-005** [S-M] — 7 games
 - Games: Minelvaton Saga, Mirai Shinwa Jarvas
@@ -157,9 +159,9 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
 
 | Priority | Mappers | Category | New games | Highlight titles |
 |----------|---------|----------|-----------|------------------|
-| Done | 0,1,2,3,4,5,7,9,21-25,33,34,66,68,69,73,75,78,87,88,105,118,119,140,152,180,184,185,206 | Licensed NES + Famicom | 695 + ~100 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Irem + trivial |
+| Done | 0,1,2,3,4,5,7,9,21-25,33,34,48,66,68,69,73,75,78,87,88,105,118,119,140,152,180,184,185,206,210 | Licensed NES + Famicom | 695 + ~114 | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Irem + trivial |
 | 5 | 24,26,85 | Famicom (Konami VRC) | ~5 | Castlevania III JP, Lagrange Point |
-| 6 | 16,18,19,48,65,80,159,210 | Famicom (other) | ~73 | Megami Tensei II, Dragon Ball Z |
+| 6 | 16,18,19,65,80,159 | Famicom (other) | ~59 | Megami Tensei II, Dragon Ball Z |
 | 7 | 67 | Famicom (remaining) | ~2 | Fantasy Zone II |
 | 8 | 11,64,71,79,228 | Unlicensed | ~125 | Micro Machines, Bible Adventures, Shinobi |
 

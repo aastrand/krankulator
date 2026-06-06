@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 31 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~100 Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Mappers** — 33 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~114 Famicom exclusives (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -46,6 +46,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 25 | VRC2c/VRC4b/VRC4d | Konami | Gradius II, Bio Miracle Upa |
 | 33 | Taito TC0190 | Taito | 8KB PRG + 2KB/1KB CHR banking |
 | 34 | BNROM | Nintendo | 32KB PRG banking, bus conflicts |
+| 48 | Taito TC0690 | Taito | Mapper 33 + scanline IRQ |
 | 66 | GxROM | Nintendo | Combined PRG/CHR select, bus conflicts |
 | 68 | Sunsoft 4 | Sunsoft | CHR-mapped nametables |
 | 69 | Sunsoft FME-7 | Sunsoft | CPU-cycle IRQ, versatile banking |
@@ -63,8 +64,9 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 184 | Sunsoft | Sunsoft | 4KB CHR banking |
 | 185 | CNROM+protection | Nintendo | CNROM with copy protection diodes |
 | 206 | DxROM/Namco 108 | Namco | Simplified MMC3 subset, 1KB CHR banking |
+| 210 | Namco 175/340 | Namco | 3-bank PRG + 8-bank CHR, two submapper variants |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~100 Famicom exclusives.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~114 Famicom exclusives.
 
 ## Architecture
 
