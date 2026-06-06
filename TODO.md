@@ -96,7 +96,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Toast notifications for save/load state, slot cycling, errors
   - Auto-expire after 120 frames (~2 seconds), capped at 4 simultaneous
 - [x] Optional FPS counter overlay [S]
-  - Shows emulation time in ms and percentage of 16.64ms NTSC frame budget
+  - Shows emulation time in ms and percentage of frame budget (region-aware: 16.64ms NTSC, 20.00ms PAL)
 - [ ] Channel mute status indicator (when toggling audio channels 1-5) [XS]
 
 ---
@@ -132,7 +132,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 - [ ] Video recording (save to GIF or MP4) [L]
 - [ ] Game Genie code support [M]
 - [ ] NSF player mode (play NES Sound Format music files) [L]
-- [ ] PAL timing mode (50 Hz, different PPU/CPU ratios) [M]
+- [x] PAL timing mode (50 Hz, 3.2:1 PPU/CPU ratio via master clock sub-dot accumulator, region auto-detect from iNES header + filename heuristic, `--region` CLI override, all 10 blargg PAL APU tests passing) [M]
 
 ---
 
@@ -220,7 +220,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | apu_test | all 8 singles | ✅ | apu/mod.rs |
 | blargg_apu_2005 | all 11 | ✅ | apu/mod.rs |
 | apu_reset | all 6 | ✅ | apu/mod.rs |
-| pal_apu_tests | all 10 | ⏸ ignored (needs PAL) | apu/mod.rs |
+| pal_apu_tests | all 10 | ✅ | apu/mod.rs |
 | dmc_tests | status, status_irq, buffer_retained, latency | ✅ | integration_tests.rs |
 | oam_read | 1 | ✅ | integration_tests.rs |
 | ppu_vbl_nmi | 01, 03, 04, 05, 09, 10 | ✅ | integration_tests.rs |
@@ -300,7 +300,7 @@ Visual demos, interactive tests, or unsupported hardware — cannot use $6000 pr
 | m22chrbankingtest | Needs mapper 22 (VRC2a) |
 | MMC1_A12 | Visual/manual MMC1 test |
 | fdsirqtests | Needs FDS mapper |
-| pal_apu_tests | Wired up but ignored (needs PAL mode) |
+
 
 ---
 
