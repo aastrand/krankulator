@@ -577,6 +577,8 @@ impl Emulator {
 
             if (self.should_exit_on_infinite_loop || self.should_debug_on_infinite_loop)
                 && self.cpu.pc == self.cpu.last_instruction
+                && !self.ppu.vblank_nmi_is_enabled()
+                && (self.cpu.interrupt_flag() || !self.mem.poll_irq())
             {
                 if self.mem.cpu_read(self.cpu.last_instruction as _) != opcodes::BRK {
                     let msg = format!("infite loop detected on addr 0x{:x}!", self.cpu.pc);
@@ -620,7 +622,8 @@ impl Emulator {
 
                 if self.branch_irq_suppressed {
                     self.irq_allowed = false;
-                } else if self.nmi_countdown > 0 {
+                }
+                if self.nmi_countdown > 0 {
                     self.nmi_countdown -= 1;
                 }
             }
@@ -3759,5 +3762,55 @@ mod emu_tests {
         emu2.load_state_from_bytes(&v7_data).unwrap();
         assert_eq!(emu2.master_clock_sub, 0);
         assert_eq!(emu2.instruction_start_sub, 0);
+    }
+
+    #[test]
+    fn test_nmi_breaks_branch_to_self_loop() {
+        let mut emu = Emulator::_new();
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_should_exit_on_infinite_loop(false);
+        emu.should_log = false;
+        emu.ppu_register_warmup_until_cpu_cycle = 0;
+
+        let code_addr: u16 = 0x0700;
+        let nmi_handler: u16 = 0x0800;
+        let marker_addr: u16 = 0x0010;
+
+        // LDA #$80; STA $2000 (enable NMI); NOP; NOP; BNE $-2 (branch to self)
+        // The NOPs shift timing so VBL edge falls after the BNE's IRQ sample
+        // deadline, forcing nmi_countdown=1 (deferred) instead of 0 (immediate).
+        emu.mem.cpu_write(code_addr, opcodes::LDA_IMM);
+        emu.mem.cpu_write(code_addr + 1, 0x80);
+        emu.mem.cpu_write(code_addr + 2, opcodes::STA_ABS);
+        emu.mem.cpu_write(code_addr + 3, ppu::CTRL_REG_ADDR as u8);
+        emu.mem
+            .cpu_write(code_addr + 4, (ppu::CTRL_REG_ADDR >> 8) as u8);
+        emu.mem.cpu_write(code_addr + 5, opcodes::NOP);
+        emu.mem.cpu_write(code_addr + 6, opcodes::NOP);
+        emu.mem.cpu_write(code_addr + 7, opcodes::BNE);
+        emu.mem.cpu_write(code_addr + 8, 0xFE); // -2: branch to self
+
+        // NMI handler: write marker and BRK
+        emu.mem.cpu_write(nmi_handler, opcodes::LDA_IMM);
+        emu.mem.cpu_write(nmi_handler + 1, 0x42);
+        emu.mem.cpu_write(nmi_handler + 2, opcodes::STA_ZP);
+        emu.mem.cpu_write(nmi_handler + 3, marker_addr as u8);
+        emu.mem.cpu_write(nmi_handler + 4, opcodes::BRK);
+
+        // Set NMI vector
+        emu.mem
+            .cpu_write(memory::NMI_TARGET_ADDR, nmi_handler as u8);
+        emu.mem
+            .cpu_write(memory::NMI_TARGET_ADDR + 1, (nmi_handler >> 8) as u8);
+
+        emu.cpu.pc = code_addr;
+        // Run enough cycles to cross VBL (scanline 241 × 341 dots / 3 ≈ 27,400 cycles)
+        emu.run_for_cycles(35000);
+
+        assert_eq!(
+            emu.mem.cpu_read(marker_addr),
+            0x42,
+            "NMI handler should have written marker"
+        );
     }
 }
