@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 19 mappers covering 100% of licensed NES games (NTSC and PAL) plus Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Mappers** — 28 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~90 Famicom exclusives (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -44,15 +44,24 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 22 | VRC2a | Konami | Half-resolution CHR banking |
 | 23 | VRC2b/VRC4e/VRC4f | Konami | Crisis Force, Tiny Toon (JP) |
 | 25 | VRC2c/VRC4b/VRC4d | Konami | Gradius II, Bio Miracle Upa |
+| 33 | Taito TC0190 | Taito | 8KB PRG + 2KB/1KB CHR banking |
 | 34 | BNROM | Nintendo | 32KB PRG banking, bus conflicts |
 | 66 | GxROM | Nintendo | Combined PRG/CHR select, bus conflicts |
 | 68 | Sunsoft 4 | Sunsoft | CHR-mapped nametables |
 | 69 | Sunsoft FME-7 | Sunsoft | CPU-cycle IRQ, versatile banking |
+| 87 | Jaleco/Konami | Jaleco | CHR bank swap (2-bit swapped latch) |
+| 88 | Namcot 3433 | Namco | Namco 108 subset with CHR offset |
 | 105 | NES-EVENT | Nintendo | MMC1 variant (World Championships 1990) |
 | 118 | TxSROM | Nintendo | MMC3 variant, per-bank mirroring |
 | 119 | TQROM | Nintendo | MMC3 variant, mixed CHR ROM/RAM |
+| 140 | JF-11/JF-14 | Jaleco | Combined 32KB PRG + 8KB CHR select |
+| 152 | Bandai discrete | Bandai | Single-screen mirror + CHR banking |
+| 180 | UNROM variant | Nihon Bussan | Fixed first bank, switchable second |
+| 184 | Sunsoft | Sunsoft | 4KB CHR banking |
+| 185 | CNROM+protection | Nintendo | CNROM with copy protection diodes |
+| 206 | DxROM/Namco 108 | Namco | Simplified MMC3 subset, 1KB CHR banking |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~20 Famicom exclusives via VRC2/VRC4.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~90 Famicom exclusives.
 
 ## Architecture
 
@@ -74,7 +83,8 @@ graph TD
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
     Mem --> VRC["VRC2/VRC4<br/>Konami, 9 variants"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
-    Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM"]
+    Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM, 87/140/152/180/184/185"]
+    Mem --> Namco108["Namco 108<br/>DxROM (206), Namcot 3433 (88)"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
     Emu --> IO["IOHandler<br/>trait object"]
@@ -230,7 +240,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-551 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+577 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
