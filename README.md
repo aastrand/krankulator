@@ -16,7 +16,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 19 mappers covering 100% of licensed NTSC US games plus Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Mappers** — 19 mappers covering 100% of licensed NES games (NTSC and PAL) plus Famicom exclusives (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -52,7 +52,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 118 | TxSROM | Nintendo | MMC3 variant, per-bank mirroring |
 | 119 | TQROM | Nintendo | MMC3 variant, mixed CHR ROM/RAM |
 
-**Coverage:** 695/695 licensed NTSC US games (100%), plus ~20 Famicom exclusives via VRC2/VRC4.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~20 Famicom exclusives via VRC2/VRC4.
 
 ## Architecture
 

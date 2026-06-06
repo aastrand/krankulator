@@ -3,7 +3,7 @@
 ## Mappers
 
 Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119)**
-Coverage: 695/695 licensed NTSC US games (100%), ~20 Famicom exclusives (VRC2/VRC4)
+Coverage: 100% licensed NES games (NTSC and PAL), ~20 Famicom exclusives (VRC2/VRC4)
 
 ### Completed: Priority 1 quick wins
 
@@ -175,7 +175,7 @@ Coverage: 695/695 licensed NTSC US games (100%), ~20 Famicom exclusives (VRC2/VR
 
 | Priority | Mappers | Category | New games | Highlight titles |
 |----------|---------|----------|-----------|------------------|
-| Done | 0,1,2,3,4,5,7,9,21,22,23,25,34,66,68,69,105,118,119 | Licensed NTSC + Famicom | 695 + ~20 | 100% US licensed + VRC2/VRC4 |
+| Done | 0,1,2,3,4,5,7,9,21,22,23,25,34,66,68,69,105,118,119 | Licensed NES + Famicom | 695 + ~20 | 100% licensed (NTSC+PAL) + VRC2/VRC4 |
 | 5 | 21,22,23,24,25,26,73,75,85 | Famicom (Konami VRC) | ~32 | Crisis Force, Gradius II, Castlevania III JP, Salamander |
 | 6 | 16,18,19,33,48,65,78,80,159,206,210 | Famicom (other) | ~130 | Mappy-Land, Megami Tensei II, Holy Diver, Dragon Ball Z |
 | 7 | 67,87,88,140,152,180,184,185 | Famicom (trivial) | ~32 | TwinBee, Goonies JP, Dragon Spirit |
