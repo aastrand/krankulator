@@ -147,7 +147,12 @@ fn main() -> Result<(), String> {
                         RegionArg::Ntsc => emu::Region::Ntsc,
                         RegionArg::Pal => emu::Region::Pal,
                     };
-                    println!("Loaded {} (mapper {}, {})", input, mapper.mapper_id(), region);
+                    println!(
+                        "Loaded {} (mapper {}, {})",
+                        input,
+                        mapper.mapper_id(),
+                        region
+                    );
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {
                         emu::Emulator::new_capturing_with_region(mapper, region)
                     } else if !args.headless {
@@ -235,7 +240,12 @@ fn main() -> Result<(), String> {
                         RegionArg::Ntsc => emu::Region::Ntsc,
                         RegionArg::Pal => emu::Region::Pal,
                     };
-                    println!("Loaded {} (mapper {}, {})", path, mapper.mapper_id(), region);
+                    println!(
+                        "Loaded {} (mapper {}, {})",
+                        path,
+                        mapper.mapper_id(),
+                        region
+                    );
                     emu.load_rom_with_region(mapper, &path, region);
                     io::add_recent_rom(&path);
                 }
