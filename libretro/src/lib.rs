@@ -297,7 +297,7 @@ pub unsafe extern "C" fn retro_load_game(game: *const RetroGameInfo) -> bool {
     } else {
         std::ffi::CStr::from_ptr((*game).path).to_str().ok()
     };
-    let filename = path.and_then(|p| p.rsplit('/').next());
+    let filename = path.and_then(|p| p.rsplit(&['/', '\\'][..]).next());
     let region = loader::detect_region_with_filename(rom_data, filename);
 
     let has_battery = loader::rom_has_battery(rom_data);

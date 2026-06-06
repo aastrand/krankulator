@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::process::Command;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gdk::keys::constants as gdk_key;
 use gdk::prelude::*;
