@@ -44,7 +44,6 @@ fn load_rom_file(path: &str) -> Result<Box<dyn emu::memory::MemoryMapper>, Strin
             None
         };
         let result = loader::load_nes_from_bytes_with_sram(&bytes, sram_data)?;
-        println!("Loaded {} (mapper {})", path, result.mapper_id());
         Ok(result)
     } else {
         let l: Box<dyn loader::Loader> = loader::InesLoader::new();
@@ -148,7 +147,7 @@ fn main() -> Result<(), String> {
                         RegionArg::Ntsc => emu::Region::Ntsc,
                         RegionArg::Pal => emu::Region::Pal,
                     };
-                    println!("Region: {}", region);
+                    println!("Loaded {} (mapper {}, {})", input, mapper.mapper_id(), region);
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {
                         emu::Emulator::new_capturing_with_region(mapper, region)
                     } else if !args.headless {
@@ -236,7 +235,7 @@ fn main() -> Result<(), String> {
                         RegionArg::Ntsc => emu::Region::Ntsc,
                         RegionArg::Pal => emu::Region::Pal,
                     };
-                    println!("Region: {}", region);
+                    println!("Loaded {} (mapper {}, {})", path, mapper.mapper_id(), region);
                     emu.load_rom_with_region(mapper, &path, region);
                     io::add_recent_rom(&path);
                 }

@@ -128,7 +128,6 @@ impl Loader for InesLoader {
         };
 
         let result = load_nes_from_bytes_inner(&bytes, sram_data)?;
-        println!("Loaded {} (mapper {})", path, result.mapper_id());
         Ok(result)
     }
 }
