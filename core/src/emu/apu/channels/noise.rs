@@ -33,10 +33,28 @@ pub struct NoiseChannel {
 
     // Output
     output: f32,
+
+    noise_periods: [u16; 16],
 }
+
+const NTSC_NOISE_PERIODS: [u16; 16] = [
+    4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
+];
+const PAL_NOISE_PERIODS: [u16; 16] = [
+    4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708, 944, 1890, 3778,
+];
 
 impl NoiseChannel {
     pub fn new() -> Self {
+        Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
+    }
+
+    pub fn new_with_region(region: &crate::emu::region::RegionConfig) -> Self {
+        use crate::emu::region::Region;
+        let periods = match region.region {
+            Region::Ntsc => NTSC_NOISE_PERIODS,
+            Region::Pal => PAL_NOISE_PERIODS,
+        };
         Self {
             control: 0,
             volume: 0,
@@ -47,8 +65,8 @@ impl NoiseChannel {
             envelope_decay_level: 0,
 
             period: 0,
-            timer: NOISE_PERIODS[0],       // Start with a valid timer value
-            timer_value: NOISE_PERIODS[0], // Start with a valid timer value
+            timer: periods[0],
+            timer_value: periods[0],
 
             length_counter: 0,
             length_counter_halt: false,
@@ -57,6 +75,7 @@ impl NoiseChannel {
 
             shift_register: LFSR_INITIAL,
             output: 0.0,
+            noise_periods: periods,
         }
     }
 
@@ -68,8 +87,8 @@ impl NoiseChannel {
         self.envelope_divider = 0;
         self.envelope_decay_level = 0;
         self.period = 0;
-        self.timer = NOISE_PERIODS[0];
-        self.timer_value = NOISE_PERIODS[0];
+        self.timer = self.noise_periods[0];
+        self.timer_value = self.noise_periods[0];
         self.length_counter = 0;
         self.length_counter_halt = false;
         self.enabled = false;
@@ -121,7 +140,7 @@ impl NoiseChannel {
 
     pub fn set_period(&mut self, value: u8) {
         self.period = value & PERIOD_INDEX_MASK;
-        self.timer = NOISE_PERIODS[self.period as usize];
+        self.timer = self.noise_periods[self.period as usize];
         self.timer_value = self.timer;
         self.control = (self.control & !MODE_BIT) | (value & MODE_BIT);
     }
@@ -220,11 +239,6 @@ impl NoiseChannel {
     }
 }
 
-// Noise period lookup table
-const NOISE_PERIODS: [u16; 16] = [
-    4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
-];
-
 // Length counter lookup table
 const LENGTH_COUNTER_TABLE: [u8; 32] = [
     10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
@@ -245,8 +259,8 @@ mod tests {
         assert_eq!(noise.envelope_divider, 0);
         assert_eq!(noise.envelope_decay_level, 0);
         assert_eq!(noise.period, 0);
-        assert_eq!(noise.timer, NOISE_PERIODS[0]);
-        assert_eq!(noise.timer_value, NOISE_PERIODS[0]);
+        assert_eq!(noise.timer, NTSC_NOISE_PERIODS[0]);
+        assert_eq!(noise.timer_value, NTSC_NOISE_PERIODS[0]);
         assert_eq!(noise.length_counter, 0);
         assert!(!noise.length_counter_halt);
         assert!(!noise.enabled);
@@ -281,12 +295,12 @@ mod tests {
         // Test period 0
         noise.set_period(0x00);
         assert_eq!(noise.period, 0);
-        assert_eq!(noise.timer, NOISE_PERIODS[0]);
+        assert_eq!(noise.timer, NTSC_NOISE_PERIODS[0]);
 
         // Test period 15
         noise.set_period(0x0F);
         assert_eq!(noise.period, 15);
-        assert_eq!(noise.timer, NOISE_PERIODS[15]);
+        assert_eq!(noise.timer, NTSC_NOISE_PERIODS[15]);
 
         // Test that higher bits are ignored
         noise.set_period(0xF0);
@@ -464,13 +478,13 @@ mod tests {
     #[test]
     fn test_noise_periods_table() {
         // Test some known values from the table
-        assert_eq!(NOISE_PERIODS[0], 4);
-        assert_eq!(NOISE_PERIODS[1], 8);
-        assert_eq!(NOISE_PERIODS[15], 4068);
+        assert_eq!(NTSC_NOISE_PERIODS[0], 4);
+        assert_eq!(NTSC_NOISE_PERIODS[1], 8);
+        assert_eq!(NTSC_NOISE_PERIODS[15], 4068);
 
         // Test that periods increase with index
         for i in 1..16 {
-            assert!(NOISE_PERIODS[i] > NOISE_PERIODS[i - 1]);
+            assert!(NTSC_NOISE_PERIODS[i] > NTSC_NOISE_PERIODS[i - 1]);
         }
     }
 
