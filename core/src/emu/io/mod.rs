@@ -43,6 +43,8 @@ pub trait IOHandler {
     fn frame_time_ms(&self) -> Option<f64> {
         None
     }
+    fn set_frame_duration_nanos(&mut self, _nanos: u64) {}
+    fn set_overscan_available(&mut self, _available: bool) {}
     fn on_debug(&mut self, ctx: &mut DebugContext) {
         *ctx.stepping = false;
     }
