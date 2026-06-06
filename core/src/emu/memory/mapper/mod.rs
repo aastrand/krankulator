@@ -4,6 +4,7 @@ pub mod camerica;
 pub mod cnrom;
 pub mod color_dreams;
 pub mod gxrom;
+pub mod mapper31;
 pub mod mmc1;
 pub mod mmc2;
 pub mod mmc3;
