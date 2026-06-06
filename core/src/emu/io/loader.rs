@@ -148,6 +148,40 @@ pub fn rom_has_battery(bytes: &[u8]) -> bool {
     bytes.len() > 6 && (bytes[6] & FLAG_BATTERY) != 0
 }
 
+pub fn detect_region(bytes: &[u8]) -> crate::emu::region::Region {
+    detect_region_with_filename(bytes, None)
+}
+
+pub fn detect_region_with_filename(
+    bytes: &[u8],
+    filename: Option<&str>,
+) -> crate::emu::region::Region {
+    use crate::emu::region::Region;
+    if bytes.len() >= INES_HEADER_SIZE {
+        let is_nes2 = bytes[7] & NES2_DETECT_MASK == NES2_DETECT_VALUE;
+        if is_nes2 {
+            return match bytes[12] & 0x03 {
+                1 => Region::Pal,
+                _ => Region::Ntsc,
+            };
+        }
+        if bytes[9] & 0x01 != 0 {
+            return Region::Pal;
+        }
+    }
+    if let Some(name) = filename {
+        if filename_suggests_pal(name) {
+            return Region::Pal;
+        }
+    }
+    Region::Ntsc
+}
+
+fn filename_suggests_pal(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.contains("(e)") || lower.contains("(europe)") || lower.contains("(pal)")
+}
+
 fn load_nes_from_bytes_inner(
     bytes: &[u8],
     sram_data: Option<Vec<u8>>,
@@ -427,5 +461,86 @@ mod tests {
         let bnrom_result = l.load(bnrom_path.to_str().unwrap());
         std::fs::remove_file(&bnrom_path).unwrap();
         assert_eq!(bnrom_result.unwrap().mapper_id(), 34);
+    }
+
+    #[test]
+    fn test_detect_region_ines1_ntsc() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[9] = 0x00;
+        assert_eq!(detect_region(&bytes), crate::emu::region::Region::Ntsc);
+    }
+
+    #[test]
+    fn test_detect_region_ines1_pal() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[9] = 0x01;
+        assert_eq!(detect_region(&bytes), crate::emu::region::Region::Pal);
+    }
+
+    #[test]
+    fn test_detect_region_nes2_ntsc() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[7] = NES2_DETECT_VALUE;
+        bytes[12] = 0x00;
+        assert_eq!(detect_region(&bytes), crate::emu::region::Region::Ntsc);
+    }
+
+    #[test]
+    fn test_detect_region_nes2_pal() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[7] = NES2_DETECT_VALUE;
+        bytes[12] = 0x01;
+        assert_eq!(detect_region(&bytes), crate::emu::region::Region::Pal);
+    }
+
+    #[test]
+    fn test_detect_region_short_header() {
+        assert_eq!(detect_region(&[0; 4]), crate::emu::region::Region::Ntsc);
+    }
+
+    #[test]
+    fn test_detect_region_filename_europe() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[9] = 0x00;
+        assert_eq!(
+            detect_region_with_filename(&bytes, Some("Super Mario Bros (E).nes")),
+            crate::emu::region::Region::Pal
+        );
+        assert_eq!(
+            detect_region_with_filename(&bytes, Some("Game (Europe).nes")),
+            crate::emu::region::Region::Pal
+        );
+        assert_eq!(
+            detect_region_with_filename(&bytes, Some("Game (PAL).nes")),
+            crate::emu::region::Region::Pal
+        );
+    }
+
+    #[test]
+    fn test_detect_region_filename_no_match() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[9] = 0x00;
+        assert_eq!(
+            detect_region_with_filename(&bytes, Some("Game (U).nes")),
+            crate::emu::region::Region::Ntsc
+        );
+    }
+
+    #[test]
+    fn test_detect_region_header_overrides_filename() {
+        let mut bytes = vec![0u8; INES_HEADER_SIZE];
+        bytes[0..4].copy_from_slice(b"NES\x1A");
+        bytes[7] = NES2_DETECT_VALUE;
+        bytes[12] = 0x00;
+        assert_eq!(
+            detect_region_with_filename(&bytes, Some("Game (E).nes")),
+            crate::emu::region::Region::Ntsc
+        );
     }
 }
