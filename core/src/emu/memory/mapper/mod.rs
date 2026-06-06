@@ -1,6 +1,7 @@
 pub mod axrom;
 pub mod bnrom;
 pub mod cnrom;
+pub mod color_dreams;
 pub mod gxrom;
 pub mod mmc1;
 pub mod mmc2;
