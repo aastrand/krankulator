@@ -44,18 +44,36 @@ pub struct DmcChannel {
     // IRQ
     irq_enabled: bool,
     irq_pending: bool,
+
+    dmc_periods: [u16; 16],
 }
+
+const NTSC_DMC_PERIODS: [u16; 16] = [
+    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
+];
+const PAL_DMC_PERIODS: [u16; 16] = [
+    398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
+];
 
 impl DmcChannel {
     pub fn new() -> Self {
+        Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
+    }
+
+    pub fn new_with_region(region: &crate::emu::region::RegionConfig) -> Self {
+        use crate::emu::region::Region;
+        let periods = match region.region {
+            Region::Ntsc => NTSC_DMC_PERIODS,
+            Region::Pal => PAL_DMC_PERIODS,
+        };
         Self {
             control: 0,
             direct_load: 0,
             sample_address: 0,
             sample_length: 0,
 
-            timer: DMC_PERIODS[0],
-            timer_value: DMC_PERIODS[0],
+            timer: periods[0],
+            timer_value: periods[0],
 
             enabled: false,
 
@@ -74,6 +92,7 @@ impl DmcChannel {
 
             irq_enabled: false,
             irq_pending: false,
+            dmc_periods: periods,
         }
     }
 
@@ -82,8 +101,8 @@ impl DmcChannel {
         self.direct_load = 0;
         self.sample_address = 0;
         self.sample_length = 0;
-        self.timer = DMC_PERIODS[0];
-        self.timer_value = DMC_PERIODS[0];
+        self.timer = self.dmc_periods[0];
+        self.timer_value = self.dmc_periods[0];
         self.enabled = false;
         self.sample_buffer = 0;
         self.sample_buffer_empty = true;
@@ -145,7 +164,7 @@ impl DmcChannel {
         self.control = value;
         let irq_enable = (value >> 7) & 1 != 0;
         self.irq_enabled = irq_enable;
-        self.timer = DMC_PERIODS[(value & PERIOD_INDEX_MASK) as usize];
+        self.timer = self.dmc_periods[(value & PERIOD_INDEX_MASK) as usize];
         if !irq_enable {
             self.irq_pending = false;
         }
@@ -277,11 +296,6 @@ impl DmcChannel {
     }
 }
 
-// DMC period lookup table
-const DMC_PERIODS: [u16; 16] = [
-    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,8 +356,8 @@ mod tests {
         assert_eq!(dmc.direct_load, 0);
         assert_eq!(dmc.sample_address, 0);
         assert_eq!(dmc.sample_length, 0);
-        assert_eq!(dmc.timer, DMC_PERIODS[0]);
-        assert_eq!(dmc.timer_value, DMC_PERIODS[0]);
+        assert_eq!(dmc.timer, NTSC_DMC_PERIODS[0]);
+        assert_eq!(dmc.timer_value, NTSC_DMC_PERIODS[0]);
         assert!(!dmc.enabled);
         assert_eq!(dmc.sample_buffer, 0);
         assert!(dmc.sample_buffer_empty);
@@ -366,9 +380,9 @@ mod tests {
 
         // Test period setting
         dmc.set_control(0b00001111); // Period 15
-        assert_eq!(dmc.timer, DMC_PERIODS[15]);
+        assert_eq!(dmc.timer, NTSC_DMC_PERIODS[15]);
         // timer_value is NOT reset by set_control (hardware behavior)
-        assert_eq!(dmc.timer_value, DMC_PERIODS[0]);
+        assert_eq!(dmc.timer_value, NTSC_DMC_PERIODS[0]);
     }
 
     #[test]
@@ -440,7 +454,7 @@ mod tests {
         let mut dmc = DmcChannel::new();
         let mut mem = DummyMemory;
 
-        dmc.set_control(0x01); // Period = DMC_PERIODS[1] = 380
+        dmc.set_control(0x01); // Period = NTSC_DMC_PERIODS[1] = 380
         dmc.enabled = true;
         dmc.bytes_remaining = 10;
         dmc.timer_value = 0; // Force timer to expire on next cycle
@@ -582,13 +596,13 @@ mod tests {
     #[test]
     fn test_dmc_periods_table() {
         // Test some known values from the table
-        assert_eq!(DMC_PERIODS[0], 428);
-        assert_eq!(DMC_PERIODS[1], 380);
-        assert_eq!(DMC_PERIODS[15], 54);
+        assert_eq!(NTSC_DMC_PERIODS[0], 428);
+        assert_eq!(NTSC_DMC_PERIODS[1], 380);
+        assert_eq!(NTSC_DMC_PERIODS[15], 54);
 
         // Test that periods decrease with index (higher frequency)
         for i in 1..16 {
-            assert!(DMC_PERIODS[i] < DMC_PERIODS[i - 1]);
+            assert!(NTSC_DMC_PERIODS[i] < NTSC_DMC_PERIODS[i - 1]);
         }
     }
 

@@ -2,8 +2,7 @@ pub mod channels;
 pub mod frame_counter;
 
 pub const SAMPLE_RATE: u32 = 44100;
-pub const CPU_CLOCK_RATE: f64 = 1_789_773.0;
-pub const CYCLES_PER_SAMPLE: f64 = CPU_CLOCK_RATE / SAMPLE_RATE as f64;
+pub const CPU_CLOCK_RATE_NTSC: f64 = 1_789_773.0;
 
 // --- APU register addresses ---
 
@@ -155,6 +154,8 @@ pub struct APU {
     last_4017_write: Option<u8>,
 
     audio_filter: AudioFilter,
+    cycles_per_sample: f64,
+    region: crate::emu::region::Region,
     // Pulse and noise timers tick every 2 CPU cycles (half-rate)
     half_clock: bool,
     expansion_audio: f32,
@@ -162,13 +163,18 @@ pub struct APU {
 
 impl APU {
     pub fn new() -> Self {
+        Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
+    }
+
+    pub fn new_with_region(region: &crate::emu::region::RegionConfig) -> Self {
+        let cycles_per_sample = region.cpu_clock_rate / SAMPLE_RATE as f64;
         let mut apu = Self {
             pulse1: PulseChannel::new(0),
             pulse2: PulseChannel::new(1),
             triangle: TriangleChannel::new(),
-            noise: NoiseChannel::new(),
-            dmc: DmcChannel::new(),
-            frame_counter: FrameCounter::new(),
+            noise: NoiseChannel::new_with_region(region),
+            dmc: DmcChannel::new_with_region(region),
+            frame_counter: FrameCounter::new_with_region(region),
 
             sample_buffer: vec![0.0; SAMPLE_BUFFER_SIZE],
             sample_index: 0,
@@ -182,6 +188,8 @@ impl APU {
             mute_mask: 0,
             last_4017_write: None,
             audio_filter: AudioFilter::new(SAMPLE_RATE),
+            cycles_per_sample,
+            region: region.region,
             half_clock: false,
             expansion_audio: 0.0,
         };
@@ -195,7 +203,7 @@ impl APU {
         self.triangle.hard_reset();
         self.noise.hard_reset();
         self.dmc.hard_reset();
-        self.frame_counter = FrameCounter::new();
+        self.frame_counter = FrameCounter::new_with_region(&self.region.config());
         self.last_4017_write = None;
         self.reset_common();
     }
@@ -207,10 +215,10 @@ impl APU {
         self.noise.set_enabled(false);
         self.dmc.set_enabled(false);
         if let Some(val) = self.last_4017_write {
-            self.frame_counter = FrameCounter::new();
+            self.frame_counter = FrameCounter::new_with_region(&self.region.config());
             self.frame_counter.reset_with_value(val);
         } else {
-            self.frame_counter = FrameCounter::new();
+            self.frame_counter = FrameCounter::new_with_region(&self.region.config());
         }
         self.reset_common();
     }
@@ -386,8 +394,8 @@ impl APU {
         self.sample_accumulator_count += 1;
 
         self.cycles_since_sample += 1.0;
-        if self.cycles_since_sample >= CYCLES_PER_SAMPLE {
-            self.cycles_since_sample -= CYCLES_PER_SAMPLE;
+        if self.cycles_since_sample >= self.cycles_per_sample {
+            self.cycles_since_sample -= self.cycles_per_sample;
             self.emit_sample();
         }
     }
@@ -837,7 +845,8 @@ mod tests {
         apu.write(0x4002, 0x10, 0); // Timer low
         apu.write(0x4003, 0x00, 0); // Timer high
 
-        for _ in 0..CYCLES_PER_SAMPLE as u32 + 1 {
+        let cycles_per_sample = CPU_CLOCK_RATE_NTSC / SAMPLE_RATE as f64;
+        for _ in 0..cycles_per_sample as u32 + 1 {
             apu.cycle(0, &mut DummyMemory);
         }
 
@@ -848,7 +857,8 @@ mod tests {
     fn test_apu_get_audio_samples() {
         let mut apu = APU::new();
 
-        for _ in 0..(CYCLES_PER_SAMPLE * 5.0) as u32 {
+        let cycles_per_sample = CPU_CLOCK_RATE_NTSC / SAMPLE_RATE as f64;
+        for _ in 0..(cycles_per_sample * 5.0) as u32 {
             apu.cycle(0, &mut DummyMemory);
         }
 
@@ -876,8 +886,9 @@ mod tests {
         // Test sample rate
         assert_eq!(SAMPLE_RATE, 44100);
 
-        assert!(CYCLES_PER_SAMPLE > 40.0);
-        assert!(CYCLES_PER_SAMPLE < 41.0);
+        let cycles_per_sample = CPU_CLOCK_RATE_NTSC / SAMPLE_RATE as f64;
+        assert!(cycles_per_sample > 40.0);
+        assert!(cycles_per_sample < 41.0);
     }
 
     #[test]
@@ -1192,7 +1203,11 @@ mod tests {
         use crate::emu::io::loader;
         use crate::util::get_status_str;
 
-        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        let mapper = loader::load_nes(&String::from(rom_path));
+        let audio =
+            Box::new(emu::audio::SilentAudioOutput::new()) as Box<dyn emu::audio::AudioBackend>;
+        let iohandler = Box::new(emu::io::HeadlessIOHandler {});
+        let mut emu = emu::Emulator::new_with_region(iohandler, mapper, audio, emu::Region::Pal);
         emu.cpu.status = 0x34;
         emu.cpu.sp = 0xfd;
         emu.toggle_should_trigger_nmi(true);
@@ -1214,25 +1229,21 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_ctr() {
         run_pal_apu_rom(test_rom!("pal_apu_tests/01.len_ctr.nes"), "01.len_ctr");
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_table() {
         run_pal_apu_rom(test_rom!("pal_apu_tests/02.len_table.nes"), "02.len_table");
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_irq_flag() {
         run_pal_apu_rom(test_rom!("pal_apu_tests/03.irq_flag.nes"), "03.irq_flag");
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_clock_jitter() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/04.clock_jitter.nes"),
@@ -1241,7 +1252,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_timing_mode0() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/05.len_timing_mode0.nes"),
@@ -1250,7 +1260,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_timing_mode1() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/06.len_timing_mode1.nes"),
@@ -1259,7 +1268,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_irq_flag_timing() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/07.irq_flag_timing.nes"),
@@ -1268,7 +1276,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_irq_timing() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/08.irq_timing.nes"),
@@ -1277,7 +1284,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_halt_timing() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/10.len_halt_timing.nes"),
@@ -1286,7 +1292,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_pal_apu_len_reload_timing() {
         run_pal_apu_rom(
             test_rom!("pal_apu_tests/11.len_reload_timing.nes"),

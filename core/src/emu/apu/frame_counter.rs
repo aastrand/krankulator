@@ -18,21 +18,36 @@ pub struct FrameCounter {
     reset_delay: u8,
     pending_write: u8,
     block_tick: u8,
+    mode0_cycles: [u32; 6],
+    mode1_cycles: [u32; 6],
 }
 
-const MODE0_CYCLES: [u32; 6] = [7457, 14913, 22371, 29828, 29829, 29830];
-const MODE1_CYCLES: [u32; 6] = [7457, 14913, 22371, 29829, 37281, 37282];
+const NTSC_MODE0_CYCLES: [u32; 6] = [7457, 14913, 22371, 29828, 29829, 29830];
+const NTSC_MODE1_CYCLES: [u32; 6] = [7457, 14913, 22371, 29829, 37281, 37282];
+const PAL_MODE0_CYCLES: [u32; 6] = [8313, 16627, 24939, 33252, 33253, 33254];
+const PAL_MODE1_CYCLES: [u32; 6] = [8313, 16627, 24939, 33253, 41565, 41566];
 
 impl FrameCounter {
     pub fn new() -> Self {
+        Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
+    }
+
+    pub fn new_with_region(region: &crate::emu::region::RegionConfig) -> Self {
+        use crate::emu::region::Region;
+        let (mode0, mode1) = match region.region {
+            Region::Ntsc => (NTSC_MODE0_CYCLES, NTSC_MODE1_CYCLES),
+            Region::Pal => (PAL_MODE0_CYCLES, PAL_MODE1_CYCLES),
+        };
         Self {
             mode: 0,
             step: 0,
-            cycles: 10, // hardware powers on as if $4017=$00 written ~10 clocks before first instruction
+            cycles: 10,
             irq_inhibit: false,
             reset_delay: 0,
             pending_write: 0,
             block_tick: 0,
+            mode0_cycles: mode0,
+            mode1_cycles: mode1,
         }
     }
 
@@ -87,7 +102,7 @@ impl FrameCounter {
         if self.step >= 6 {
             return FrameStep::None;
         }
-        let target = MODE0_CYCLES[self.step as usize];
+        let target = self.mode0_cycles[self.step as usize];
         if self.cycles < target {
             return FrameStep::None;
         }
@@ -111,7 +126,7 @@ impl FrameCounter {
         if self.step >= 6 {
             return FrameStep::None;
         }
-        let target = MODE1_CYCLES[self.step as usize];
+        let target = self.mode1_cycles[self.step as usize];
         if self.cycles < target {
             return FrameStep::None;
         }
