@@ -345,6 +345,18 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        73 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::vrc3::Vrc3Mapper::new(flags, prg_banks, chr))
+        }
+        75 => Box::new(mapper::vrc1::Vrc1Mapper::new(flags, prg_banks, chr_banks)),
+        78 => Box::new(mapper::simple::SimpleMapper::mapper78(
+            flags, prg_banks, chr_banks, submapper,
+        )),
         87 => Box::new(mapper::simple::SimpleMapper::mapper87(
             flags, prg_banks, chr_banks,
         )),
