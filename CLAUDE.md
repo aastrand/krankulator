@@ -22,7 +22,7 @@ The project is a Cargo workspace with four crates:
 - **`libretro/`** (`krankulator-libretro`) — RetroArch/libretro core. Raw C FFI, no extra dependencies. Produces `krankulator_libretro.so/.dll/.dylib`.
 
 Key traits defined in core that frontends implement:
-- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`
+- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`, `set_frame_duration_nanos()`, `set_overscan_available()`
 - `AudioBackend` (`core/src/emu/audio/mod.rs`) — `push_samples()`, `flush()`, `clear()`
 
 ## Common Commands
@@ -108,9 +108,18 @@ cargo clippy --workspace
 - Main emulator struct that orchestrates CPU, PPU, APU, and memory
 - Handles cycle-accurate timing between components
 - `run()` — blocking loop for desktop; `run_one_frame()` — single-frame step for web/rAF
-- `new_with(io, mapper, audio)` — constructor taking trait objects for any frontend
+- `new_with(io, mapper, audio)` — constructor taking trait objects for any frontend (defaults to NTSC)
+- `new_with_region(io, mapper, audio, region)` — constructor with explicit region (NTSC or PAL)
 - `load_rom(mapper, path)` — hot-swap mapper for loading a new ROM mid-emulation (resets CPU/PPU/APU)
+- `load_rom_with_region(mapper, path, region)` — hot-swap with region change
 - `take_pending_open_rom()` — returns path from menu Open ROM action; desktop main loop re-enters `run()` after loading
+
+**Region (`emu/region.rs`)**
+- `Region` enum (Ntsc, Pal) with `config()` returning `RegionConfig`
+- `RegionConfig` struct: master clock dividers (CPU÷12/16, PPU÷4/5), scanline counts (262/312), CPU clock rate, frame duration, odd-frame skip flag, input poll interval
+- Master clock sub-dot accumulator: `master_clock_sub` tracks fractional PPU dots for PAL's non-integer 3.2:1 ratio. Pattern: 3,3,3,3,4 dots over 5 CPU cycles
+- Region auto-detected from iNES header (byte 9 for iNES 1.0, byte 12 for NES 2.0) with filename fallback (`(E)`, `(Europe)`, `(PAL)`)
+- Desktop `--region auto|ntsc|pal` CLI override (default: auto)
 
 **CPU (`emu/cpu/mod.rs`)**
 - MOS 6502 CPU implementation with all official opcodes
@@ -134,14 +143,15 @@ cargo clippy --workspace
 
 **APU (`emu/apu/`)**
 - Audio Processing Unit with pulse, triangle, noise, and DMC channels
-- Frame counter for audio timing
+- Frame counter for audio timing with region-specific cycle tables (NTSC/PAL)
+- DMC and noise period tables selected by region
 - Per-cycle mixer accumulation for proper anti-aliasing
 
 **Graphics (`emu/gfx/`)**
 - Frame buffer (`buf.rs`): 256x240 RGB pixels
 - Palette lookup table (`palette.rs`)
 - Bitmap font (`font.rs`): 8x8 pixel font with 1px outlined rendering for overlay text
-- Overlay (`overlay.rs`): frame time display (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state, rewind status indicator
+- Overlay (`overlay.rs`): frame time display with region-aware budget percentage (Tab to toggle), toast notifications for save/load/slot changes, persistent banner for no-ROM state, rewind status indicator
 - CRT shaders (`shaders/`): CRT-Lottes-Fast (Timothy Lottes, public domain) in WGSL (`crt_lottes.wgsl`) and GLSL ES 3.0 (`crt_lottes_web.vert`/`.frag`). 8-tap gaussian filter, windowed cosine scanlines, aperture grille mask, barrel distortion, auto-exposure tonemapper. Toggled via F9 key or menu. GLSL version also used on Linux GTK backend (adapted to GL 3.30 at runtime).
 
 **Audio (`emu/audio/`)**
@@ -164,11 +174,13 @@ cargo clippy --workspace
 - `load_nes_from_bytes(&[u8])` — parse iNES ROM from byte slice
 - `load_nes_from_bytes_with_sram(&[u8], Option<Vec<u8>>)` — same but with pre-loaded SRAM (used by web)
 - `rom_has_battery(&[u8])` — check iNES header for battery flag
+- `detect_region(&[u8])` — detect region from iNES header only
+- `detect_region_with_filename(&[u8], Option<&str>)` — detect region from header + filename heuristic (`(E)`, `(Europe)`, `(PAL)`)
 - `InesLoader::load(path)` — load from filesystem (used by desktop)
 
 ### Desktop Frontend (`desktop/src/`)
 
-- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
+- `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`. Simple key=value format, no serde.
 - `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`)
 - `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust)
@@ -206,8 +218,10 @@ Two macros in `core/src/lib.rs`:
 ### Key Design Patterns
 
 **CPU-PPU Synchronization**
-- PPU runs at 3x CPU speed (3 PPU cycles per CPU cycle)
-- Interleaved per-cycle (CPU instruction, then 3 PPU dots, repeat)
+- NTSC: PPU runs at 3x CPU speed (master÷12=CPU, ÷4=PPU, clean 3:1 ratio)
+- PAL: PPU runs at 3.2x CPU speed (master÷16=CPU, ÷5=PPU, 16 PPU dots per 5 CPU cycles)
+- `master_clock` tracks PPU dots; `master_clock_sub` accumulates fractional dots for PAL (always 0 for NTSC)
+- Per-CPU-cycle: add `master_clocks_per_cpu` to sub, divide by `master_clocks_per_ppu` for PPU advance (3 or 3/3/3/3/4 pattern)
 
 **Memory Mapping**
 - Uses trait objects for different mapper implementations
@@ -221,7 +235,7 @@ Two macros in `core/src/lib.rs`:
 
 **Frame pacing (web)**
 - `requestAnimationFrame` loop with `performance.now()` time accumulator
-- Targets 60.0988 FPS (NTSC), caps at 2 frames per rAF to prevent spiral-of-death
+- Targets 60.0988 FPS (NTSC) or 50.007 FPS (PAL), caps at 2 frames per rAF to prevent spiral-of-death
 
 **Persistence (web)**
 - Save states and SRAM stored in `localStorage` as base64-encoded binary
@@ -242,7 +256,7 @@ Two macros in `core/src/lib.rs`:
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
   src/lib.rs        — Crate root, exports test_input! and test_rom! macros
-  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind)
+  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind, region)
   src/emu/gfx/shaders/ — CRT-Lottes-Fast shader sources (crt_lottes.wgsl, crt_lottes_web.vert/.frag)
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
@@ -278,7 +292,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (523 tests, 31 ignored). Desktop has 6 tests including audio backend wiring.
+All emulation tests live in `core/` (551 tests, 21 ignored). Desktop has 6 tests including audio backend wiring.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -310,7 +324,9 @@ All emulation tests live in `core/` (523 tests, 31 ignored). Desktop has 6 tests
 - VBlank timing with level-based NMI output signal and CPU edge detection
 - VBL flag suppression when $2002 read races with VBL set (dot 0 prevents flag, same-dot cancels NMI edge)
 - Scroll register updates at correct cycle points during rendering
-- Per-dot cycle-accurate rendering
+- Per-dot cycle-accurate rendering, scanline count from region (262 NTSC, 312 PAL)
+- Odd-frame skip (NTSC only, disabled for PAL)
+- Overscan masking skipped for PAL (PAL TVs show full 240 lines)
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
@@ -333,4 +349,4 @@ All emulation tests live in `core/` (523 tests, 31 ignored). Desktop has 6 tests
 - Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
 - RMW instructions always perform the dummy read regardless of page crossing
 
-The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc (including dummy_reads_apu), CPU interrupt CLI latency, PPU VBL basics/set-time/clear/NMI control/suppression/nmi-off-timing/even-odd frames, OAM read/stress, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), nmi_on_timing (1-dot PPU-CPU alignment), DMA cycle stealing, cpu_dummy_writes, and ppu_read_buffer.
+The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PAL APU (all 10), blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc (including dummy_reads_apu), CPU interrupt CLI latency, PPU VBL basics/set-time/clear/NMI control/suppression/nmi-off-timing/even-odd frames, OAM read/stress, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), nmi_on_timing (1-dot PPU-CPU alignment), DMA cycle stealing, cpu_dummy_writes, and ppu_read_buffer.

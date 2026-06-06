@@ -14,7 +14,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 ## Features
 
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
-- **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing
+- **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119) — 695/695 licensed NTSC US games (100%)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5 cartridges
@@ -25,6 +25,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **RetroArch / libretro core** — load as a core in RetroArch for shaders, netplay, achievements, and universal controller support (Linux x86_64/aarch64, Windows, macOS)
 - **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
+- **NTSC and PAL region support** — auto-detected from iNES header and filename, with `--region` CLI override. Master clock sub-dot accumulator handles PAL's non-integer 3.2:1 PPU:CPU ratio
 - **Headless mode** for testing and CI
 
 ## Architecture
@@ -69,7 +70,7 @@ library), `desktop/` (native frontend), `web/` (WebAssembly frontend), and `libr
 (RetroArch core). The core compiles to both native and wasm32 targets with zero cfg gates.
 
 The emulator runs a tight cycle loop: each iteration executes one CPU cycle, then steps
-the PPU three dots (3:1 PPU-to-CPU ratio), then cycles the APU and mapper. Memory mappers
+the PPU three dots (3:1 in NTSC, 3.2:1 in PAL via a sub-dot accumulator), then cycles the APU and mapper. Memory mappers
 are trait objects — each cartridge type implements its own bank switching, mirroring, and
 IRQ logic (e.g. MMC3 scanline counter, MMC5 PPU-fetch-based detection, FME-7 CPU-cycle IRQ). MMC3
 variants TxSROM (118) and TQROM (119) reuse the MMC3 engine with per-bank mirroring and
@@ -122,6 +123,7 @@ OPTIONS:
     -b, --breakpoint     Add CPU breakpoint (e.g. 0xC000)
     -l, --loader         Loader type: nes (default), ascii, bin
     --codeaddr           Code start address for bin/ascii loaders
+    --region             Region: auto (default), ntsc, pal
 ```
 
 ### Controls
@@ -199,7 +201,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-512 tests passing, 31 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+551 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
@@ -215,6 +217,7 @@ waveform, spectrum, and envelope comparisons.
 | Blargg APU 2005 | All 11 tests | ✅ |
 | APU mixer references | Square, triangle, noise, and DMC output compared against hardware recordings | ✅ |
 | APU reset | $4015 cleared, $4017 timing/written, IRQ flag cleared, len ctrs enabled, works immediately | ✅ |
+| PAL APU | All 10 tests (len_ctr, len_table, irq_flag, clock_jitter, len_timing, irq_timing, len_halt/reload) | ✅ |
 | DMC tests | status, status_irq, buffer_retained, latency | ✅ |
 | cpu_exec_space | APU register space execution | ✅ |
 | cpu_exec_space | PPU I/O space execution | ❌ |
