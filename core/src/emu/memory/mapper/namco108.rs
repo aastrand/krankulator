@@ -9,6 +9,8 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 const PRG_BANK_SIZE: usize = 0x2000; // 8KB
 const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
+const FOUR_SCREEN_VRAM_SIZE: usize = 0x1000; // 4KB
+
 pub struct Namco108Mapper {
     controllers: [io::controller::Controller; 2],
 
@@ -20,8 +22,9 @@ pub struct Namco108Mapper {
     prg_banks: [u8; 2],
     mirroring: NametableMirror,
     is_mapper88: bool,
+    four_screen: bool,
 
-    vram: Box<[u8; VRAM_SIZE as usize]>,
+    vram: Vec<u8>,
     cpu_ram: Box<[u8; CPU_RAM_SIZE as usize]>,
     palette_ram: [u8; PALETTE_SIZE],
 }
@@ -53,10 +56,17 @@ impl Namco108Mapper {
             }
         }
 
+        let four_screen = flags & 0x08 != 0;
         let mirroring = if flags & 1 != 0 {
             NametableMirror::Vertical
         } else {
             NametableMirror::Horizontal
+        };
+
+        let vram_size = if four_screen {
+            FOUR_SCREEN_VRAM_SIZE
+        } else {
+            VRAM_SIZE as usize
         };
 
         Namco108Mapper {
@@ -75,7 +85,8 @@ impl Namco108Mapper {
             prg_banks: [0, 1],
             mirroring,
             is_mapper88,
-            vram: Box::new([0; VRAM_SIZE as usize]),
+            four_screen,
+            vram: vec![0; vram_size],
             cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
             palette_ram: [0x0F; PALETTE_SIZE],
         }
@@ -83,6 +94,14 @@ impl Namco108Mapper {
 
     fn chr_bank_index(&self, slot: usize) -> usize {
         self.chr_banks[slot] as usize % self.chr_rom.len().max(1)
+    }
+
+    fn nt_addr(&self, addr: u16) -> usize {
+        if self.four_screen {
+            (addr & 0xFFF) as usize
+        } else {
+            mirror_nametable_addr(addr, self.mirroring) as usize & 0x7FF
+        }
     }
 }
 
@@ -194,10 +213,7 @@ impl MemoryMapper for Namco108Mapper {
                     .get(bank)
                     .map_or(0, |b| b[addr as usize & 0x3FF])
             }
-            0x2000..=0x3EFF => {
-                let mirrored = mirror_nametable_addr(addr, self.mirroring);
-                self.vram[(mirrored & 0x7FF) as usize]
-            }
+            0x2000..=0x3EFF => self.vram[self.nt_addr(addr)],
             0x3F00..=0x3FFF => {
                 let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
                 if idx & PALETTE_MIRROR_MASK == PALETTE_MIRROR_CLEAR {
@@ -231,9 +247,8 @@ impl MemoryMapper for Namco108Mapper {
                 }
             }
             0x2000..=0x3EFF => {
-                let mirrored = mirror_nametable_addr(addr, self.mirroring);
-                let vram_addr = (mirrored & 0x7FF) as usize;
-                let copy_size = size.min(VRAM_SIZE as usize - vram_addr);
+                let vram_addr = self.nt_addr(addr);
+                let copy_size = size.min(self.vram.len() - vram_addr);
                 unsafe { std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size) }
             }
             _ => {}
@@ -244,8 +259,8 @@ impl MemoryMapper for Namco108Mapper {
         match addr {
             0x0000..=0x1FFF => {} // CHR ROM, not writable
             0x2000..=0x3EFF => {
-                let mirrored = mirror_nametable_addr(addr, self.mirroring);
-                self.vram[(mirrored & 0x7FF) as usize] = value;
+                let idx = self.nt_addr(addr);
+                self.vram[idx] = value;
             }
             0x3F00..=0x3FFF => {
                 let mut idx = (addr as usize - PALETTE_START as usize) % PALETTE_SIZE;
@@ -282,7 +297,7 @@ impl MemoryMapper for Namco108Mapper {
 
     fn save_state(&self, w: &mut SavestateWriter) {
         w.write_bytes(&*self.cpu_ram);
-        w.write_bytes(&*self.vram);
+        w.write_bytes(&self.vram);
         w.write_bytes(&self.palette_ram);
         for &b in &self.chr_banks {
             w.write_u8(b);
@@ -297,7 +312,7 @@ impl MemoryMapper for Namco108Mapper {
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
         r.read_bytes_into(&mut *self.cpu_ram)?;
-        r.read_bytes_into(&mut *self.vram)?;
+        r.read_bytes_into(&mut self.vram)?;
         r.read_bytes_into(&mut self.palette_ram)?;
         for b in &mut self.chr_banks {
             *b = r.read_u8()?;
