@@ -134,7 +134,7 @@ cargo clippy --workspace
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Simple discrete: 78/87/140/152/180/184/185)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/152/180/184/185)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, and `audio_expansion_output()` for expansion audio mixing
@@ -330,7 +330,7 @@ All emulation tests live in `core/` (586 tests, 21 ignored). Desktop has 6 tests
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Simple discrete (78/87/140/152/180/184/185)
+- NROM, MMC1, MMC2, MMC3, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/152/180/184/185)
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo

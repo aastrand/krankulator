@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), Namco 163 (19), VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
-Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), Color Dreams (11), Namco 163 (19), Action 53 (28), UNROM 512 (30), Mapper 31, VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
+Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives, popular homebrew
 
 ### Completed: Priority 1 quick wins
 
@@ -135,15 +135,26 @@ Coverage: 100% licensed NES games (NTSC and PAL), ~100 Famicom exclusives
 - Games: Fantasy Zone II, Mito Koumon II
 - IRQ counter + CHR banking.
 
-### Priority 8: Unlicensed
+### Completed: Priority 8 — Unlicensed & Homebrew
 
-**Mapper 11 — Color Dreams** [XS] — ~31 games
+**Mapper 11 — Color Dreams** [done]
 - Games: Bible Adventures, Spiritual Warfare, Captain Comic, Crystal Mines, Menace Beach
-- 32KB PRG + 8KB CHR via single register. Trivial.
+- 32KB PRG + 8KB CHR via single register. AND-type bus conflicts.
 
-**Mapper 71 — Camerica/Codemasters** [XS-S] — ~21 games
+**Mapper 71 — Camerica/Codemasters** [done]
 - Games: Micro Machines, Fantastic Adventures of Dizzy, The Ultimate Stuntman, Big Nose the Caveman
 - UxROM-like 16KB PRG banking. Fire Hawk variant adds single-screen mirroring.
+
+**Mapper 28 — Action 53** [done]
+- Homebrew multicart mapper. Two-step register, 4 PRG banking modes, 32KB CHR RAM.
+
+**Mapper 30 — UNROM 512** [done]
+- NESmaker homebrew standard. 16KB PRG + 32KB CHR RAM, submapper bus conflicts.
+
+**Mapper 31 — NSF/Homebrew** [done]
+- 4KB PRG bank granularity, 8 slots. Used by NSF players and homebrew.
+
+### Priority 8 (remaining): Unlicensed
 
 **Mapper 79 — NINA-03/NINA-06 (AVE)** [XS] — 16 games
 - Games: Tiles of Fate, Krazy Kreatures, Deathbots, F-15 City War
