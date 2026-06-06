@@ -1711,6 +1711,78 @@ mod tests {
     }
 
     #[test]
+    fn test_mmc5_expansion_audio_levels() {
+        let mut m = make_mapper(2, 1);
+
+        // Single pulse at max volume: should match APU pulse formula
+        // 95.88 / (8128/15 + 100) ≈ 0.148
+        m.cpu_write(0x5015, 0x01);
+        m.cpu_write(0x5000, 0x7F); // Duty 1 (50%), halt, constant vol 15
+        m.cpu_write(0x5002, 0x10);
+        m.cpu_write(0x5003, 0x08);
+        let mut max_output = 0.0_f32;
+        for _ in 0..200 {
+            m.cpu_cycle(0);
+            max_output = max_output.max(m.audio_expansion_output().abs());
+        }
+        assert!(
+            max_output > 0.1 && max_output < 0.2,
+            "single pulse max: {max_output}"
+        );
+
+        // Both pulses at max volume: ≈ 0.258
+        let mut m = make_mapper(2, 1);
+        m.cpu_write(0x5015, 0x03);
+        m.cpu_write(0x5000, 0x7F); // Duty 1 (50%)
+        m.cpu_write(0x5002, 0x10);
+        m.cpu_write(0x5003, 0x08);
+        m.cpu_write(0x5004, 0x7F);
+        m.cpu_write(0x5006, 0x10);
+        m.cpu_write(0x5007, 0x08);
+        let mut max_output = 0.0_f32;
+        for _ in 0..200 {
+            m.cpu_cycle(0);
+            max_output = max_output.max(m.audio_expansion_output().abs());
+        }
+        assert!(
+            max_output > 0.2 && max_output < 0.3,
+            "both pulses max: {max_output}"
+        );
+
+        // PCM at max (255): should stay well under 1.0
+        let mut m = make_mapper(2, 1);
+        m.cpu_write(0x5011, 0xFF);
+        let output = m.audio_expansion_output().abs();
+        assert!(output > 0.0 && output < 1.0, "pcm max: {output}");
+
+        // PCM at mid (128): less than max
+        let mut m2 = make_mapper(2, 1);
+        m2.cpu_write(0x5011, 0x80);
+        let mid = m2.audio_expansion_output().abs();
+        assert!(
+            mid < output,
+            "pcm mid ({mid}) should be less than max ({output})"
+        );
+
+        // Combined max pulses + max PCM: still in sane range
+        let mut m = make_mapper(2, 1);
+        m.cpu_write(0x5015, 0x03);
+        m.cpu_write(0x5000, 0x7F);
+        m.cpu_write(0x5002, 0x10);
+        m.cpu_write(0x5003, 0x08);
+        m.cpu_write(0x5004, 0x7F);
+        m.cpu_write(0x5006, 0x10);
+        m.cpu_write(0x5007, 0x08);
+        m.cpu_write(0x5011, 0xFF);
+        let mut max_output = 0.0_f32;
+        for _ in 0..200 {
+            m.cpu_cycle(0);
+            max_output = max_output.max(m.audio_expansion_output().abs());
+        }
+        assert!(max_output < 1.0, "combined max: {max_output}");
+    }
+
+    #[test]
     fn test_notify_ppu_ctrl() {
         let mut m = make_mapper(2, 1);
         assert!(!m.large_sprites);
