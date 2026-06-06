@@ -18,15 +18,13 @@ impl Loader for AsciiLoader {
         let mut code: Vec<u8> = vec![];
 
         if let Ok(lines) = util::read_lines(path) {
-            for line in lines {
-                if let Ok(content) = line {
-                    let content = content.trim();
-                    let content = content.split(';').nth(0).unwrap();
-                    if content.len() > 0 {
-                        for byte in content.split(' ') {
-                            let mut decoded = hex::decode(byte).expect("Decoding failed");
-                            code.append(&mut decoded);
-                        }
+            for line in lines.map_while(Result::ok) {
+                let content = line.trim();
+                let content = content.split(';').next().unwrap();
+                if !content.is_empty() {
+                    for byte in content.split(' ') {
+                        let mut decoded = hex::decode(byte).expect("Decoding failed");
+                        code.append(&mut decoded);
                     }
                 }
             }
@@ -34,10 +32,8 @@ impl Loader for AsciiLoader {
 
         let mut mapper: Box<dyn memory::MemoryMapper> =
             Box::new(memory::IdentityMapper::new(0x600));
-        let mut i: u16 = 0;
-        for b in code.iter() {
+        for (i, b) in code.iter().enumerate() {
             mapper.cpu_write(0x600 + i as u16, *b);
-            i += 1;
         }
 
         Ok(mapper)
@@ -52,10 +48,8 @@ impl Loader for BinLoader {
 
         let mut mapper: Box<dyn memory::MemoryMapper> =
             Box::new(memory::IdentityMapper::new_flat_cpu_bus(0x400));
-        let mut i: u32 = 0;
-        for b in bytes.iter() {
+        for (i, b) in bytes.iter().enumerate() {
             mapper.cpu_write(i as u16, *b);
-            i += 1;
         }
 
         Ok(mapper)
@@ -254,7 +248,7 @@ fn load_nes_from_bytes_inner(
     let result: Box<dyn memory::MemoryMapper> = match mapper_id {
         0 => Box::new(mapper::nrom::NROMMapper::new(
             flags,
-            Box::new(*prg_banks.get(0).unwrap()),
+            Box::new(*prg_banks.first().unwrap()),
             prg_banks.pop(),
             chr_banks.pop(),
         )),
@@ -361,8 +355,7 @@ fn load_nes_from_bytes_inner(
         34 => {
             if is_nes2_header && submapper != 0 && submapper != 2 {
                 return Err(format!(
-                    "Mapper 34 submapper {} not implemented; only BNROM supported",
-                    submapper
+                    "Mapper 34 submapper {submapper} not implemented; only BNROM supported"
                 ));
             }
             Box::new(mapper::bnrom::BNROMMapper::new(
@@ -471,7 +464,7 @@ fn load_nes_from_bytes_inner(
         210 => Box::new(mapper::namco175_340::Namco175_340Mapper::new(
             flags, prg_banks, chr_banks, submapper,
         )),
-        _ => return Err(format!("Mapper {} not implemented", mapper_id)),
+        _ => return Err(format!("Mapper {mapper_id} not implemented")),
     };
 
     Ok(result)
@@ -509,15 +502,14 @@ mod tests {
         bytes[6] = (mapper_id & 0x0F) << 4;
         bytes[7] = mapper_id & 0xF0;
 
-        bytes.extend(std::iter::repeat(0).take(prg_blocks as usize * PRG_BANK_SIZE));
-        bytes.extend(std::iter::repeat(0).take(chr_blocks as usize * CHR_BANK_SIZE));
+        bytes.extend(std::iter::repeat_n(0, prg_blocks as usize * PRG_BANK_SIZE));
+        bytes.extend(std::iter::repeat_n(0, chr_blocks as usize * CHR_BANK_SIZE));
 
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("krankulator-test-{}-{}.nes", mapper_id, nonce));
+        let path = std::env::temp_dir().join(format!("krankulator-test-{mapper_id}-{nonce}.nes"));
         std::fs::write(&path, bytes).unwrap();
         path
     }
@@ -526,7 +518,7 @@ mod tests {
     fn test_load_ines() {
         let l: Box<dyn Loader> = InesLoader::new();
         let result = l.load(test_rom!("instr_test-v5/all_instrs.nes"));
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
         assert_eq!(result.ok().unwrap().code_start(), 0xea71);
     }
 
@@ -534,10 +526,10 @@ mod tests {
     fn test_load_ines_no_such_file() {
         let l: Box<dyn Loader> = InesLoader::new();
         let result = l.load("does_not_exist");
-        assert_eq!(result.is_ok(), false);
+        assert!(!result.is_ok());
         assert_eq!(
             result.err(),
-            Some(format!("File does not exist: does_not_exist"))
+            Some("File does not exist: does_not_exist".to_string())
         );
     }
 
@@ -545,10 +537,10 @@ mod tests {
     fn test_load_ines_header() {
         let l: Box<dyn Loader> = InesLoader::new();
         let result = l.load(test_rom!("other/nestest.log"));
-        assert_eq!(result.is_ok(), false);
+        assert!(!result.is_ok());
         assert_eq!(
             result.err(),
-            Some(format!("Missing iNES header magic numbers"))
+            Some("Missing iNES header magic numbers".to_string())
         );
     }
 

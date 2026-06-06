@@ -71,7 +71,7 @@ pub fn create_audio_context() -> Option<AudioContext> {
     match AudioContext::new_with_context_options(&opts) {
         Ok(c) => Some(c),
         Err(e) => {
-            web_sys::console::error_1(&format!("AudioContext creation failed: {:?}", e).into());
+            web_sys::console::error_1(&format!("AudioContext creation failed: {e:?}").into());
             None
         }
     }
@@ -87,7 +87,7 @@ pub async fn connect_audio_worklet(
     let worklet = match ctx.audio_worklet() {
         Ok(w) => w,
         Err(e) => {
-            web_sys::console::error_1(&format!("audio_worklet() failed: {:?}", e).into());
+            web_sys::console::error_1(&format!("audio_worklet() failed: {e:?}").into());
             return;
         }
     };
@@ -95,19 +95,19 @@ pub async fn connect_audio_worklet(
     let promise = match worklet.add_module("audio_processor.js") {
         Ok(p) => p,
         Err(e) => {
-            web_sys::console::error_1(&format!("addModule failed: {:?}", e).into());
+            web_sys::console::error_1(&format!("addModule failed: {e:?}").into());
             return;
         }
     };
     if let Err(e) = wasm_bindgen_futures::JsFuture::from(promise).await {
-        web_sys::console::error_1(&format!("addModule promise rejected: {:?}", e).into());
+        web_sys::console::error_1(&format!("addModule promise rejected: {e:?}").into());
         return;
     }
 
     let node = match AudioWorkletNode::new(&ctx, "nes-audio-processor") {
         Ok(n) => n,
         Err(e) => {
-            web_sys::console::error_1(&format!("AudioWorkletNode creation failed: {:?}", e).into());
+            web_sys::console::error_1(&format!("AudioWorkletNode creation failed: {e:?}").into());
             return;
         }
     };

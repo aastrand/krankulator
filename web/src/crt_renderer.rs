@@ -207,7 +207,7 @@ fn create_program(gl: &GL, vert_src: &str, frag_src: &str) -> Result<WebGlProgra
         .unwrap_or(false)
     {
         let log = gl.get_program_info_log(&program).unwrap_or_default();
-        return Err(format!("Program link failed: {}", log));
+        return Err(format!("Program link failed: {log}"));
     }
     Ok(program)
 }
@@ -225,7 +225,7 @@ fn compile_shader(gl: &GL, shader_type: u32, source: &str) -> Result<web_sys::We
         .unwrap_or(false)
     {
         let log = gl.get_shader_info_log(&shader).unwrap_or_default();
-        return Err(format!("Shader compile failed: {}", log));
+        return Err(format!("Shader compile failed: {log}"));
     }
     Ok(shader)
 }

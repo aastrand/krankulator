@@ -87,7 +87,7 @@ fn load_mirroring(r: &mut SavestateReader) -> std::io::Result<NametableMirror> {
         v => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("bad mirroring value: {}", v),
+                format!("bad mirroring value: {v}"),
             ))
         }
     })
@@ -95,6 +95,8 @@ fn load_mirroring(r: &mut SavestateReader) -> std::io::Result<NametableMirror> {
 
 pub const MAX_VRAM_ADDR: u16 = 0x4000;
 
+/// # Safety
+/// `addr_space_ptr` must point to a valid allocation covering `addr`.
 pub unsafe fn bus_conflict(addr_space_ptr: *const u8, addr: u16, value: u8) -> u8 {
     let rom_byte = *addr_space_ptr.offset(addr as isize);
     value & rom_byte
@@ -212,7 +214,9 @@ impl PpuBus {
         }
     }
 
-    pub fn copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    /// # Safety
+    /// `dest` must point to a valid allocation of at least `size` bytes.
+    pub unsafe fn copy(&self, addr: u16, dest: *mut u8, size: usize) {
         let addr = addr % MAX_VRAM_ADDR;
         let page = super::addr_to_page(addr);
         match page {

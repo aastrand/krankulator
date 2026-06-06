@@ -58,7 +58,7 @@ impl MMC1Mapper {
         if prg_banks.len() < 2 {
             if prg_banks.len() == 1 {
                 // Mirror the single PRG bank to create a second bank
-                prg_banks.push(prg_banks[0].clone());
+                prg_banks.push(prg_banks[0]);
             } else {
                 panic!("Expected at least one PRG bank");
             }
@@ -92,10 +92,10 @@ impl MMC1Mapper {
 
         let mut mapper = MMC1Mapper {
             _cpu_ram: cpu_ram,
-            cpu_ram_ptr: cpu_ram_ptr,
+            cpu_ram_ptr,
 
             _mmc_ram: mmc_ram,
-            mmc_ram_ptr: mmc_ram_ptr,
+            mmc_ram_ptr,
             mmc_ram_enabled: true,
             has_battery,
 
@@ -224,7 +224,7 @@ impl MMC1Mapper {
             0xc0 | 0xd0 | 0xe0 | 0xf0 => {
                 self.banks[self.high_bank_idx][(addr % HIGH_BANK_ADDR) as usize]
             }
-            _ => panic!("Read at addr {:X} not mapped", addr),
+            _ => panic!("Read at addr {addr:X} not mapped"),
         }
     }
 
@@ -243,7 +243,7 @@ impl MMC1Mapper {
                 }
             }
             0x80..=0xFF => self.handle_register_write(addr, value),
-            _ => panic!("Write at addr {:X} not mapped", addr),
+            _ => panic!("Write at addr {addr:X} not mapped"),
         }
     }
 
@@ -267,7 +267,7 @@ impl MMC1Mapper {
                 }
                 self.palette_ram[palette_addr]
             }
-            _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
+            _ => panic!("Addr not mapped for ppu_read: {addr:X}"),
         }
     }
 
@@ -307,7 +307,7 @@ impl MMC1Mapper {
                 std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as _), dest, size)
             },
 
-            _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
+            _ => panic!("Addr not mapped for ppu_read: {addr:X}"),
         }
     }
 
@@ -331,7 +331,7 @@ impl MMC1Mapper {
                 self.palette_ram[palette_addr] = value;
             }
 
-            _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
+            _ => panic!("Addr not mapped for ppu_write: {addr:X}"),
         }
     }
 
@@ -359,7 +359,7 @@ impl MemoryMapper for MMC1Mapper {
         self._ppu_read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         /*
         $0000-1FFF is normally mapped by the cartridge to a CHR-ROM or CHR-RAM, often with a bank switching mechanism.
         $2000-2FFF is normally mapped to the 2kB NES internal VRAM, providing 2 nametables with a mirroring configuration controlled by the cartridge, but it can be partly or fully remapped to RAM on the cartridge, allowing up to 4 simultaneous nametables.
@@ -374,7 +374,7 @@ impl MemoryMapper for MMC1Mapper {
     }
 
     fn code_start(&mut self) -> u16 {
-        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
+        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8)
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 

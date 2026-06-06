@@ -25,6 +25,12 @@ pub struct TriangleChannel {
     output: f32,
 }
 
+impl Default for TriangleChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TriangleChannel {
     pub fn new() -> Self {
         let mut triangle = Self {

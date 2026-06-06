@@ -29,8 +29,10 @@ pub trait MemoryMapper {
         self.ppu_a12_transition(addr, dot);
         self.ppu_read(addr)
     }
+    /// # Safety
+    /// `dest` must point to a valid allocation of at least `size` bytes.
     #[allow(dead_code)]
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize);
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize);
     fn ppu_write(&mut self, addr: u16, value: u8);
 
     fn code_start(&mut self) -> u16;
@@ -107,14 +109,14 @@ pub trait MemoryMapper {
         (
             to_16b_addr(self.cpu_read(pc.wrapping_add(2)), lb).wrapping_add(idx as u16),
             // Did we cross the page boundary?
-            (lb & 0xff) as u16 + idx as u16 > 0xff,
+            lb as u16 + idx as u16 > 0xff,
         )
     }
 
     #[allow(dead_code)]
     fn addr_idx_indirect(&mut self, pc: u16, idx: u8) -> u16 {
         let value: u8 = self.cpu_read((pc + 1) as _).wrapping_add(idx);
-        ((self.cpu_read(((value as u8).wrapping_add(1)) as u16) as u16) << 8)
+        ((self.cpu_read((value.wrapping_add(1)) as u16) as u16) << 8)
             + self.cpu_read(value as u16) as u16
     }
 
@@ -125,9 +127,7 @@ pub trait MemoryMapper {
         let lb = self.cpu_read(base as _);
         let lbidx = lb.wrapping_add(idx);
         let carry: u8 = if lbidx <= lb && idx > 0 { 1 } else { 0 };
-        let hb = self
-            .cpu_read((base as u8).wrapping_add(1) as _)
-            .wrapping_add(carry);
+        let hb = self.cpu_read(base.wrapping_add(1) as _).wrapping_add(carry);
 
         (to_16b_addr(hb, lbidx) as _, carry != 0)
     }
@@ -195,8 +195,8 @@ impl IdentityMapper {
             _ram: ram,
             ram_ptr,
             _vram: vram,
-            vram_ptr: vram_ptr,
-            code_start: code_start,
+            vram_ptr,
+            code_start,
             controllers: [controller::Controller::new(), controller::Controller::new()],
             cpu_maps_ppu_registers,
         }
@@ -218,8 +218,8 @@ impl MemoryMapper for IdentityMapper {
         unsafe { *self.vram_ptr.offset(addr as _) }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
-        unsafe { std::ptr::copy(self.vram_ptr.offset(addr as _), dest, size) }
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+        std::ptr::copy(self.vram_ptr.offset(addr as _), dest, size)
     }
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
@@ -286,7 +286,7 @@ mod tests {
         let value = memory.addr_absolute_idx(0x2000, 1);
 
         assert_eq!(value.0, 0x4711);
-        assert_eq!(value.1, false);
+        assert!(!value.1);
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
         let value = memory.addr_absolute_idx(0x2000, 0x12);
 
         assert_eq!(value.0, 0x4711);
-        assert_eq!(value.1, true);
+        assert!(value.1);
     }
 
     #[test]
@@ -347,7 +347,7 @@ mod tests {
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
         assert_eq!(value.0, 0x4711);
-        assert_eq!(value.1, false);
+        assert!(!value.1);
     }
 
     #[test]
@@ -360,7 +360,7 @@ mod tests {
         let value = memory.addr_indirect_idx(0x2000, 0xff);
 
         assert_eq!(value.0, 0x4711);
-        assert_eq!(value.1, true);
+        assert!(value.1);
     }
 
     #[test]
@@ -373,7 +373,7 @@ mod tests {
         let value = memory.addr_indirect_idx(0x2000, 0x1);
 
         assert_eq!(value.0, 0x4711);
-        assert_eq!(value.1, false);
+        assert!(!value.1);
     }
 
     #[test]
@@ -387,7 +387,7 @@ mod tests {
         let value = memory.addr_indirect_idx(0x2000, 0xff);
 
         assert_eq!(value.0, 0x0245);
-        assert_eq!(value.1, true);
+        assert!(value.1);
     }
 
     #[test]

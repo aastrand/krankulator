@@ -212,7 +212,7 @@ impl Namco163Mapper {
         }
         self.audio_timer = 0;
 
-        let num_active = ((self.sound_ram[0x7F] >> 4) & 7) as u8 + 1;
+        let num_active = ((self.sound_ram[0x7F] >> 4) & 7) + 1;
         let first_active = 8 - num_active;
 
         if self.audio_channel_index < first_active {
@@ -384,7 +384,7 @@ impl MemoryMapper for Namco163Mapper {
         }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         match addr {
             0x0000..=0x1FFF => {
                 let slot = (addr >> 10) as usize & 7;

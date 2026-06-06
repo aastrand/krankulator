@@ -55,6 +55,12 @@ const PAL_DMC_PERIODS: [u16; 16] = [
     398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
 ];
 
+impl Default for DmcChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DmcChannel {
     pub fn new() -> Self {
         Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
@@ -310,7 +316,7 @@ mod tests {
         fn ppu_read(&self, _addr: u16) -> u8 {
             0
         }
-        fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+        unsafe fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
         fn ppu_write(&mut self, _addr: u16, _value: u8) {}
         fn code_start(&mut self) -> u16 {
             0
@@ -538,7 +544,7 @@ mod tests {
         dmc.control = 0x40; // Set loop bit
         dmc.bytes_remaining = 1; // Set to 1 so load_sample will trigger restart
         dmc.load_sample(&mut mem);
-        assert_eq!(dmc.bytes_remaining, ((0x10 as u16) << 4) | 1); // Should restart
+        assert_eq!(dmc.bytes_remaining, (0x10_u16 << 4) | 1); // Should restart
     }
 
     #[test]
@@ -669,7 +675,7 @@ mod tests {
             fn ppu_read(&self, _addr: u16) -> u8 {
                 0
             }
-            fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+            unsafe fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
             fn ppu_write(&mut self, _addr: u16, _value: u8) {}
             fn code_start(&mut self) -> u16 {
                 0

@@ -614,7 +614,7 @@ impl MMC5Mapper {
     }
 
     fn detect_scanline(&mut self, addr: u16, dot: u64) {
-        if addr >= 0x2000 && addr <= 0x2FFF {
+        if (0x2000..=0x2FFF).contains(&addr) {
             if self.last_ppu_read_addr == addr {
                 self.nt_read_counter += 1;
             } else {
@@ -883,7 +883,7 @@ impl MemoryMapper for MMC5Mapper {
         self.last_ppu_fetch_dot = dot;
         let addr = addr % 0x4000;
 
-        let is_nt_range = addr >= 0x2000 && addr <= 0x2FFF;
+        let is_nt_range = (0x2000..=0x2FFF).contains(&addr);
         let is_tile_fetch = is_nt_range && (addr & 0x03FF) < 0x03C0;
 
         // Step 1: tile counter + frame entry (before scanline detection)
@@ -981,7 +981,7 @@ impl MemoryMapper for MMC5Mapper {
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         for i in 0..size {
             let byte = self.ppu_read(addr + i as u16);
             unsafe {
@@ -1051,13 +1051,11 @@ impl MemoryMapper for MMC5Mapper {
         // rather than a CPU-cycle counter to avoid false expirations when
         // mid-instruction PPU syncs push the PPU ahead of the mapper's
         // cpu_cycle cadence.
-        if self.last_ppu_fetch_dot > 0 && ppu_dot >= self.last_ppu_fetch_dot + 9 {
-            if self.in_frame {
-                self.in_frame = false;
-                self.rendering = false;
-                self.nt_read_counter = 0;
-                self.last_ppu_read_addr = 0;
-            }
+        if self.last_ppu_fetch_dot > 0 && ppu_dot >= self.last_ppu_fetch_dot + 9 && self.in_frame {
+            self.in_frame = false;
+            self.rendering = false;
+            self.nt_read_counter = 0;
+            self.last_ppu_read_addr = 0;
         }
 
         // MMC5 pulses tick every CPU cycle (no half-rate divider unlike APU)

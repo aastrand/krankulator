@@ -196,7 +196,7 @@ const FONT_DATA: [u8; GLYPH_COUNT * 8] = [
 
 fn glyph(ch: char) -> &'static [u8] {
     let c = ch as usize;
-    if c >= 0x20 && c <= 0x7E {
+    if (0x20..=0x7E).contains(&c) {
         let offset = (c - 0x20) * 8;
         &FONT_DATA[offset..offset + 8]
     } else {

@@ -158,7 +158,7 @@ impl Emulator {
         audio: Box<dyn AudioBackend>,
         region: Region,
     ) -> Emulator {
-        let lookup: Box<opcodes::Lookup> = Box::new(opcodes::Lookup::new());
+        let lookup: Box<opcodes::Lookup> = Box::default();
         let region_config = region.config();
         let frame_budget_ms = region_config.frame_duration_nanos as f64 / 1_000_000.0;
         iohandler.set_frame_duration_nanos(region_config.frame_duration_nanos);
@@ -170,13 +170,13 @@ impl Emulator {
         let buf = gfx::buf::Buffer::new();
 
         Emulator {
-            cpu: cpu,
-            lookup: lookup,
+            cpu,
+            lookup,
             mem: mapper,
             ppu: ppu::PPU::new_with_region(&region_config),
             apu: apu::APU::new_with_region(&region_config),
             buf: Box::new(buf),
-            iohandler: iohandler,
+            iohandler,
             stepping: false,
             breakpoints: Box::new(HashSet::new()),
             logformatter: io::log::LogFormatter::new(30),
@@ -199,7 +199,7 @@ impl Emulator {
             branch_irq_suppressed: false,
             should_trigger_nmi: false,
             nmi_countdown: -1,
-            audio: audio,
+            audio,
             ppu_register_warmup_until_cpu_cycle: PPU_WARMUP_CPU_CYCLES,
             rom_path: None,
             savestate_slot: 0,
@@ -238,7 +238,7 @@ impl Emulator {
         let mut i = 0;
         while i + 2 < data.len() {
             // 32-bit LFSR with taps at 32,22,2,1 (maximal period)
-            let bit = ((state >> 0) ^ (state >> 1) ^ (state >> 21) ^ (state >> 31)) & 1;
+            let bit = (state ^ (state >> 1) ^ (state >> 21) ^ (state >> 31)) & 1;
             state = (state >> 1) | (bit << 31);
             let luma = (state & 0xFF) as u8;
             // Slight blue tint like a real no-signal CRT
@@ -380,7 +380,7 @@ impl Emulator {
                 self.overlay.toast("STATE SAVED".into());
             }
             Err(e) => {
-                self.overlay.toast(format!("SAVE FAILED: {}", e));
+                self.overlay.toast(format!("SAVE FAILED: {e}"));
             }
         }
     }
@@ -390,12 +390,12 @@ impl Emulator {
         let data = match std::fs::read(&path) {
             Ok(d) => d,
             Err(e) => {
-                self.overlay.toast(format!("LOAD FAILED: {}", e));
+                self.overlay.toast(format!("LOAD FAILED: {e}"));
                 return;
             }
         };
         if let Err(e) = self.load_state_from_bytes(&data) {
-            self.overlay.toast(format!("LOAD FAILED: {}", e));
+            self.overlay.toast(format!("LOAD FAILED: {e}"));
             return;
         }
         self.overlay.toast("STATE LOADED".into());
@@ -433,7 +433,7 @@ impl Emulator {
             let saved_region = Region::from_byte(region_byte).ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("unknown region byte: {}", region_byte),
+                    format!("unknown region byte: {region_byte}"),
                 )
             })?;
             if saved_region != self.region.region {
@@ -471,9 +471,8 @@ impl Emulator {
 
     #[cfg(test)]
     pub fn run_for_cycles(&mut self, max_cycles: u64) {
-        match self.iohandler.init() {
-            Err(msg) => self.iohandler.log(msg),
-            _ => {}
+        if let Err(msg) = self.iohandler.init() {
+            self.iohandler.log(msg)
         }
         let start = self.cycles;
         loop {
@@ -487,9 +486,8 @@ impl Emulator {
     }
 
     pub fn run(&mut self) {
-        match self.iohandler.init() {
-            Err(msg) => self.iohandler.log(msg),
-            _ => {}
+        if let Err(msg) = self.iohandler.init() {
+            self.iohandler.log(msg)
         }
 
         loop {
@@ -519,7 +517,7 @@ impl Emulator {
         }
         let secs = self.rewind_buffer.len() as f64 / rewind::CAPTURES_PER_SECOND;
         self.overlay
-            .set_rewind_status(Some(format!("<< REWIND {:.1}s", secs)));
+            .set_rewind_status(Some(format!("<< REWIND {secs:.1}s")));
         self.overlay.draw(&mut self.buf);
         if self.overscan && self.region.region != region::Region::Pal {
             self.buf.mask_overscan();
@@ -590,7 +588,8 @@ impl Emulator {
                         state = CycleState::Exiting
                     }
                 } else if self.should_exit_on_infinite_loop {
-                    self.iohandler.log(format!("reached probable end of code"));
+                    self.iohandler
+                        .log("reached probable end of code".to_string());
                     state = CycleState::Exiting
                 }
             }
@@ -831,8 +830,8 @@ impl Emulator {
             }
         }
 
-        for i in 0..cycle_260_count {
-            self.mem.ppu_cycle_260(cycle_260_scanlines[i]);
+        for scanline in &cycle_260_scanlines[..cycle_260_count] {
+            self.mem.ppu_cycle_260(*scanline);
         }
     }
 
@@ -1597,7 +1596,7 @@ impl Emulator {
         }
 
         self.cpu.pc = self.cpu.pc.wrapping_add(size);
-        self.instructions = self.instructions + 1;
+        self.instructions += 1;
         self.cpu.cycle += self.lookup.cycles(opcode) as u64;
 
         opcode
@@ -1653,10 +1652,7 @@ impl Emulator {
             if let Some((waddr, wval)) = self.ppu.write(reg, value) {
                 self.mem.ppu_write(waddr, wval);
             }
-            if reg == ppu::DATA_ADDR {
-                self.mem
-                    .ppu_a12_transition(self.ppu.get_current_vram_addr(), self.ppu.last_synced_dot);
-            } else if reg == ppu::ADDR_ADDR && !self.ppu.write_toggle() {
+            if reg == ppu::DATA_ADDR || (reg == ppu::ADDR_ADDR && !self.ppu.write_toggle()) {
                 self.mem
                     .ppu_a12_transition(self.ppu.get_current_vram_addr(), self.ppu.last_synced_dot);
             }
@@ -1881,7 +1877,7 @@ impl Emulator {
         let base = self.cpu_read(pc + 1);
 
         let lb = self.cpu_read(base as _);
-        let hb = self.cpu_read((base as u8).wrapping_add(1) as _);
+        let hb = self.cpu_read(base.wrapping_add(1) as _);
         let lbidx = lb.wrapping_add(idx);
         let crossed = (lb as u16 + idx as u16) > 0xff;
         let addr = memory::to_16b_addr(hb.wrapping_add(if crossed { 1 } else { 0 }), lbidx);
@@ -1952,7 +1948,7 @@ impl Emulator {
             opcodes::ADDR_MODE_ZP => self.addr_zeropage(self.cpu.pc),
             opcodes::ADDR_MODE_ZPX => self.addr_zeropage_idx(self.cpu.pc, self.cpu.x),
             opcodes::ADDR_MODE_ZPY => self.addr_zeropage_idx(self.cpu.pc, self.cpu.y),
-            _ => panic!("Addressing mode not found for opcode {:x}", opcode),
+            _ => panic!("Addressing mode not found for opcode {opcode:x}"),
         }
     }
 
@@ -2001,7 +1997,7 @@ impl Emulator {
             self.cpu.status_str(),
             self.ppu.scanline,
             self.ppu.cycle,
-            &vec![],
+            &[],
         )
     }
 
@@ -2143,16 +2139,16 @@ mod emu_tests {
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(start, opcodes::AND_IMM);
         emu.mem.cpu_write(start + 1, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2167,16 +2163,16 @@ mod emu_tests {
         emu.cpu.a = 0b1000_0001;
         emu.run();
         assert_eq!(emu.cpu.a, 128);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(start, opcodes::AND_IMM);
         emu.mem.cpu_write(0x02, 0);
         emu.run();
         assert_eq!(emu.cpu.a, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2190,9 +2186,9 @@ mod emu_tests {
         emu.run();
         assert_eq!(emu.cpu.a, 0x0);
         assert_eq!(emu.mem.cpu_read(0x1), 0x80);
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(emu.cpu.zero_flag());
+        assert!(!emu.cpu.negative_flag());
     }
 
     #[test]
@@ -2207,18 +2203,18 @@ mod emu_tests {
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.overflow_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(emu.cpu.overflow_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x4711, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.overflow_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.overflow_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2231,18 +2227,18 @@ mod emu_tests {
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.overflow_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(emu.cpu.overflow_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x01, 0b0100_0000);
         emu.cpu.a = 0b1000_0001;
         emu.run();
 
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.overflow_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.overflow_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2252,7 +2248,7 @@ mod emu_tests {
         emu.mem.cpu_write(start, opcodes::BRK);
         emu.run();
 
-        assert_eq!(emu.cpu.interrupt_flag(), false);
+        assert!(!emu.cpu.interrupt_flag());
         assert_eq!(emu.cpu.pc, 0x600);
 
         emu.mem.cpu_write(0xffff, 0x47);
@@ -2260,7 +2256,7 @@ mod emu_tests {
         emu.cpu.set_status_flag(cpu::NEGATIVE_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.interrupt_flag(), true);
+        assert!(emu.cpu.interrupt_flag());
         assert_eq!(emu.cpu.pc, 0x4711);
         assert_eq!(emu.mem.cpu_read(0x1ff), 0x6);
         assert_eq!(emu.mem.cpu_read(0x1fe), 0x2);
@@ -2275,7 +2271,7 @@ mod emu_tests {
         emu.cpu.set_status_flag(cpu::CARRY_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
+        assert!(!emu.cpu.carry_flag());
     }
 
     #[test]
@@ -2286,7 +2282,7 @@ mod emu_tests {
         emu.cpu.set_status_flag(cpu::DECIMAL_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.decimal_flag(), false);
+        assert!(!emu.cpu.decimal_flag());
     }
 
     #[test]
@@ -2297,7 +2293,7 @@ mod emu_tests {
         emu.cpu.set_status_flag(cpu::INTERRUPT_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.interrupt_flag(), false);
+        assert!(!emu.cpu.interrupt_flag());
     }
 
     #[test]
@@ -2308,7 +2304,7 @@ mod emu_tests {
         emu.cpu.set_status_flag(cpu::OVERFLOW_BIT);
         emu.run();
 
-        assert_eq!(emu.cpu.overflow_flag(), false);
+        assert!(!emu.cpu.overflow_flag());
     }
 
     #[test]
@@ -2323,9 +2319,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2336,9 +2332,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2349,9 +2345,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2367,9 +2363,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2381,9 +2377,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2395,9 +2391,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2413,9 +2409,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2427,9 +2423,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2441,9 +2437,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2457,9 +2453,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2469,9 +2465,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2481,9 +2477,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2499,9 +2495,9 @@ mod emu_tests {
         emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2514,9 +2510,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2529,9 +2525,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2547,9 +2543,9 @@ mod emu_tests {
         emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2562,9 +2558,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2577,9 +2573,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2594,9 +2590,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 1;
@@ -2607,9 +2603,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.a = 0;
@@ -2620,9 +2616,9 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2635,16 +2631,16 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0xff);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x01, 1);
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2658,9 +2654,9 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0xff);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
-        assert_eq!(emu.cpu.carry_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
+        assert!(emu.cpu.carry_flag());
 
         emu.cpu.pc = start;
         emu.cpu.a = 0;
@@ -2668,9 +2664,9 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0xff);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
-        assert_eq!(emu.cpu.carry_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
+        assert!(!emu.cpu.carry_flag());
 
         emu.cpu.pc = start;
         emu.cpu.a = 1;
@@ -2678,9 +2674,9 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
-        assert_eq!(emu.cpu.carry_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
+        assert!(emu.cpu.carry_flag());
     }
 
     #[test]
@@ -2693,8 +2689,8 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0b1000_0000);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2707,16 +2703,16 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x01, 127);
         emu.run();
 
         assert_eq!(emu.mem.cpu_read(0x01), 128);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2812,8 +2808,8 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x042);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2828,8 +2824,8 @@ mod emu_tests {
 
         assert_eq!(emu.cpu.a, 0x042);
         assert_eq!(emu.cpu.x, 0x042);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -2843,16 +2839,16 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 255);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x4711, 0);
         emu.run();
 
         assert_eq!(emu.cpu.a, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -3074,16 +3070,16 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.mem.cpu_write(0x41, 0);
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -3174,18 +3170,18 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x1);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
-        assert_eq!(emu.cpu.carry_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
+        assert!(emu.cpu.carry_flag());
 
         emu.cpu.a = 0;
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.run();
 
         assert_eq!(emu.cpu.a, 0x0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
-        assert_eq!(emu.cpu.carry_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
+        assert!(!emu.cpu.carry_flag());
     }
 
     #[test]
@@ -3196,7 +3192,7 @@ mod emu_tests {
 
         emu.run();
 
-        assert_eq!(emu.cpu.pc, start as u16 + 1);
+        assert_eq!(emu.cpu.pc, start + 1);
         assert_eq!(emu.cpu.a, 0x0);
         assert_eq!(emu.cpu.x, 0x0);
         assert_eq!(emu.cpu.y, 0x0);
@@ -3277,8 +3273,8 @@ mod emu_tests {
 
         emu.run();
         assert_eq!(emu.cpu.a, 129);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.cpu.a = 0;
@@ -3287,8 +3283,8 @@ mod emu_tests {
 
         emu.run();
         assert_eq!(emu.cpu.a, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -3352,7 +3348,7 @@ mod emu_tests {
 
         assert_eq!(emu.cpu.status, 0b0010_0010);
         assert_eq!(emu.cpu.sp, 0x0);
-        assert_eq!(emu.cpu.overflow_flag(), false);
+        assert!(!emu.cpu.overflow_flag());
     }
 
     #[test]
@@ -3651,7 +3647,7 @@ mod emu_tests {
         emu.mem.cpu_write(start, opcodes::SEC);
         emu.run();
 
-        assert_eq!(emu.cpu.carry_flag(), true);
+        assert!(emu.cpu.carry_flag());
     }
 
     #[test]
@@ -3661,7 +3657,7 @@ mod emu_tests {
         emu.mem.cpu_write(start, opcodes::SED);
         emu.run();
 
-        assert_eq!(emu.cpu.decimal_flag(), true);
+        assert!(emu.cpu.decimal_flag());
     }
 
     #[test]
@@ -3671,7 +3667,7 @@ mod emu_tests {
         emu.mem.cpu_write(start, opcodes::SEI);
         emu.run();
 
-        assert_eq!(emu.cpu.interrupt_flag(), true);
+        assert!(emu.cpu.interrupt_flag());
     }
 
     #[test]
@@ -3683,8 +3679,8 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 255);
-        assert_eq!(emu.cpu.negative_flag(), true);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
 
         let mut emu: Emulator = Emulator::_new();
         emu.cpu.sp = 0;
@@ -3692,8 +3688,8 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.x, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(!emu.cpu.negative_flag());
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -3705,15 +3701,15 @@ mod emu_tests {
         emu.run();
 
         assert_eq!(emu.cpu.sp, 255);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
         emu.cpu.x = 0;
         emu.cpu.pc = memory::CODE_START_ADDR;
         emu.run();
 
         assert_eq!(emu.cpu.sp, 0);
-        assert_eq!(emu.cpu.negative_flag(), false);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.negative_flag());
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -3752,12 +3748,7 @@ mod emu_tests {
             emu.cycle();
             total_ppu_advance += emu.master_clock - before;
             if i < 4 {
-                assert_eq!(
-                    emu.master_clock_sub,
-                    (i + 1) as u64,
-                    "sub after cycle {}",
-                    i
-                );
+                assert_eq!(emu.master_clock_sub, (i + 1) as u64, "sub after cycle {i}");
             }
         }
         assert_eq!(emu.master_clock_sub, 0, "sub resets after 5 cycles");

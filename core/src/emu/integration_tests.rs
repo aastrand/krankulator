@@ -17,8 +17,8 @@ mod tests {
 
         assert_eq!(emu.cpu.a, 0x84);
         assert_eq!(emu.cpu.x, 0xc1);
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
     }
 
     #[test]
@@ -45,8 +45,8 @@ mod tests {
         assert_eq!(emu.cpu.x, 0x42);
         assert_eq!(emu.cpu.y, 0x43);
         assert_eq!(emu.cpu.sp, 0x42);
-        assert_eq!(emu.cpu.zero_flag(), false);
-        assert_eq!(emu.cpu.negative_flag(), false);
+        assert!(!emu.cpu.zero_flag());
+        assert!(!emu.cpu.negative_flag());
     }
 
     #[test]
@@ -57,8 +57,8 @@ mod tests {
         emu.run();
 
         assert_eq!(emu.cpu.a, 0xfc);
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), true);
+        assert!(emu.cpu.carry_flag());
+        assert!(emu.cpu.negative_flag());
     }
 
     #[test]
@@ -90,9 +90,9 @@ mod tests {
         assert_eq!(emu.cpu.x, 0);
         assert_eq!(emu.cpu.y, 1);
         assert_eq!(emu.mem.cpu_read(0x100), 1);
-        assert_eq!(emu.cpu.zero_flag(), true);
-        assert_eq!(emu.cpu.carry_flag(), true);
-        assert_eq!(emu.cpu.negative_flag(), false);
+        assert!(emu.cpu.zero_flag());
+        assert!(emu.cpu.carry_flag());
+        assert!(!emu.cpu.negative_flag());
     }
 
     #[test]
@@ -105,7 +105,7 @@ mod tests {
         assert_eq!(emu.cpu.x, 3);
         assert_eq!(emu.mem.cpu_read(0x0201), 3);
         assert_eq!(emu.mem.cpu_read(0x0200), 3);
-        assert_eq!(emu.cpu.zero_flag(), true);
+        assert!(emu.cpu.zero_flag());
     }
 
     #[test]
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(emu.cpu.x, 1);
         assert_eq!(emu.mem.cpu_read(0x0201), 1);
         assert_eq!(emu.mem.cpu_read(0x0200), 1);
-        assert_eq!(emu.cpu.zero_flag(), false);
+        assert!(!emu.cpu.zero_flag());
     }
 
     #[test]
@@ -215,21 +215,21 @@ mod tests {
         emu.toggle_quiet_mode(false);
         emu.toggle_verbose_mode(true);
 
-        if let Ok(lines) = util::read_lines(&String::from(test_rom!("other/nestest.log"))) {
+        if let Ok(lines) = util::read_lines(String::from(test_rom!("other/nestest.log"))) {
             for line in lines {
                 if let Ok(expected) = line {
-                    println!("{}", expected);
+                    println!("{expected}");
                     let expected_addr = &expected[0..4];
                     let pc = emu.cpu.pc;
 
                     let expected_status = &expected[65..67];
                     let status = emu.cpu.status;
 
-                    let expected_ppu_cycles: String = (&expected[82..85])
+                    let expected_ppu_cycles: String = expected[82..85]
                         .chars()
                         .filter(|c| !c.is_whitespace())
                         .collect();
-                    let expected_ppu_scanline: String = (&expected[78..81])
+                    let expected_ppu_scanline: String = expected[78..81]
                         .chars()
                         .filter(|c| !c.is_whitespace())
                         .collect();

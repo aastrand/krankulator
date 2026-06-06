@@ -9,6 +9,12 @@ pub struct RewindBuffer {
     capacity: usize,
 }
 
+impl Default for RewindBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RewindBuffer {
     pub fn new() -> Self {
         Self {

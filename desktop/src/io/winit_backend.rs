@@ -110,7 +110,7 @@ impl WinitPixelsIOHandler {
             pixels: None,
             width,
             height,
-            title: format!("krankulator — {}", rom_name),
+            title: format!("krankulator — {rom_name}"),
         };
 
         loop {
@@ -591,7 +591,7 @@ impl IOHandler for WinitPixelsIOHandler {
 
     fn log(&self, logline: String) {
         if !self.muted {
-            println!("{}", logline);
+            println!("{logline}");
         }
     }
 
@@ -874,7 +874,7 @@ impl IOHandler for WinitPixelsIOHandler {
                         match util::hex_str_to_u8(w[1]) {
                             Ok(v) => {
                                 ctx.mem.cpu_write(addr as _, v);
-                                writeln!(io, "mem[0x{:x}] = 0x{:x}", addr, v)?;
+                                writeln!(io, "mem[0x{addr:x}] = 0x{v:x}")?;
                             }
                             _ => {
                                 writeln!(io, "invalid value: {}", w[1])?;
@@ -930,7 +930,7 @@ impl IOHandler for WinitPixelsIOHandler {
                         }
                         "pc" => {
                             ctx.cpu.pc = v;
-                            writeln!(io, "cpu.pc = 0x{:x}", v)?;
+                            writeln!(io, "cpu.pc = 0x{v:x}")?;
                         }
                         _ => {
                             writeln!(io, "invalid register: {}", w[0])?;

@@ -75,7 +75,7 @@ impl MemoryMapper for CNROMMapper {
         self.ppu.read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         self.ppu.copy(addr, dest, size);
     }
 
@@ -84,7 +84,7 @@ impl MemoryMapper for CNROMMapper {
     }
 
     fn code_start(&mut self) -> u16 {
-        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
+        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8)
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 

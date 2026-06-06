@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals, static_mut_refs)]
+#![allow(non_upper_case_globals, static_mut_refs, clippy::missing_safety_doc)]
 
 mod libretro_sys;
 
@@ -58,8 +58,8 @@ impl emu::io::IOHandler for LibretroIOHandler {
     fn log(&self, logline: String) {
         unsafe {
             if let Some(log) = log_cb {
-                let msg = format!("{}\n\0", logline);
-                let fmt = b"%s\0".as_ptr() as *const c_char;
+                let msg = format!("{logline}\n\0");
+                let fmt = c"%s".as_ptr() as *const c_char;
                 log(RETRO_LOG_INFO, fmt, msg.as_ptr() as *const c_char);
             }
         }

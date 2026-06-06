@@ -20,7 +20,7 @@ impl LogFormatter {
     pub fn log_stack(&self, mem: &mut Box<dyn memory::MemoryMapper>, stack_ptr: u8) -> String {
         let mut addr: u16 = 0x1ff;
         let mut buf = String::new();
-        buf.push_str(&format!("stack contents:"));
+        buf.push_str("stack contents:");
         let mut cols = 0;
 
         loop {
@@ -40,6 +40,7 @@ impl LogFormatter {
         buf
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn log_str(
         &self,
         opcode: [u8; 3],
@@ -51,11 +52,11 @@ impl LogFormatter {
         status: String,
         ppu_scanline: u16,
         ppu_cycle: u16,
-        logdata: &Vec<u16>,
+        logdata: &[u16],
     ) -> String {
         let mut logline = String::with_capacity(80);
 
-        logline.push_str(&format!("{:04X} ", pc));
+        logline.push_str(&format!("{pc:04X} "));
         logline.push_str(&(1..(7 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&format!("{:02X}", opcode[0]));
 
@@ -66,9 +67,9 @@ impl LogFormatter {
             }
         }
         logline.push_str(&(1..(16 - logline.len())).map(|_| " ").collect::<String>());
-        logline.push_str(&format!(" {}", opcode_name));
+        logline.push_str(&format!(" {opcode_name}"));
 
-        if logdata.len() > 0 {
+        if !logdata.is_empty() {
             logline.push_str(&format!(" {:X}", logdata[0]));
             if logdata.len() > 1 {
                 logline.push_str(&format!(" = {:X}", logdata[1]));
@@ -78,8 +79,8 @@ impl LogFormatter {
         logline.push_str(&(1..(49 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&registers);
 
-        logline.push_str(&format!(" PPU: {:>2},{:>3}", ppu_scanline, ppu_cycle));
-        logline.push_str(&format!(" CYC:{}", cycles));
+        logline.push_str(&format!(" PPU: {ppu_scanline:>2},{ppu_cycle:>3}"));
+        logline.push_str(&format!(" CYC:{cycles}"));
 
         logline.push_str(&(1..(110 - logline.len())).map(|_| " ").collect::<String>());
         logline.push_str(&status);
@@ -100,7 +101,7 @@ impl LogFormatter {
     pub fn replay(&self) -> String {
         let mut buf: String = String::new();
         for line in self.log_lines.iter() {
-            buf.push_str(&line);
+            buf.push_str(line);
             buf.push('\n');
         }
 
@@ -117,12 +118,12 @@ mod tests {
         let sut = LogFormatter::new(10);
         let s = sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x400,
-            format!("regs"),
+            "regs".to_string(),
             0,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
@@ -136,12 +137,12 @@ mod tests {
         let sut = LogFormatter::new(10);
         let s = sut.log_str(
             [0x29, 0x42, 0x0],
-            &format!("AND"),
+            &"AND".to_string(),
             2,
             0xc000,
-            format!("regs"),
+            "regs".to_string(),
             0,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
@@ -155,12 +156,12 @@ mod tests {
         let sut = LogFormatter::new(10);
         let s = sut.log_str(
             [0xea, 0x0, 0x0],
-            &format!("NOP"),
+            &"NOP".to_string(),
             1,
             0xfffe,
-            format!("regs"),
+            "regs".to_string(),
             0,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
@@ -174,12 +175,12 @@ mod tests {
         let sut = LogFormatter::new(10);
         let s = sut.log_str(
             [0xea, 0x0, 0x0],
-            &format!("NOP"),
+            &"NOP".to_string(),
             1,
             0xfffe,
-            format!("regs"),
+            "regs".to_string(),
             43432423,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
@@ -205,24 +206,24 @@ mod tests {
         let mut sut = LogFormatter::new(10);
         sut.log(sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x400,
-            format!("regs"),
+            "regs".to_string(),
             0,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
         ));
         sut.log(sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x1337,
-            format!("regs2"),
+            "regs2".to_string(),
             0,
-            format!("status2"),
+            "status2".to_string(),
             0,
             0,
             &vec![],
@@ -238,36 +239,36 @@ mod tests {
         let mut sut = LogFormatter::new(2);
         sut.log(sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x4211,
-            format!("regs"),
+            "regs".to_string(),
             0,
-            format!("status"),
+            "status".to_string(),
             0,
             0,
             &vec![],
         ));
         sut.log(sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x1337,
-            format!("regs2"),
+            "regs2".to_string(),
             0,
-            format!("status2"),
+            "status2".to_string(),
             0,
             0,
             &vec![],
         ));
         sut.log(sut.log_str(
             [0x4c, 0x11, 0x47],
-            &format!("JMP"),
+            &"JMP".to_string(),
             3,
             0x42,
-            format!("regs3"),
+            "regs3".to_string(),
             0,
-            format!("status3"),
+            "status3".to_string(),
             0,
             0,
             &vec![],

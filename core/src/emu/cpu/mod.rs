@@ -27,6 +27,12 @@ pub struct Cpu {
     pub cycle: u64,
 }
 
+impl Default for Cpu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Cpu {
     // TODO: not sure Cpu should use super::memory
     // maybe it's better to add these as parameters
@@ -116,9 +122,9 @@ impl Cpu {
 
     pub fn add_to_a_with_carry(&mut self, operand: u8) {
         let cin = if self.carry_flag() { 1 } else { 0 };
-        let value: i32 = self.a as i32 + operand as i32 + cin as i32;
+        let value: i32 = self.a as i32 + operand as i32 + cin;
 
-        let value = if value > u8::max_value() as i32 {
+        let value = if value > u8::MAX as i32 {
             self.set_status_flag(CARRY_BIT);
             (value & 0xff) as u8
         } else {
@@ -176,7 +182,7 @@ impl Cpu {
     }
 
     pub fn eor(&mut self, operand: u8) {
-        self.a = self.a ^ operand;
+        self.a ^= operand;
         self.check_negative(self.a);
         self.check_zero(self.a);
     }
@@ -301,69 +307,69 @@ mod tests {
         cpu.a = 80;
         cpu.add_to_a_with_carry(16);
         assert_eq!(96, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.add_to_a_with_carry(80);
         assert_eq!(160, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(true, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.add_to_a_with_carry(144);
         assert_eq!(224, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.add_to_a_with_carry(208);
         assert_eq!(32, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.clear_status_flag(CARRY_BIT);
         cpu.add_to_a_with_carry(16);
         assert_eq!(224, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 208;
         cpu.add_to_a_with_carry(80);
         assert_eq!(32, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.clear_status_flag(CARRY_BIT);
         cpu.add_to_a_with_carry(144);
         assert_eq!(96, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(true, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.clear_status_flag(CARRY_BIT);
         cpu.add_to_a_with_carry(208);
         assert_eq!(160, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
     }
 
     #[test]
@@ -375,73 +381,73 @@ mod tests {
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(240);
         assert_eq!(96, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(176);
         assert_eq!(160, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(true, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(112);
         assert_eq!(224, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 80;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(48);
         assert_eq!(32, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(240);
         assert_eq!(224, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.carry_flag());
 
         cpu.a = 208;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(176);
         assert_eq!(32, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(112);
         assert_eq!(96, cpu.a);
-        assert_eq!(false, cpu.negative_flag());
-        assert_eq!(true, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(!cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
 
         cpu.a = 208;
         cpu.set_status_flag(CARRY_BIT);
         cpu.sub_from_a_with_carry(48);
         assert_eq!(160, cpu.a);
-        assert_eq!(true, cpu.negative_flag());
-        assert_eq!(false, cpu.overflow_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.carry_flag());
+        assert!(cpu.negative_flag());
+        assert!(!cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.carry_flag());
     }
 
     #[test]
@@ -450,20 +456,20 @@ mod tests {
         cpu.a = 0b1000_0001;
         cpu.and(0b1100_0000);
         assert_eq!(cpu.a, 0b1000_0000);
-        assert_eq!(cpu.negative_flag(), true);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(cpu.negative_flag());
+        assert!(!cpu.zero_flag());
 
         cpu.a = 0b1000_0001;
         cpu.and(0b0100_0000);
         assert_eq!(cpu.a, 0b0000_0000);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), true);
+        assert!(!cpu.negative_flag());
+        assert!(cpu.zero_flag());
 
         cpu.a = 0b0100_0001;
         cpu.and(0b0100_0000);
         assert_eq!(cpu.a, 0b0100_0000);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.zero_flag());
     }
 
     #[test]
@@ -471,39 +477,39 @@ mod tests {
         let mut cpu: Cpu = Cpu::new();
         cpu.a = 0b1000_0001;
         cpu.bit(0b1100_0000);
-        assert_eq!(cpu.negative_flag(), true);
-        assert_eq!(cpu.overflow_flag(), true);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(!cpu.zero_flag());
 
         cpu.a = 0b1000_0001;
         cpu.bit(0b0100_0000);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.overflow_flag(), true);
-        assert_eq!(cpu.zero_flag(), true);
+        assert!(!cpu.negative_flag());
+        assert!(cpu.overflow_flag());
+        assert!(cpu.zero_flag());
     }
 
     #[test]
     fn test_check_negative() {
         let mut cpu: Cpu = Cpu::new();
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.negative_flag());
         cpu.check_negative(8);
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.negative_flag());
         cpu.check_negative(255);
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.negative_flag());
         cpu.check_negative(8);
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.negative_flag());
     }
 
     #[test]
     fn test_check_zero() {
         let mut cpu: Cpu = Cpu::new();
-        assert_eq!(false, cpu.zero_flag());
+        assert!(!cpu.zero_flag());
         cpu.check_zero(8);
-        assert_eq!(false, cpu.zero_flag());
+        assert!(!cpu.zero_flag());
         cpu.check_zero(0);
-        assert_eq!(true, cpu.zero_flag());
+        assert!(cpu.zero_flag());
         cpu.check_zero(8);
-        assert_eq!(false, cpu.zero_flag());
+        assert!(!cpu.zero_flag());
     }
 
     #[test]
@@ -512,49 +518,49 @@ mod tests {
         cpu.a = 0b1000_0001;
         cpu.eor(0b1100_0000);
         assert_eq!(cpu.a, 0b0100_0001);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.zero_flag());
 
         cpu.a = 0b1000_0001;
         cpu.eor(0b0100_0000);
         assert_eq!(cpu.a, 0b1100_0001);
-        assert_eq!(cpu.negative_flag(), true);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(cpu.negative_flag());
+        assert!(!cpu.zero_flag());
 
         cpu.a = 0b1000_0000;
         cpu.eor(0b1000_0000);
         assert_eq!(cpu.a, 0b0000_0000);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), true);
+        assert!(!cpu.negative_flag());
+        assert!(cpu.zero_flag());
     }
 
     #[test]
     fn test_status_flag() {
         let mut cpu: Cpu = Cpu::new();
 
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.negative_flag());
         cpu.set_status_flag(NEGATIVE_BIT);
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.negative_flag());
         cpu.clear_status_flag(NEGATIVE_BIT);
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.negative_flag());
 
-        assert_eq!(false, cpu.overflow_flag());
+        assert!(!cpu.overflow_flag());
         cpu.set_status_flag(OVERFLOW_BIT);
-        assert_eq!(true, cpu.overflow_flag());
+        assert!(cpu.overflow_flag());
         cpu.clear_status_flag(OVERFLOW_BIT);
-        assert_eq!(false, cpu.overflow_flag());
+        assert!(!cpu.overflow_flag());
 
-        assert_eq!(false, cpu.zero_flag());
+        assert!(!cpu.zero_flag());
         cpu.set_status_flag(ZERO_BIT);
-        assert_eq!(true, cpu.zero_flag());
+        assert!(cpu.zero_flag());
         cpu.clear_status_flag(ZERO_BIT);
-        assert_eq!(false, cpu.zero_flag());
+        assert!(!cpu.zero_flag());
 
-        assert_eq!(false, cpu.carry_flag());
+        assert!(!cpu.carry_flag());
         cpu.set_status_flag(CARRY_BIT);
-        assert_eq!(true, cpu.carry_flag());
+        assert!(cpu.carry_flag());
         cpu.clear_status_flag(CARRY_BIT);
-        assert_eq!(false, cpu.carry_flag());
+        assert!(!cpu.carry_flag());
     }
 
     #[test]
@@ -562,24 +568,24 @@ mod tests {
         let mut cpu: Cpu = Cpu::new();
 
         cpu.compare(0, 1);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         cpu.compare(1, 1);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         cpu.compare(2, 1);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         cpu.compare(0x80, 0);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
     }
 
     #[test]
@@ -588,33 +594,33 @@ mod tests {
 
         let value = cpu.asl(0);
         assert_eq!(value, 0);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
 
         let value = cpu.asl(127);
         assert_eq!(value, 254);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
 
         let value = cpu.asl(255);
         assert_eq!(value, 254);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
 
         let value = cpu.asl(128);
         assert_eq!(value, 0);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
     }
 
     #[test]
@@ -623,30 +629,30 @@ mod tests {
 
         let value = cpu.lsr(0);
         assert_eq!(value, 0);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.lsr(1);
         assert_eq!(value, 0);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.lsr(255);
         assert_eq!(value, 127);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.lsr(8);
         assert_eq!(value, 4);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
     }
 
     #[test]
@@ -655,20 +661,20 @@ mod tests {
         cpu.a = 0b1000_0001;
         cpu.ora(0b1100_0000);
         assert_eq!(cpu.a, 0b1100_0001);
-        assert_eq!(cpu.negative_flag(), true);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(cpu.negative_flag());
+        assert!(!cpu.zero_flag());
 
         cpu.a = 0;
         cpu.ora(0);
         assert_eq!(cpu.a, 0);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), true);
+        assert!(!cpu.negative_flag());
+        assert!(cpu.zero_flag());
 
         cpu.a = 0b0000_1010;
         cpu.ora(0b0000_0101);
         assert_eq!(cpu.a, 0b0000_1111);
-        assert_eq!(cpu.negative_flag(), false);
-        assert_eq!(cpu.zero_flag(), false);
+        assert!(!cpu.negative_flag());
+        assert!(!cpu.zero_flag());
     }
 
     #[test]
@@ -677,47 +683,47 @@ mod tests {
 
         let value = cpu.rol(0);
         assert_eq!(value, 0);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         cpu.set_status_flag(CARRY_BIT);
         let value = cpu.rol(0);
         assert_eq!(value, 1);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.rol(1);
         assert_eq!(value, 2);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         cpu.set_status_flag(CARRY_BIT);
         let value = cpu.rol(128);
         assert_eq!(value, 1);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.rol(127);
         assert_eq!(value, 254);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         cpu.set_status_flag(CARRY_BIT);
         let value = cpu.rol(255);
         assert_eq!(value, 255);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
     }
 
     #[test]
@@ -726,46 +732,46 @@ mod tests {
 
         let value = cpu.ror(0);
         assert_eq!(value, 0);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         cpu.set_status_flag(CARRY_BIT);
         let value = cpu.ror(0);
         assert_eq!(value, 128);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.ror(1);
         assert_eq!(value, 0);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(true, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         cpu.set_status_flag(CARRY_BIT);
         let value = cpu.ror(1);
         assert_eq!(value, 128);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(true, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.ror(255);
         assert_eq!(value, 127);
-        assert_eq!(true, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
 
         let mut cpu: Cpu = Cpu::new();
         let value = cpu.ror(8);
         assert_eq!(value, 4);
-        assert_eq!(false, cpu.carry_flag());
-        assert_eq!(false, cpu.zero_flag());
-        assert_eq!(false, cpu.negative_flag());
+        assert!(!cpu.carry_flag());
+        assert!(!cpu.zero_flag());
+        assert!(!cpu.negative_flag());
     }
 
     #[test]

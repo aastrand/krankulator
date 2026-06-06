@@ -50,7 +50,7 @@ impl UxROMMapper {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 self._prg_rom[bank_index].as_ptr(),
-                self.addr_space_ptr.offset(BANK_SWITCHABLE_ADDR as isize),
+                self.addr_space_ptr.add(BANK_SWITCHABLE_ADDR),
                 UXROM_PRG_BANK_SIZE,
             );
         }
@@ -80,7 +80,7 @@ impl MemoryMapper for UxROMMapper {
         self.ppu.read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         self.ppu.copy(addr, dest, size);
     }
 
@@ -89,7 +89,7 @@ impl MemoryMapper for UxROMMapper {
     }
 
     fn code_start(&mut self) -> u16 {
-        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
+        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8)
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 

@@ -81,6 +81,7 @@ impl MMC3Mapper {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_variant(
         flags: u8,
         prg_banks: Vec<[u8; 16384]>,
@@ -232,7 +233,7 @@ impl MMC3Mapper {
             }
             0xE000..=0xFFFF => {
                 // Always fixed to last bank
-                if self.prg_rom.len() >= 1 {
+                if !self.prg_rom.is_empty() {
                     self.prg_rom.len() - 1
                 } else {
                     0
@@ -324,7 +325,7 @@ impl MMC3Mapper {
 
     fn map_nametable(&self, addr: u16) -> usize {
         if self.variant == MMC3Variant::TxSROM {
-            let nt = ((addr >> 10) & 3) as u16;
+            let nt = (addr >> 10) & 3;
             let chr_addr = nt * 0x400;
             let (reg, _) = self.chr_register_for_addr(chr_addr);
             let page = if (self.bank_regs[reg] & 0x80) != 0 {
@@ -393,8 +394,7 @@ impl MemoryMapper for MMC3Mapper {
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xFFFF => {
                 if let Some(bank) = self.map_prg(addr) {
-                    let value = bank[(addr as usize) % PRG_BANK_SIZE];
-                    value
+                    bank[(addr as usize) % PRG_BANK_SIZE]
                 } else {
                     0
                 }
@@ -433,14 +433,12 @@ impl MemoryMapper for MMC3Mapper {
                 }
             }
             0xA000..=0xBFFF => {
-                if addr & 1 == 0 {
-                    if self.variant != MMC3Variant::TxSROM {
-                        self.mirroring = if value & 1 == 0 {
-                            NametableMirror::Vertical
-                        } else {
-                            NametableMirror::Horizontal
-                        };
-                    }
+                if addr & 1 == 0 && self.variant != MMC3Variant::TxSROM {
+                    self.mirroring = if value & 1 == 0 {
+                        NametableMirror::Vertical
+                    } else {
+                        NametableMirror::Horizontal
+                    };
                 }
             }
             0xC000..=0xDFFF => {
@@ -490,7 +488,7 @@ impl MemoryMapper for MMC3Mapper {
         }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         match addr {
             0x0000..=0x1FFF => {
                 let (bank_idx, offset, is_ram) = self.map_chr(addr);
@@ -544,9 +542,8 @@ impl MemoryMapper for MMC3Mapper {
         // Read reset vector through proper mapper CPU read (like other mappers do)
         let lo = self.cpu_read(RESET_TARGET_ADDR);
         let hi = self.cpu_read(RESET_TARGET_ADDR + 1);
-        let start_addr = ((hi as u16) << 8) | (lo as u16);
 
-        start_addr
+        ((hi as u16) << 8) | (lo as u16)
     }
 
     fn controllers(&mut self) -> &mut [io::controller::Controller; 2] {
@@ -692,8 +689,8 @@ mod tests {
         mapper.ppu_cycle_260(0);
 
         assert_eq!(mapper.irq_counter, 0);
-        assert_eq!(mapper.irq_reload, true);
-        assert_eq!(mapper.poll_irq(), false);
+        assert!(mapper.irq_reload);
+        assert!(!mapper.poll_irq());
     }
 
     #[test]
@@ -706,19 +703,19 @@ mod tests {
         // Gap of 5 dots (< 10 threshold) — filtered, no clock
         mapper.ppu_fetch(0x0000, 10);
         mapper.ppu_fetch(0x1000, 15);
-        assert_eq!(mapper.irq_reload, true);
+        assert!(mapper.irq_reload);
 
         // Gap of 20 dots (>= 10 threshold) — clocks, reload from latch
         mapper.ppu_fetch(0x0000, 25);
         mapper.ppu_fetch(0x1000, 45);
         assert_eq!(mapper.irq_counter, 1);
-        assert_eq!(mapper.irq_reload, false);
-        assert_eq!(mapper.poll_irq(), false);
+        assert!(!mapper.irq_reload);
+        assert!(!mapper.poll_irq());
 
         // Another valid edge — counter decrements to 0, IRQ fires
         mapper.ppu_fetch(0x0000, 55);
         mapper.ppu_fetch(0x1000, 75);
-        assert_eq!(mapper.poll_irq(), true);
+        assert!(mapper.poll_irq());
     }
 
     #[test]
@@ -727,13 +724,13 @@ mod tests {
         mapper.irq_pending = true;
         mapper.irq_enable = true;
 
-        assert_eq!(mapper.poll_irq(), true);
-        assert_eq!(mapper.poll_irq(), true);
+        assert!(mapper.poll_irq());
+        assert!(mapper.poll_irq());
 
         mapper.cpu_write(0xE000, 0);
 
-        assert_eq!(mapper.poll_irq(), false);
-        assert_eq!(mapper.irq_enable, false);
+        assert!(!mapper.poll_irq());
+        assert!(!mapper.irq_enable);
     }
 
     #[test]
@@ -747,8 +744,8 @@ mod tests {
         mapper.ppu_fetch(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 0);
-        assert_eq!(mapper.irq_reload, false);
-        assert_eq!(mapper.poll_irq(), true);
+        assert!(!mapper.irq_reload);
+        assert!(mapper.poll_irq());
     }
 
     #[test]
@@ -762,8 +759,8 @@ mod tests {
         mapper.ppu_fetch(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 2);
-        assert_eq!(mapper.irq_reload, false);
-        assert_eq!(mapper.poll_irq(), false);
+        assert!(!mapper.irq_reload);
+        assert!(!mapper.poll_irq());
     }
 
     #[test]
@@ -779,7 +776,7 @@ mod tests {
         mapper.ppu_fetch(0x0000, 40);
         mapper.ppu_fetch(0x1000, 60);
 
-        assert_eq!(mapper.poll_irq(), true);
+        assert!(mapper.poll_irq());
     }
 
     #[test]
@@ -793,7 +790,7 @@ mod tests {
         mapper.ppu_a12_transition(0x1000, 30);
 
         assert_eq!(mapper.irq_counter, 1);
-        assert_eq!(mapper.irq_reload, false);
+        assert!(!mapper.irq_reload);
     }
 
     fn run_mmc3_rom(path: &str, name: &str) {
@@ -820,10 +817,10 @@ mod tests {
 
         emu.run();
 
-        let expected = format!("\n{}\n\nPassed\n", name);
+        let expected = format!("\n{name}\n\nPassed\n");
         let buf = get_status_str(&mut emu, 0x6004, 80);
 
-        println!("{}", buf);
+        println!("{buf}");
         println!("status: {:02X}", emu.mem.cpu_read(0x6000));
 
         assert_eq!(0, emu.mem.cpu_read(0x6000));

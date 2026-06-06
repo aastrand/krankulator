@@ -726,11 +726,7 @@ mod tests {
             if step == 1 {
                 assert_eq!(pulse.output, 15.0, "12.5% duty should be high on step 1");
             } else {
-                assert_eq!(
-                    pulse.output, 0.0,
-                    "12.5% duty should be low on step {}",
-                    step
-                );
+                assert_eq!(pulse.output, 0.0, "12.5% duty should be low on step {step}");
             }
         }
 
@@ -740,13 +736,9 @@ mod tests {
             pulse.duty_step = step;
             pulse.generate_output();
             if (1..=4).contains(&step) {
-                assert_eq!(
-                    pulse.output, 15.0,
-                    "50% duty should be high on step {}",
-                    step
-                );
+                assert_eq!(pulse.output, 15.0, "50% duty should be high on step {step}");
             } else {
-                assert_eq!(pulse.output, 0.0, "50% duty should be low on step {}", step);
+                assert_eq!(pulse.output, 0.0, "50% duty should be low on step {step}");
             }
         }
     }

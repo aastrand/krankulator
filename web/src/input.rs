@@ -275,7 +275,7 @@ pub fn poll_gamepad() -> Option<GamepadPollResult> {
             btns.get(idx)
                 .dyn_into::<web_sys::GamepadButton>()
                 .ok()
-                .map_or(false, |b| b.pressed())
+                .is_some_and(|b| b.pressed())
         };
 
         let axes = gp.axes();

@@ -9,7 +9,7 @@ fn local_storage() -> Option<web_sys::Storage> {
 }
 
 fn rom_key(rom_hash: &str, suffix: &str) -> String {
-    format!("krankulator:{}:{}", rom_hash, suffix)
+    format!("krankulator:{rom_hash}:{suffix}")
 }
 
 pub fn hash_rom(data: &[u8]) -> String {
@@ -18,7 +18,7 @@ pub fn hash_rom(data: &[u8]) -> String {
         h ^= b as u32;
         h = h.wrapping_mul(0x01000193);
     }
-    format!("{:08x}", h)
+    format!("{h:08x}")
 }
 
 fn storage_get(key: &str) -> Option<String> {
@@ -43,18 +43,18 @@ pub fn load_sram_from_storage(rom_hash: &str) -> Option<Vec<u8>> {
 
 pub fn save_state_to_storage(rom_hash: &str, slot: u8, data: &[u8]) {
     let encoded = base64_encode(data);
-    storage_set(&rom_key(rom_hash, &format!("ss{}", slot)), &encoded);
+    storage_set(&rom_key(rom_hash, &format!("ss{slot}")), &encoded);
 }
 
 pub fn load_state_from_storage(rom_hash: &str, slot: u8) -> Option<Vec<u8>> {
-    let encoded = storage_get(&rom_key(rom_hash, &format!("ss{}", slot)))?;
+    let encoded = storage_get(&rom_key(rom_hash, &format!("ss{slot}")))?;
     base64_decode(&encoded)
 }
 
 const B64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 fn base64_encode(data: &[u8]) -> String {
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -102,8 +102,9 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 }
 
 thread_local! {
+    #[allow(clippy::type_complexity)]
     static BEFOREUNLOAD_CLOSURE: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = RefCell::new(None);
-    pub static SRAM_SNAPSHOT: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+    pub static SRAM_SNAPSHOT: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
 }
 
 pub fn setup_beforeunload_sram(rom_hash: String, has_battery: bool, gen: u32) {

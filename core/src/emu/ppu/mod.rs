@@ -308,6 +308,12 @@ pub struct PPU {
     odd_frame_skip_enabled: bool,
 }
 
+impl Default for PPU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PPU {
     pub fn new() -> PPU {
         Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
@@ -323,7 +329,7 @@ impl PPU {
             x: 0,
             w: false,
 
-            oam_ram: oam_ram,
+            oam_ram,
 
             ppu_ctrl: 0,
             ppu_mask: 0,
@@ -571,7 +577,7 @@ impl PPU {
             }
             DATA_ADDR => {
                 let read_addr = self.v;
-                let value = if read_addr >= PALETTE_START && read_addr <= PALETTE_END {
+                let value = if (PALETTE_START..=PALETTE_END).contains(&read_addr) {
                     let mirrored_addr = read_addr & PALETTE_MIRROR_MASK;
                     let result = mem.ppu_read(read_addr as _);
                     self.ppu_data_buf = mem.ppu_read(mirrored_addr as _);
@@ -794,7 +800,7 @@ impl PPU {
                 self.scanline_pixels_written += 1;
 
                 if self.cycle == LAST_VISIBLE_DOT {
-                    self.copy_scanline_to_framebuffer(*framebuffer);
+                    self.copy_scanline_to_framebuffer(framebuffer);
                 }
             }
         }
@@ -812,13 +818,13 @@ impl PPU {
             self.sprite_fetch_line = [SpriteLineEntry::default(); 8];
         }
 
-        if rendering_scanline && rendering_enabled {
-            if self.cycle >= SPRITE_EVAL_START
-                && self.cycle <= SPRITE_EVAL_END
-                && (self.cycle - SPRITE_EVAL_START) % 2 == 0
-            {
-                self.sprite_evaluation_tick();
-            }
+        if rendering_scanline
+            && rendering_enabled
+            && self.cycle >= SPRITE_EVAL_START
+            && self.cycle <= SPRITE_EVAL_END
+            && (self.cycle - SPRITE_EVAL_START) % 2 == 0
+        {
+            self.sprite_evaluation_tick();
         }
 
         if rendering_scanline && rendering_enabled {
@@ -1010,7 +1016,7 @@ impl PPU {
         let pat_base = self.ctrl_background_pattern_addr();
 
         let bg_v_curr = Self::coarse_x_offset(self.render_line_v, tile_index);
-        let fine_y = ((bg_v_curr >> V_FINE_Y_SHIFT) & 0x07) as u16;
+        let fine_y = (bg_v_curr >> V_FINE_Y_SHIFT) & 0x07;
         let tile_id_curr = mem.ppu_read(NAMETABLE_BASE | (bg_v_curr & NAMETABLE_ADDR_MASK)) as u16;
         let pat_lo_curr = mem.ppu_read(pat_base + tile_id_curr * TILE_STRIDE + fine_y);
         let pat_hi_curr =
@@ -1043,7 +1049,7 @@ impl PPU {
             | ((bg_v >> 2) & ATTR_TABLE_COL_MASK);
         let attr = mem.ppu_read(attr_addr);
         let coarse_x = (bg_v & V_COARSE_X_MASK) as u8;
-        let coarse_y = ((bg_v >> V_COARSE_Y_SHIFT) & V_COARSE_X_MASK as u16) as u8;
+        let coarse_y = ((bg_v >> V_COARSE_Y_SHIFT) & V_COARSE_X_MASK) as u8;
         let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
         (attr >> shift) & 0x03
     }
@@ -1161,7 +1167,7 @@ impl PPU {
             | ((self.v >> 2) & ATTR_TABLE_COL_MASK);
         let attr = self.ppu_fetch(mem, addr);
         let coarse_x = (self.v & V_COARSE_X_MASK) as u8;
-        let coarse_y = ((self.v >> V_COARSE_Y_SHIFT) & V_COARSE_X_MASK as u16) as u8;
+        let coarse_y = ((self.v >> V_COARSE_Y_SHIFT) & V_COARSE_X_MASK) as u8;
         let shift = ((coarse_y & 0x02) << 1) | (coarse_x & 0x02);
         self.bg_next_attr = (attr >> shift) & 0x03;
     }
@@ -1594,7 +1600,7 @@ impl PPU {
 
         let bg_v = self.background_v_for_dot(dot);
         let fine_x = self.background_fine_x_for_dot(dot);
-        let fine_y = ((bg_v >> V_FINE_Y_SHIFT) & 0x07) as u16;
+        let fine_y = ((bg_v >> V_FINE_Y_SHIFT) & 0x07);
         let tile_id = mem.ppu_read(NAMETABLE_BASE | (bg_v & NAMETABLE_ADDR_MASK)) as u16;
         let pattern_addr = self.ctrl_background_pattern_addr() + tile_id * TILE_STRIDE + fine_y;
         let low = mem.ppu_read(pattern_addr);
@@ -1733,7 +1739,7 @@ mod tests {
 
         assert_eq!(ppu.scanline, 241);
         match ppu.cycle {
-            1 | 2 | 3 => {}
+            1..=3 => {}
             _ => panic!(
                 "expected pixel 1 to have been hit in 3-pixel cycle, was {}",
                 ppu.cycle
@@ -1750,9 +1756,9 @@ mod tests {
     #[test]
     pub fn vblank_is_enabled() {
         let mut ppu = PPU::new();
-        assert_eq!(ppu.vblank_nmi_is_enabled(), false);
+        assert!(!ppu.vblank_nmi_is_enabled());
         ppu.ppu_ctrl |= STATUS_VERTICAL_BLANK_BIT;
-        assert_eq!(ppu.vblank_nmi_is_enabled(), true);
+        assert!(ppu.vblank_nmi_is_enabled());
     }
 
     #[test]
@@ -2157,11 +2163,11 @@ mod tests {
         ppu.oam_ram[3] = 10;
 
         ppu.scanline = 20;
-        assert_eq!(ppu.sprite_zero_hit(11), false);
+        assert!(!ppu.sprite_zero_hit(11));
 
         ppu.scanline = 21;
-        assert_eq!(ppu.sprite_zero_hit(10), false);
-        assert_eq!(ppu.sprite_zero_hit(11), true);
+        assert!(!ppu.sprite_zero_hit(10));
+        assert!(ppu.sprite_zero_hit(11));
     }
 
     #[test]
@@ -2172,13 +2178,13 @@ mod tests {
         ppu.scanline = 21;
 
         ppu.ppu_mask = MASK_SPRITES_ENABLE;
-        assert_eq!(ppu.sprite_zero_hit(11), false);
+        assert!(!ppu.sprite_zero_hit(11));
 
         ppu.ppu_mask = MASK_BACKGROUND_ENABLE;
-        assert_eq!(ppu.sprite_zero_hit(11), false);
+        assert!(!ppu.sprite_zero_hit(11));
 
         ppu.ppu_mask = MASK_BACKGROUND_ENABLE | MASK_SPRITES_ENABLE;
-        assert_eq!(ppu.sprite_zero_hit(11), true);
+        assert!(ppu.sprite_zero_hit(11));
     }
 
     #[test]
@@ -2254,7 +2260,7 @@ mod tests {
             pattern_lo: 0x00,
             pattern_hi: 0x00,
         };
-        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), false);
+        assert!(!ppu.sprite_zero_hit_with_rendering(&mem, 11));
 
         ppu.scanline = 22;
         ppu.sprite_line[0] = SpriteLineEntry {
@@ -2263,11 +2269,11 @@ mod tests {
             pattern_lo: 0x80,
             pattern_hi: 0x00,
         };
-        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), true);
+        assert!(ppu.sprite_zero_hit_with_rendering(&mem, 11));
 
         mem.ppu_write(0x0010, 0x00);
         ppu.bg_pattern_shift_low = 0;
-        assert_eq!(ppu.sprite_zero_hit_with_rendering(&mem, 11), false);
+        assert!(!ppu.sprite_zero_hit_with_rendering(&mem, 11));
     }
 
     #[test]
@@ -2344,7 +2350,7 @@ mod tests {
         assert_ne!(bg_only, sprite_over);
         assert_eq!(
             bg_only,
-            palette::PALETTE[0x20 as usize % palette::PALETTE_SIZE]
+            palette::PALETTE[0x20_usize % palette::PALETTE_SIZE]
         );
     }
 
@@ -2372,11 +2378,11 @@ mod tests {
         let flipped = ppu.render_pixel(&mem);
         assert_eq!(
             no_flip,
-            palette::PALETTE[0x0E as usize % palette::PALETTE_SIZE]
+            palette::PALETTE[0x0E_usize % palette::PALETTE_SIZE]
         );
         assert_eq!(
             flipped,
-            palette::PALETTE[0x10 as usize % palette::PALETTE_SIZE]
+            palette::PALETTE[0x10_usize % palette::PALETTE_SIZE]
         );
     }
 
@@ -2697,21 +2703,18 @@ mod tests {
 
             assert_eq!(
                 pf_fy, fine_y,
-                "scroll_y={}: prefetch fine_y should be {} but was {}",
-                scroll_y, fine_y, pf_fy
+                "scroll_y={scroll_y}: prefetch fine_y should be {fine_y} but was {pf_fy}"
             );
             assert_eq!(
                 s0_fy, fine_y,
-                "scroll_y={}: scanline 0 dot 1 fine_y should be {} but was {}",
-                scroll_y, fine_y, s0_fy
+                "scroll_y={scroll_y}: scanline 0 dot 1 fine_y should be {fine_y} but was {s0_fy}"
             );
 
             let v = scanline0_dot1_v.unwrap();
             let v_coarse_y = (v & V_COARSE_Y_MASK) >> V_COARSE_Y_SHIFT;
             assert_eq!(
                 v_coarse_y, coarse_y,
-                "scroll_y={}: scanline 0 dot 1 coarse_y should be {} but was {}",
-                scroll_y, coarse_y, v_coarse_y
+                "scroll_y={scroll_y}: scanline 0 dot 1 coarse_y should be {coarse_y} but was {v_coarse_y}"
             );
         }
     }
@@ -2761,8 +2764,7 @@ mod tests {
                 let actual = framebuffer.get_pixel(expected_x, scanline);
                 assert_eq!(
                     actual, lit_color,
-                    "scroll_y={}, scanline={}: expected lit pixel at x={}, got {:?}",
-                    scroll_y, scanline, expected_x, actual
+                    "scroll_y={scroll_y}, scanline={scanline}: expected lit pixel at x={expected_x}, got {actual:?}"
                 );
             }
         }
@@ -2814,8 +2816,7 @@ mod tests {
             let actual_pixel = framebuffer.get_pixel(expected_lit_x, 0);
             assert_eq!(
                 actual_pixel, lit_color,
-                "scroll_y={}: expected lit pixel at x={} (fine_y={}), got {:?}",
-                scroll_y, expected_lit_x, fine_y, actual_pixel
+                "scroll_y={scroll_y}: expected lit pixel at x={expected_lit_x} (fine_y={fine_y}), got {actual_pixel:?}"
             );
             if expected_lit_x > 0 {
                 let adjacent = framebuffer.get_pixel(expected_lit_x - 1, 0);

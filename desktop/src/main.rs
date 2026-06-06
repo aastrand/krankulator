@@ -11,23 +11,23 @@ use krankulator_core::emu::io::loader;
 use krankulator_core::util;
 
 fn extract_nes_from_zip(path: &str) -> Result<Vec<u8>, String> {
-    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open {}: {}", path, e))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open {path}: {e}"))?;
     let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read ZIP {}: {}", path, e))?;
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read ZIP {path}: {e}"))?;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| format!("Failed to read ZIP entry: {}", e))?;
+            .map_err(|e| format!("Failed to read ZIP entry: {e}"))?;
         if let Some(name) = entry.name().to_lowercase().strip_suffix(".nes") {
             let _ = name;
             let mut buf = Vec::new();
             entry
                 .read_to_end(&mut buf)
-                .map_err(|e| format!("Failed to extract from ZIP: {}", e))?;
+                .map_err(|e| format!("Failed to extract from ZIP: {e}"))?;
             return Ok(buf);
         }
     }
-    Err(format!("No .nes file found in {}", path))
+    Err(format!("No .nes file found in {path}"))
 }
 
 fn load_rom_file(path: &str) -> Result<Box<dyn emu::memory::MemoryMapper>, String> {
@@ -36,9 +36,8 @@ fn load_rom_file(path: &str) -> Result<Box<dyn emu::memory::MemoryMapper>, Strin
         let sram_data = if loader::rom_has_battery(&bytes) {
             let mut sav = std::path::PathBuf::from(path);
             sav.set_extension("sav");
-            std::fs::read(&sav).ok().map(|data| {
+            std::fs::read(&sav).ok().inspect(|_| {
                 println!("Loaded save data from {}", sav.display());
-                data
             })
         } else {
             None
@@ -211,7 +210,7 @@ fn main() -> Result<(), String> {
     };
 
     for breakpoint in args.breakpoint {
-        println!("Adding breakpoint at {}", breakpoint);
+        println!("Adding breakpoint at {breakpoint}");
         emu::dbg::toggle_breakpoint(&breakpoint, &mut emu.breakpoints);
     }
 
@@ -220,7 +219,7 @@ fn main() -> Result<(), String> {
         match util::hex_str_to_u16(&input_addr) {
             Ok(addr) => emu.cpu.pc = addr,
             _ => {
-                println!("Invalid code addr: {}", input_addr);
+                println!("Invalid code addr: {input_addr}");
                 std::process::exit(1);
             }
         };
@@ -250,7 +249,7 @@ fn main() -> Result<(), String> {
                     io::add_recent_rom(&path);
                 }
                 Err(msg) => {
-                    eprintln!("Failed to load ROM: {}", msg);
+                    eprintln!("Failed to load ROM: {msg}");
                     emu.overlay.toast(msg);
                 }
             },
@@ -261,7 +260,7 @@ fn main() -> Result<(), String> {
     if let Some(wav_path) = &args.wav_out {
         let samples = emu.drain_captured_audio();
         emu::audio::wav::write_wav(wav_path, &samples, 44100)
-            .map_err(|e| format!("Failed to write WAV: {}", e))?;
+            .map_err(|e| format!("Failed to write WAV: {e}"))?;
         println!(
             "Wrote {} samples ({:.1}s) to {}",
             samples.len(),

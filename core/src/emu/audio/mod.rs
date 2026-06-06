@@ -14,6 +14,12 @@ pub trait AudioBackend {
 
 pub struct SilentAudioOutput;
 
+impl Default for SilentAudioOutput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SilentAudioOutput {
     pub fn new() -> Self {
         Self
@@ -27,6 +33,12 @@ impl AudioBackend for SilentAudioOutput {
 
 pub struct CapturingAudioOutput {
     buf: Vec<f32>,
+}
+
+impl Default for CapturingAudioOutput {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CapturingAudioOutput {

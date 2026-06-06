@@ -184,7 +184,7 @@ impl MemoryMapper for MMC4Mapper {
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         let addr = addr % MAX_VRAM_ADDR;
         match addr_to_page(addr) {
             0x00 => {
@@ -368,13 +368,13 @@ mod tests {
         for addr in 0x0FD8..=0x0FDF {
             m.latches[0] = 1;
             m.ppu_fetch(addr, 0);
-            assert_eq!(m.latches[0], 0, "addr {:#06X} should trigger left FD", addr);
+            assert_eq!(m.latches[0], 0, "addr {addr:#06X} should trigger left FD");
         }
 
         for addr in 0x0FE8..=0x0FEF {
             m.latches[0] = 0;
             m.ppu_fetch(addr, 0);
-            assert_eq!(m.latches[0], 1, "addr {:#06X} should trigger left FE", addr);
+            assert_eq!(m.latches[0], 1, "addr {addr:#06X} should trigger left FE");
         }
     }
 

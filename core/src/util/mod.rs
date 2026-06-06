@@ -27,13 +27,13 @@ pub fn hex_str_to_u8(s: &str) -> Result<u8, std::num::ParseIntError> {
 
 pub fn read_bytes(path: &str) -> Result<Vec<u8>, String> {
     if !Path::new(path).exists() {
-        return Err(format!("File does not exist: {}", path));
+        return Err(format!("File does not exist: {path}"));
     }
 
     let result = std::fs::read(path);
     match result {
         Ok(code) => Ok(code),
-        _ => Err(format!("Error while parsing binary file {}", path)),
+        _ => Err(format!("Error while parsing binary file {path}")),
     }
 }
 
@@ -49,12 +49,10 @@ where
 pub fn filename(s: &str) -> &str {
     let i = if let Some(i) = s.rfind("/") {
         i + 1
+    } else if let Some(i) = s.rfind("\\") {
+        i + 1
     } else {
-        if let Some(i) = s.rfind("\\") {
-            i + 1
-        } else {
-            0
-        }
+        0
     };
 
     &s[i..]
@@ -94,7 +92,7 @@ mod tests {
         assert_eq!(hex_str_to_u16("1").unwrap(), 1);
         assert_eq!(hex_str_to_u16("12").unwrap(), 0x12);
         assert_eq!(hex_str_to_u16("0x4711").unwrap(), 0x4711);
-        assert_eq!(hex_str_to_u16("0x").is_ok(), false);
+        assert!(!hex_str_to_u16("0x").is_ok());
     }
 
     #[test]
@@ -102,20 +100,20 @@ mod tests {
         assert_eq!(hex_str_to_u8("1").unwrap(), 1);
         assert_eq!(hex_str_to_u8("12").unwrap(), 0x12);
         assert_eq!(hex_str_to_u8("0x43").unwrap(), 0x43);
-        assert_eq!(hex_str_to_u8("0x4711").is_ok(), false);
-        assert_eq!(hex_str_to_u8("0x").is_ok(), false);
+        assert!(!hex_str_to_u8("0x4711").is_ok());
+        assert!(!hex_str_to_u8("0x").is_ok());
     }
 
     #[test]
     fn test_filename() {
-        assert_eq!(filename(&format!("")), &format!(""));
+        assert_eq!(filename(&String::new()), &String::new());
         assert_eq!(
-            filename(&format!("input/nes/test.rom")),
-            &format!("test.rom")
+            filename(&"input/nes/test.rom".to_string()),
+            &"test.rom".to_string()
         );
         assert_eq!(
-            filename(&format!("D:\\Documents\\roms\\nes\\donkey kong.nes")),
-            &format!("donkey kong.nes")
+            filename(&"D:\\Documents\\roms\\nes\\donkey kong.nes".to_string()),
+            &"donkey kong.nes".to_string()
         );
     }
 }

@@ -21,6 +21,12 @@ pub struct Overlay {
     overscan: u8,
 }
 
+impl Default for Overlay {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Overlay {
     pub fn new() -> Self {
         Self {
@@ -44,7 +50,7 @@ impl Overlay {
 
     pub fn set_frame_time(&mut self, emu_ms: f64) {
         let budget_pct = (emu_ms / self.frame_budget_ms) * 100.0;
-        self.frame_time_text = format!("{:.1}ms ({:.0}%)", emu_ms, budget_pct);
+        self.frame_time_text = format!("{emu_ms:.1}ms ({budget_pct:.0}%)");
     }
 
     pub fn set_banner(&mut self, text: Option<String>) {

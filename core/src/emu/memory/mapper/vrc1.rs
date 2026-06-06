@@ -140,7 +140,7 @@ impl MemoryMapper for Vrc1Mapper {
         self.ppu.read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         self.ppu.copy(addr, dest, size);
     }
 

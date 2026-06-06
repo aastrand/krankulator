@@ -10,6 +10,12 @@ pub struct Buffer {
     pub height: usize,
 }
 
+impl Default for Buffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Buffer {
     pub fn new() -> Self {
         Buffer {

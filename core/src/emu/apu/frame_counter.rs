@@ -27,6 +27,12 @@ const NTSC_MODE1_CYCLES: [u32; 6] = [7457, 14913, 22371, 29829, 37281, 37282];
 const PAL_MODE0_CYCLES: [u32; 6] = [8313, 16627, 24939, 33252, 33253, 33254];
 const PAL_MODE1_CYCLES: [u32; 6] = [8313, 16627, 24939, 33253, 41565, 41566];
 
+impl Default for FrameCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FrameCounter {
     pub fn new() -> Self {
         Self::new_with_region(&crate::emu::region::Region::Ntsc.config())

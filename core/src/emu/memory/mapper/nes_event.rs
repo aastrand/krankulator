@@ -109,7 +109,7 @@ impl NesEventMapper {
             // Locked: first 32KB (banks 0+1)
             let offset = (addr - 0x8000) as usize;
             if offset < PRG_BANK_SIZE {
-                return self.prg_rom.get(0).map_or(0, |b| b[offset]);
+                return self.prg_rom.first().map_or(0, |b| b[offset]);
             } else {
                 return self.prg_rom.get(1).map_or(0, |b| b[offset - PRG_BANK_SIZE]);
             }
@@ -242,7 +242,7 @@ impl MemoryMapper for NesEventMapper {
         }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         match addr {
             0x0000..=0x1FFF => unsafe {
                 std::ptr::copy(self.chr_ram.as_ptr().add(addr as usize), dest, size);

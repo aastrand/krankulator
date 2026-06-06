@@ -46,11 +46,7 @@ impl NROMMapper {
 
         mem[BANK_ONE_ADDR..BANK_ONE_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&*bank_one);
 
-        let second = if bank_two.is_some() {
-            bank_two.unwrap()
-        } else {
-            *bank_one
-        };
+        let second = bank_two.unwrap_or(*bank_one);
         mem[BANK_TWO_ADDR..BANK_TWO_ADDR + NROM_PRG_BANK_SIZE].clone_from_slice(&second);
 
         let addr_space_ptr = mem.as_mut_ptr();
@@ -71,15 +67,15 @@ impl NROMMapper {
             _flags: flags,
 
             _addr_space: mem,
-            addr_space_ptr: addr_space_ptr,
+            addr_space_ptr,
 
             _chr_bank: chr_bank,
-            chr_ptr: chr_ptr,
+            chr_ptr,
 
             _vram: vram,
-            vrm_ptr: vrm_ptr,
+            vrm_ptr,
 
-            nametable_alignment: nametable_alignment,
+            nametable_alignment,
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
             palette_ram: [0x0F; PALETTE_SIZE],
@@ -121,11 +117,11 @@ impl MemoryMapper for NROMMapper {
                 unsafe { *self.vrm_ptr.offset(addr as isize) }
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as isize) },
-            _ => panic!("Addr {:X} not mapped for ppu_read!", addr),
+            _ => panic!("Addr {addr:X} not mapped for ppu_read!"),
         }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         /*
         $0000-1FFF is normally mapped by the cartridge to a CHR-ROM or CHR-RAM, often with a bank switching mechanism.
         $2000-2FFF is normally mapped to the 2kB NES internal VRAM, providing 2 nametables with a mirroring configuration controlled by the cartridge, but it can be partly or fully remapped to RAM on the cartridge, allowing up to 4 simultaneous nametables.
@@ -144,7 +140,7 @@ impl MemoryMapper for NROMMapper {
                 std::ptr::copy(self.vrm_ptr.offset((addr % VRAM_SIZE) as isize), dest, size)
             },
 
-            _ => panic!("Addr not mapped for ppu_read: {:X}", addr),
+            _ => panic!("Addr not mapped for ppu_read: {addr:X}"),
         }
     }
 
@@ -167,12 +163,12 @@ impl MemoryMapper for NROMMapper {
             }
             0x30 => unsafe { *self.vrm_ptr.offset((addr % VRAM_SIZE) as isize) = value },
 
-            _ => panic!("Addr not mapped for ppu_write: {:X}", addr),
+            _ => panic!("Addr not mapped for ppu_write: {addr:X}"),
         }
     }
 
     fn code_start(&mut self) -> u16 {
-        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
+        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8)
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 

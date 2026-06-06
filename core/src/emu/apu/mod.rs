@@ -161,6 +161,12 @@ pub struct APU {
     expansion_audio: f32,
 }
 
+impl Default for APU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl APU {
     pub fn new() -> Self {
         Self::new_with_region(&crate::emu::region::Region::Ntsc.config())
@@ -579,7 +585,7 @@ mod tests {
         fn ppu_read(&self, _addr: u16) -> u8 {
             0
         }
-        fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
+        unsafe fn ppu_copy(&self, _addr: u16, _dest: *mut u8, _size: usize) {}
         fn ppu_write(&mut self, _addr: u16, _value: u8) {}
         fn code_start(&mut self) -> u16 {
             0
@@ -633,7 +639,7 @@ mod tests {
 
         // Should produce some output
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -654,7 +660,7 @@ mod tests {
 
         // Should produce some output
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -676,7 +682,7 @@ mod tests {
 
         // Should produce some output
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -698,7 +704,7 @@ mod tests {
 
         // Should produce some output
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -721,7 +727,7 @@ mod tests {
 
         // Should produce some output
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -863,7 +869,7 @@ mod tests {
 
         // Get samples
         let samples = apu.get_audio_samples();
-        assert!(samples.len() > 0);
+        assert!(!samples.is_empty());
         assert_eq!(apu.sample_index, 0); // Should reset after getting samples
     }
 
@@ -958,7 +964,7 @@ mod tests {
         emu.toggle_verbose_mode(false);
         emu.run();
 
-        let expected = format!("\n{}\n\nPassed\n", test_name);
+        let expected = format!("\n{test_name}\n\nPassed\n");
         let buf = get_status_str(&mut emu, 0x6004, 200);
         let status = emu.mem.cpu_read(0x6000);
         assert_eq!(0, status, "test status 0x{:02X}: {}", status, buf.trim());
@@ -1037,7 +1043,7 @@ mod tests {
         emu.run();
 
         let result = emu.mem.cpu_read(0x00F0);
-        assert_eq!(1, result, "{} failed with result code {}", rom_path, result);
+        assert_eq!(1, result, "{rom_path} failed with result code {result}");
     }
 
     #[test]
@@ -1192,7 +1198,7 @@ mod tests {
         emu.run();
 
         let status = emu.mem.cpu_read(0x6000);
-        assert_eq!(0, status, "test status 0x{:02X}", status);
+        assert_eq!(0, status, "test status 0x{status:02X}");
     }
 
     // --- PAL APU tests (ignored until PAL support is added) ---
@@ -1313,21 +1319,17 @@ mod tests {
         use crate::emu::io::loader;
 
         if !std::path::Path::new(rom_path).exists() {
-            eprintln!("SKIP {}: ROM not found at {}", test_name, rom_path);
+            eprintln!("SKIP {test_name}: ROM not found at {rom_path}");
             return;
         }
         if !std::path::Path::new(reference_mp3).exists() {
-            eprintln!(
-                "SKIP {}: reference not found at {}",
-                test_name, reference_mp3
-            );
+            eprintln!("SKIP {test_name}: reference not found at {reference_mp3}");
             return;
         }
         let venv_python = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/.venv/bin/python3");
         if !std::path::Path::new(venv_python).exists() {
             eprintln!(
-                "SKIP {}: python venv not found. Run: cd scripts && uv venv && uv pip install -r requirements.txt",
-                test_name
+                "SKIP {test_name}: python venv not found. Run: cd scripts && uv venv && uv pip install -r requirements.txt"
             );
             return;
         }
@@ -1344,7 +1346,7 @@ mod tests {
         emu.run_for_cycles(run_seconds * CPU_CYCLES_PER_SECOND);
 
         let samples = emu.drain_captured_audio();
-        let wav_path = format!("/tmp/krankulator_mixer_{}.wav", test_name);
+        let wav_path = format!("/tmp/krankulator_mixer_{test_name}.wav");
         let report_dir = "/tmp/krankulator_reports";
         std::fs::create_dir_all(report_dir).unwrap();
 
@@ -1376,15 +1378,15 @@ mod tests {
 
         for line in stderr.lines() {
             if line.starts_with("IMAGE:") {
-                eprintln!("{}", line);
+                eprintln!("{line}");
             }
         }
 
-        eprintln!("\n=== {} ===", test_name);
-        eprintln!("{}", stdout);
+        eprintln!("\n=== {test_name} ===");
+        eprintln!("{stdout}");
 
         if !output.status.success() {
-            eprintln!("stderr: {}", stderr);
+            eprintln!("stderr: {stderr}");
         }
 
         assert!(

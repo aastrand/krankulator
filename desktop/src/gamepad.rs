@@ -13,6 +13,7 @@ pub struct GamepadState {
     pub rewind: bool,
 }
 
+#[derive(Default)]
 struct RawState {
     a: bool,
     b: bool,
@@ -26,25 +27,6 @@ struct RawState {
     right_shoulder: bool,
     left_trigger: bool,
     right_trigger: bool,
-}
-
-impl Default for RawState {
-    fn default() -> Self {
-        Self {
-            a: false,
-            b: false,
-            start: false,
-            select: false,
-            up: false,
-            down: false,
-            left: false,
-            right: false,
-            left_shoulder: false,
-            right_shoulder: false,
-            left_trigger: false,
-            right_trigger: false,
-        }
-    }
 }
 
 pub struct GamepadPollResult {
@@ -136,7 +118,7 @@ mod platform {
                 };
 
                 let vendor = unsafe { controller.vendorName() }.map(|n| n.to_string());
-                let is_joycon_pair = vendor.as_deref().map_or(false, |n| n.contains("Joy-Con"));
+                let is_joycon_pair = vendor.as_deref().is_some_and(|n| n.contains("Joy-Con"));
 
                 if is_joycon_pair && slot == 0 {
                     names[0] = vendor.clone();
@@ -179,7 +161,7 @@ mod platform {
                             right: ly < -0.5,
                             a: dpad.down().isPressed(),
                             b: dpad.left().isPressed(),
-                            start: gamepad.buttonOptions().map_or(false, |b| b.isPressed()),
+                            start: gamepad.buttonOptions().is_some_and(|b| b.isPressed()),
                             select: l_sh || l_tr,
                             left_shoulder: false,
                             right_shoulder: false,
@@ -198,7 +180,7 @@ mod platform {
                             a: gamepad.buttonB().isPressed(),
                             b: gamepad.buttonA().isPressed(),
                             start: gamepad.buttonMenu().isPressed(),
-                            select: gamepad.buttonOptions().map_or(false, |b| b.isPressed()),
+                            select: gamepad.buttonOptions().is_some_and(|b| b.isPressed()),
                             up: dpad.up().isPressed() || ly > 0.5,
                             down: dpad.down().isPressed() || ly < -0.5,
                             left: dpad.left().isPressed() || lx < -0.5,

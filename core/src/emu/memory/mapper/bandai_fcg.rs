@@ -402,7 +402,7 @@ impl MemoryMapper for BandaiFcgMapper {
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         let addr = addr % MAX_VRAM_ADDR;
         match addr_to_page(addr) {
             0x00 | 0x10 => {

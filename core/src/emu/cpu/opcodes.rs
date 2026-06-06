@@ -275,6 +275,12 @@ static _SENTINEL: Opcode = Opcode {
     page_boundary_penalty: false,
 };
 
+impl Default for Lookup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Lookup {
     pub fn new() -> Lookup {
         let mut lookup: [&'static Opcode; 256] = [&_SENTINEL; 256];

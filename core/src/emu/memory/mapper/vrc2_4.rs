@@ -366,7 +366,7 @@ impl MemoryMapper for Vrc2_4Mapper {
         }
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         match addr {
             0x0000..=0x1FFF => {
                 let slot = (addr >> 10) as usize & 7;

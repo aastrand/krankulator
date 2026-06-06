@@ -58,7 +58,7 @@ impl IOHandler for HeadlessIOHandler {
     }
 
     fn log(&self, logline: String) {
-        println!("{}", logline);
+        println!("{logline}");
     }
 
     fn poll(&mut self, _mem: &mut dyn memory::MemoryMapper, _apu: &mut apu::APU) -> PollResult {

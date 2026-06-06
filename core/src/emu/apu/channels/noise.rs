@@ -44,6 +44,12 @@ const PAL_NOISE_PERIODS: [u16; 16] = [
     4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708, 944, 1890, 3778,
 ];
 
+impl Default for NoiseChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NoiseChannel {
     pub fn new() -> Self {
         Self::new_with_region(&crate::emu::region::Region::Ntsc.config())

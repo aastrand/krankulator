@@ -7,6 +7,12 @@ pub struct SavestateWriter {
     buf: Vec<u8>,
 }
 
+impl Default for SavestateWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SavestateWriter {
     pub fn new() -> Self {
         let mut w = Self {
@@ -76,19 +82,13 @@ impl<'a> SavestateReader<'a> {
         if version < 3 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "savestate version {} is too old (minimum supported: 3)",
-                    version
-                ),
+                format!("savestate version {version} is too old (minimum supported: 3)"),
             ));
         }
         if version > VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "savestate version {} is newer than supported {}",
-                    version, VERSION
-                ),
+                format!("savestate version {version} is newer than supported {VERSION}"),
             ));
         }
         Ok(Self {
@@ -215,8 +215,8 @@ mod tests {
         assert_eq!(r.read_i8().unwrap(), -5);
         assert!((r.read_f32().unwrap() - 3.14).abs() < 1e-6);
         assert!((r.read_f64().unwrap() - 2.718281828).abs() < 1e-9);
-        assert_eq!(r.read_bool().unwrap(), true);
-        assert_eq!(r.read_bool().unwrap(), false);
+        assert!(r.read_bool().unwrap());
+        assert!(!r.read_bool().unwrap());
         let mut buf = [0u8; 4];
         r.read_bytes_into(&mut buf).unwrap();
         assert_eq!(buf, [1, 2, 3, 4]);

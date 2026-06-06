@@ -188,7 +188,7 @@ impl MemoryMapper for Action53Mapper {
         self.ppu.read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         let addr = addr % super::MAX_VRAM_ADDR;
         if addr < 0x2000 {
             let idx = self.chr_offset(addr);
@@ -215,7 +215,7 @@ impl MemoryMapper for Action53Mapper {
     }
 
     fn code_start(&mut self) -> u16 {
-        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8) as u16
+        ((self.cpu_read(super::RESET_TARGET_ADDR + 1) as u16) << 8)
             + self.cpu_read(super::RESET_TARGET_ADDR) as u16
     }
 

@@ -37,8 +37,8 @@ fn set_status(msg: &str) {
 
 thread_local! {
     static KEYS: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
-    static GENERATION: Cell<u32> = Cell::new(0);
-    static AUDIO_CTX: RefCell<Option<AudioContext>> = RefCell::new(None);
+    static GENERATION: Cell<u32> = const { Cell::new(0) };
+    static AUDIO_CTX: RefCell<Option<AudioContext>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen(start)]
@@ -108,7 +108,7 @@ fn setup_lucky_button() {
         wasm_bindgen_futures::spawn_local(async {
             match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
                 Ok(data) => start_emulator(data, None),
-                Err(e) => set_status(&format!("Failed to fetch: {}", e)),
+                Err(e) => set_status(&format!("Failed to fetch: {e}")),
             }
         });
     }) as Box<dyn FnMut(_)>);
@@ -163,7 +163,7 @@ fn setup_touch_lucky_button() {
         wasm_bindgen_futures::spawn_local(async {
             match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
                 Ok(data) => start_emulator(data, None),
-                Err(e) => set_status(&format!("Failed to fetch: {}", e)),
+                Err(e) => set_status(&format!("Failed to fetch: {e}")),
             }
         });
     }) as Box<dyn FnMut(_)>);
@@ -175,7 +175,7 @@ fn setup_touch_lucky_button() {
 async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     let resp_value = wasm_bindgen_futures::JsFuture::from(window().fetch_with_str(url))
         .await
-        .map_err(|e| format!("{:?}", e))?;
+        .map_err(|e| format!("{e:?}"))?;
 
     let resp: web_sys::Response = resp_value.dyn_into().map_err(|_| "not a Response")?;
     if !resp.ok() {
@@ -185,7 +185,7 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     let buf =
         wasm_bindgen_futures::JsFuture::from(resp.array_buffer().map_err(|_| "no array_buffer")?)
             .await
-            .map_err(|e| format!("{:?}", e))?;
+            .map_err(|e| format!("{e:?}"))?;
 
     let uint8 = js_sys::Uint8Array::new(&buf);
     let mut data = vec![0u8; uint8.length() as usize];
@@ -209,7 +209,7 @@ fn start_emulator(rom_data: Vec<u8>, filename: Option<String>) {
     let mapper = match loader::load_nes_from_bytes_with_sram(&rom_data, sram) {
         Ok(m) => m,
         Err(e) => {
-            set_status(&format!("Failed to load ROM: {}", e));
+            set_status(&format!("Failed to load ROM: {e}"));
             return;
         }
     };
@@ -240,7 +240,7 @@ fn start_emulator(rom_data: Vec<u8>, filename: Option<String>) {
     emu.set_overscan(!is_pal);
 
     if let Err(msg) = emu.init() {
-        set_status(&format!("Init failed: {}", msg));
+        set_status(&format!("Init failed: {msg}"));
         return;
     }
 
@@ -277,6 +277,7 @@ fn run_loop(
     has_battery: bool,
     frame_duration_ms: f64,
 ) {
+    #[allow(clippy::type_complexity)]
     let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
     let g = f.clone();
 
@@ -350,16 +351,16 @@ fn run_loop(
             if let Some(data) = load_state_from_storage(&rom_hash, savestate_slot) {
                 match emu.load_state_from_bytes(&data) {
                     Ok(()) => emu.overlay.toast("STATE LOADED".into()),
-                    Err(e) => emu.overlay.toast(format!("LOAD FAILED: {}", e)),
+                    Err(e) => emu.overlay.toast(format!("LOAD FAILED: {e}")),
                 }
             } else {
                 emu.overlay
-                    .toast(format!("NO SAVE IN SLOT {}", savestate_slot));
+                    .toast(format!("NO SAVE IN SLOT {savestate_slot}"));
             }
         }
         if cycle_held && !prev_cycle {
             savestate_slot = (savestate_slot + 1) % 4;
-            emu.overlay.toast(format!("SLOT {}", savestate_slot));
+            emu.overlay.toast(format!("SLOT {savestate_slot}"));
         }
         if tab_held && !prev_tab {
             emu.overlay.toggle();

@@ -339,7 +339,7 @@ impl MemoryMapper for SimpleMapper {
         self.ppu.read(addr)
     }
 
-    fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
+    unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         if !self.chr_enabled && addr < 0x2000 {
             unsafe { std::ptr::write_bytes(dest, 0xFF, size) }
             return;
