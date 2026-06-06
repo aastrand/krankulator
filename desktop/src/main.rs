@@ -88,9 +88,37 @@ struct Args {
     #[clap(long)]
     wav_out: Option<String>,
 
+    /// Region: auto, ntsc, pal
+    #[clap(long, default_value = "auto")]
+    region: String,
+
     /// Input file to use
     #[clap()]
     input: Option<String>,
+}
+
+fn resolve_region(cli: &str) -> emu::Region {
+    match cli {
+        "pal" => emu::Region::Pal,
+        _ => emu::Region::Ntsc,
+    }
+}
+
+fn detect_region_from_file(path: &str) -> emu::Region {
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str());
+    if path.to_lowercase().ends_with(".zip") {
+        match extract_nes_from_zip(path) {
+            Ok(bytes) => loader::detect_region_with_filename(&bytes, filename),
+            Err(_) => emu::Region::Ntsc,
+        }
+    } else {
+        match std::fs::read(path) {
+            Ok(bytes) => loader::detect_region_with_filename(&bytes, filename),
+            Err(_) => emu::Region::Ntsc,
+        }
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -115,6 +143,12 @@ fn main() -> Result<(), String> {
             }
             "nes" => match load_rom_file(input) {
                 Ok(mapper) => {
+                    let region = if args.region == "auto" {
+                        detect_region_from_file(input)
+                    } else {
+                        resolve_region(&args.region)
+                    };
+                    println!("Region: {}", region);
                     let mut emu: emu::Emulator = if args.wav_out.is_some() {
                         emu::Emulator::new_capturing(mapper)
                     } else if !args.headless {
@@ -128,7 +162,7 @@ fn main() -> Result<(), String> {
                             .unwrap_or(input);
                         let io =
                             Box::new(io::PlatformIOHandler::new(256, 240, rom_name, &settings));
-                        emu::Emulator::new_with(io, mapper, audio)
+                        emu::Emulator::new_with_region(io, mapper, audio, region)
                     } else {
                         emu::Emulator::new_headless(mapper)
                     };
@@ -197,7 +231,13 @@ fn main() -> Result<(), String> {
         match emu.take_pending_open_rom() {
             Some(path) => match load_rom_file(&path) {
                 Ok(mapper) => {
-                    emu.load_rom(mapper, &path);
+                    let region = if args.region == "auto" {
+                        detect_region_from_file(&path)
+                    } else {
+                        resolve_region(&args.region)
+                    };
+                    println!("Region: {}", region);
+                    emu.load_rom_with_region(mapper, &path, region);
                     io::add_recent_rom(&path);
                 }
                 Err(msg) => {

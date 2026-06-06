@@ -18,7 +18,7 @@ use krankulator_core::emu::memory;
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
-    populate_recent_submenu, MenuIds, MenuItems,
+    populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
 };
 use crate::gamepad::Gamepads;
 use crate::settings;
@@ -114,6 +114,7 @@ pub struct GtkPixelsIOHandler {
     muted: Rc<Cell<bool>>,
     last_frame_time: Instant,
     last_frame_ms: f64,
+    frame_duration: Duration,
     kb_state: Rc<Cell<u8>>,
     fast_forward: Rc<Cell<bool>>,
     pixel_perfect: Rc<Cell<bool>>,
@@ -300,6 +301,7 @@ impl GtkPixelsIOHandler {
             muted,
             last_frame_time: Instant::now(),
             last_frame_ms: 0.0,
+            frame_duration: NTSC_FRAME_DURATION,
             kb_state,
             fast_forward,
             pixel_perfect,
@@ -816,8 +818,23 @@ impl IOHandler for GtkPixelsIOHandler {
         Some(self.last_frame_ms)
     }
 
+    fn set_frame_duration_nanos(&mut self, nanos: u64) {
+        self.frame_duration = Duration::from_nanos(nanos);
+    }
+
+    fn set_overscan_available(&mut self, available: bool) {
+        self.menu_items.overscan.set_enabled(available);
+        if !available {
+            self.overscan.set(false);
+        }
+    }
+
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        self.last_frame_ms = frame_pace(&mut self.last_frame_time, self.fast_forward.get());
+        self.last_frame_ms = frame_pace(
+            &mut self.last_frame_time,
+            self.fast_forward.get(),
+            self.frame_duration,
+        );
 
         {
             let mut rgba = self.rgba_buf.borrow_mut();
