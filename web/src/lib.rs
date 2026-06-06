@@ -80,12 +80,13 @@ fn setup_file_input() {
         let reader = web_sys::FileReader::new().unwrap();
         let reader_clone = reader.clone();
 
+        let file_name = file.name();
         let onload = Closure::wrap(Box::new(move |_: web_sys::Event| {
             let array_buffer = reader_clone.result().unwrap();
             let uint8_array = js_sys::Uint8Array::new(&array_buffer);
             let mut rom_data = vec![0u8; uint8_array.length() as usize];
             uint8_array.copy_to(&mut rom_data);
-            start_emulator(rom_data);
+            start_emulator(rom_data, Some(file_name.clone()));
         }) as Box<dyn FnMut(_)>);
 
         reader.set_onload(Some(onload.as_ref().unchecked_ref()));
@@ -106,7 +107,7 @@ fn setup_lucky_button() {
         set_status("Fetching ROM...");
         wasm_bindgen_futures::spawn_local(async {
             match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
-                Ok(data) => start_emulator(data),
+                Ok(data) => start_emulator(data, None),
                 Err(e) => set_status(&format!("Failed to fetch: {}", e)),
             }
         });
@@ -161,7 +162,7 @@ fn setup_touch_lucky_button() {
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
         wasm_bindgen_futures::spawn_local(async {
             match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
-                Ok(data) => start_emulator(data),
+                Ok(data) => start_emulator(data, None),
                 Err(e) => set_status(&format!("Failed to fetch: {}", e)),
             }
         });
@@ -192,8 +193,10 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     Ok(data)
 }
 
-fn start_emulator(rom_data: Vec<u8>) {
+fn start_emulator(rom_data: Vec<u8>, filename: Option<String>) {
     GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
+
+    let region = loader::detect_region_with_filename(&rom_data, filename.as_deref());
 
     let rom_hash = hash_rom(&rom_data);
     let has_battery = loader::rom_has_battery(&rom_data);
@@ -227,13 +230,14 @@ fn start_emulator(rom_data: Vec<u8>) {
         worklet_level.clone(),
     ));
 
-    let mut emu = emu::Emulator::new_with(io_handler, mapper, audio_backend);
+    let is_pal = region == emu::Region::Pal;
+    let mut emu = emu::Emulator::new_with_region(io_handler, mapper, audio_backend, region);
     emu.cpu.status = 0x34;
     emu.cpu.sp = 0xfd;
     emu.toggle_should_trigger_nmi(true);
     emu.toggle_should_exit_on_infinite_loop(false);
     emu.toggle_quiet_mode(true);
-    emu.set_overscan(true);
+    emu.set_overscan(!is_pal);
 
     if let Err(msg) = emu.init() {
         set_status(&format!("Init failed: {}", msg));
@@ -253,11 +257,17 @@ fn start_emulator(rom_data: Vec<u8>) {
     setup_beforeunload_sram(rom_hash, has_battery, gen);
     wasm_bindgen_futures::spawn_local(async move {
         audio::connect_audio_worklet(audio_ctx, audio_port, worklet_level).await;
-        run_loop(emu, gen, keys, rom_hash_clone, has_battery);
+        let frame_duration_ms = region.config().frame_duration_nanos as f64 / 1_000_000.0;
+        run_loop(
+            emu,
+            gen,
+            keys,
+            rom_hash_clone,
+            has_battery,
+            frame_duration_ms,
+        );
     });
 }
-
-const FRAME_DURATION_MS: f64 = 1000.0 / 60.0988;
 
 fn run_loop(
     mut emu: emu::Emulator,
@@ -265,6 +275,7 @@ fn run_loop(
     keys: Rc<RefCell<HashSet<String>>>,
     rom_hash: String,
     has_battery: bool,
+    frame_duration_ms: f64,
 ) {
     let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
     let g = f.clone();
@@ -300,7 +311,7 @@ fn run_loop(
         let max_frames = if fast_forward { 20 } else { 2 };
 
         let mut frames_run = 0;
-        while time_accumulator >= FRAME_DURATION_MS && frames_run < max_frames {
+        while time_accumulator >= frame_duration_ms && frames_run < max_frames {
             let emu_start = perf.now();
             if !emu.run_one_frame() {
                 set_status("Emulator stopped");
@@ -308,11 +319,11 @@ fn run_loop(
             }
             let emu_ms = perf.now() - emu_start;
             emu.overlay.set_frame_time(emu_ms);
-            time_accumulator -= FRAME_DURATION_MS;
+            time_accumulator -= frame_duration_ms;
             frames_run += 1;
         }
 
-        if time_accumulator > FRAME_DURATION_MS * 3.0 {
+        if time_accumulator > frame_duration_ms * 3.0 {
             time_accumulator = 0.0;
         }
 

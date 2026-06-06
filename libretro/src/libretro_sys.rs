@@ -3,6 +3,7 @@ use std::os::raw::{c_char, c_uint, c_void};
 pub const RETRO_API_VERSION: c_uint = 1;
 
 pub const RETRO_REGION_NTSC: c_uint = 0;
+pub const RETRO_REGION_PAL: c_uint = 1;
 
 pub const RETRO_MEMORY_SAVE_RAM: c_uint = 0;
 
