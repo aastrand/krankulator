@@ -7,6 +7,7 @@ pub mod mmc2;
 pub mod mmc3;
 pub mod mmc5;
 pub mod namco108;
+pub mod namco175_340;
 pub mod nes_event;
 pub mod nrom;
 pub mod simple;
