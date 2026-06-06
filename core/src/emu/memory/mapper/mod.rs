@@ -11,6 +11,7 @@ pub mod nrom;
 pub mod sunsoft4;
 pub mod sunsoft_fme7;
 pub mod uxrom;
+pub mod vrc2_4;
 
 pub const RESET_TARGET_ADDR: u16 = 0xfffc;
 pub const NAMETABLE_ALIGNMENT_BIT: u8 = 0b0000_0001;

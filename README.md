@@ -16,8 +16,8 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119) — 695/695 licensed NTSC US games (100%)
-- **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5 cartridges
+- **Mappers** — 19 mappers covering 100% of licensed NTSC US games plus Famicom exclusives (see [Mapper support](#mapper-support) below)
+- **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
@@ -27,6 +27,32 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
 - **NTSC and PAL region support** — auto-detected from iNES header and filename, with `--region` CLI override. Master clock sub-dot accumulator handles PAL's non-integer 3.2:1 PPU:CPU ratio
 - **Headless mode** for testing and CI
+
+### Mapper support
+
+| Mapper | Name | Board | Games |
+|--------|------|-------|-------|
+| 0 | NROM | Nintendo | Fixed PRG/CHR, no banking |
+| 1 | MMC1 | Nintendo | PRG/CHR banking, SRAM |
+| 2 | UxROM | Nintendo | Switchable 16KB PRG |
+| 3 | CNROM | Nintendo | Switchable 8KB CHR |
+| 4 | MMC3 | Nintendo | Scanline IRQ, fine-grained banking |
+| 5 | MMC5 | Nintendo | Most complex NES mapper, expansion audio |
+| 7 | AxROM | Nintendo | 32KB PRG banking, single-screen mirroring |
+| 9 | MMC2 | Nintendo | CHR latch switching (Punch-Out!!) |
+| 21 | VRC4a/VRC4c | Konami | 8KB PRG + 1KB CHR banking, IRQ |
+| 22 | VRC2a | Konami | Half-resolution CHR banking |
+| 23 | VRC2b/VRC4e/VRC4f | Konami | Crisis Force, Tiny Toon (JP) |
+| 25 | VRC2c/VRC4b/VRC4d | Konami | Gradius II, Bio Miracle Upa |
+| 34 | BNROM | Nintendo | 32KB PRG banking, bus conflicts |
+| 66 | GxROM | Nintendo | Combined PRG/CHR select, bus conflicts |
+| 68 | Sunsoft 4 | Sunsoft | CHR-mapped nametables |
+| 69 | Sunsoft FME-7 | Sunsoft | CPU-cycle IRQ, versatile banking |
+| 105 | NES-EVENT | Nintendo | MMC1 variant (World Championships 1990) |
+| 118 | TxSROM | Nintendo | MMC3 variant, per-bank mirroring |
+| 119 | TQROM | Nintendo | MMC3 variant, mixed CHR ROM/RAM |
+
+**Coverage:** 695/695 licensed NTSC US games (100%), plus ~20 Famicom exclusives via VRC2/VRC4.
 
 ## Architecture
 
@@ -46,6 +72,7 @@ graph TD
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
+    Mem --> VRC["VRC2/VRC4<br/>Konami, 9 variants"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
     Mem --> Simple["Simple mappers<br/>UxROM, CNROM, AxROM,<br/>BNROM, GxROM"]
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
@@ -74,7 +101,9 @@ the PPU three dots (3:1 in NTSC, 3.2:1 in PAL via a sub-dot accumulator), then c
 are trait objects — each cartridge type implements its own bank switching, mirroring, and
 IRQ logic (e.g. MMC3 scanline counter, MMC5 PPU-fetch-based detection, FME-7 CPU-cycle IRQ). MMC3
 variants TxSROM (118) and TQROM (119) reuse the MMC3 engine with per-bank mirroring and
-mixed CHR-ROM/RAM respectively. Sunsoft 4 can map CHR ROM into nametable space. Simple
+mixed CHR-ROM/RAM respectively. The VRC2/VRC4 family (mappers 21/22/23/25) uses a unified
+implementation with address-line remapping to handle 9 Konami chip variants; VRC4 adds
+scanline/cycle IRQ and PRG swap mode. Sunsoft 4 can map CHR ROM into nametable space. Simple
 discrete-logic mappers (UxROM, CNROM, AxROM, BNROM, GxROM) share PPU bus logic via
 `PpuBus`; BNROM and GxROM emulate AND-type bus conflicts. MMC5 adds expansion audio
 (two pulse channels) mixed into the APU's nonlinear mixer.

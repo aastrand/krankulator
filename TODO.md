@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119)**
-Coverage: 695/695 licensed NTSC US games (100%)
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), VRC2/VRC4 (21/22/23/25), BNROM (34), Sunsoft 4 (68), Sunsoft FME-7 (69), GxROM (66), NES-EVENT (105), TxSROM (118), TQROM (119)**
+Coverage: 695/695 licensed NTSC US games (100%), ~20 Famicom exclusives (VRC2/VRC4)
 
 ### Completed: Priority 1 quick wins
 
@@ -49,19 +49,139 @@ Coverage: 695/695 licensed NTSC US games (100%)
 - Games (1): Nintendo World Championships 1990 (extremely rare)
 - MMC1 variant with repurposed CHR registers, 30-bit CPU-cycle IRQ timer, init state machine.
 
-### Priority 5: Unlicensed (optional, ~95 more games)
+### Completed: Priority 5 — Famicom Konami VRC
+
+**Mappers 21/22/23/25 — VRC2+VRC4 (Konami)** [done]
+- One unified implementation with 9 address-line remapping variants (VRC2a/b/c, VRC4a/b/c/d/e/f)
+- Games (~20): Crisis Force, Gradius II, Parodius Da!, Contra (JP), Bio Miracle Bokutte Upa, Ganbare Goemon 2/Gaiden/Gaiden 2, Wai Wai World 1&2, Boku Dracula-kun, TwinBee 3, Tiny Toon (JP)
+- VRC2: PRG/CHR banking, VRC2a half-resolution CHR. VRC4 adds scanline/cycle IRQ + PRG swap mode.
+
+### Priority 5 (remaining): Famicom — Konami VRC
+
+**Mappers 24/26 — VRC6 (Konami)** [M-L] — 3 games
+- Games: Akumajou Densetsu (Castlevania III JP — the definitive version), Madara, Esper Dream 2
+- VRC6 expansion audio: 2 pulse + 1 sawtooth channels. Address swap between 24 and 26.
+
+**Mapper 75 — VRC1 (Konami)** [S] — 6 games
+- Games: Ganbare Goemon! Karakuri Douchuu (first Goemon), King Kong 2, Tetsuwan Atom (Astro Boy)
+- Simple: 8KB PRG + 4KB CHR banking, no IRQ, no expansion audio.
+
+**Mapper 73 — VRC3 (Konami)** [S] — 1 game
+- Games: Salamander (Life Force JP)
+- PRG banking + IRQ counter, CHR-RAM only. Very simple.
+
+**Mapper 85 — VRC7 (Konami)** [L] — 2 games
+- Games: Lagrange Point (acclaimed sci-fi RPG with OPLL FM synthesis), Tiny Toon 2 JP
+- VRC4-style banking + IRQ + 6-channel FM synthesis (YM2413 subset). FM synth is the hard part.
+
+### Priority 6: Famicom — Namco/Bandai/Taito/Irem
+
+**Mapper 206 — DxROM / Namco 108** [S] — ~42 games
+- Simplified MMC3 subset (no IRQ, no PRG-RAM, fixed CHR layout)
+- Games: Mappy-Land, Karnov, Sky Kid, Super Xevious, Dragon Slayer IV, Quest of Ki, Wagyan Land, Dragon Buster II, Valkyrie no Bouken, R.B.I. Baseball 1-3, Gauntlet, Fantasy Zone, Indiana Jones
+
+**Mapper 210 — Namco 175/340** [S-M] — 12 games
+- Games: Splatterhouse: Wanpaku Graffiti, Dream Master, Wagyan Land 2&3, Famista '91-'94
+- Banking only (no IRQ, no expansion audio). Two sub-variants: 175 (hardwired mirroring), 340 (mapper-controlled).
+
+**Mapper 19 — Namco 163** [L] — ~19 games
+- Games: Megami Tensei II, Rolling Thunder (JP), Sangokushi I&II, Final Lap
+- Complex: 8-channel wavetable expansion audio, IRQ counter, fine-grained CHR banking.
+
+**Mapper 33 — Taito TC0190** [S] — 9 games
+- Games: Don Doko Don, Akira, Power Blazer (JP Power Blade)
+- Simple PRG/CHR banking, no IRQ.
+
+**Mapper 48 — Taito TC0190+PAL16R4** [S-M] — 2 games
+- Games: Don Doko Don 2, Bakushou Jinsei Gekijou 3
+- Mapper 33 + IRQ counter. Implement together with 33.
+
+**Mapper 80 — Taito X1-005** [S-M] — 7 games
+- Games: Minelvaton Saga, Mirai Shinwa Jarvas
+- 8KB PRG / 1KB CHR banking, 128-byte on-die RAM.
+
+**Mapper 16/159 — Bandai FCG** [M-L] — ~19 games
+- Games: Dragon Ball Z: Kyoushuu! Saiyajin, Dragon Ball: Dai Maou Fukkatsu, Famicom Jump I&II
+- Serial EEPROM save (24C01/24C02), IRQ counter, PRG/CHR banking.
+
+**Mapper 65 — Irem H-3001** [S-M] — 3 games
+- Games: Spartan X 2 (Kung-Fu Master sequel), Kaiketsu Yanchamaru 3, Daiku no Gen-san 2
+- PRG/CHR banking + IRQ counter.
+
+**Mapper 78 — Irem 74161/32** [XS] — 2 games
+- Games: Holy Diver (cult classic Castlevania-like)
+- Two 74-series chips, PRG/CHR select + mirroring. Extremely simple.
+
+**Mapper 18 — Jaleco SS8806** [M] — 15 games
+- Games: Pizza Pop!, Saiyuuki World 2, Ninja Jajamaru: Ginga Daisakusen
+- IRQ counter, fine-grained banking. Mostly sports/niche JP titles.
+
+### Priority 7: Famicom — Quick wins (trivial mappers)
+
+**Mapper 87 — Jaleco/Konami** [XS] — 10 games
+- Games: TwinBee (original), The Goonies (JP), City Connection, Choplifter
+- CHR banking only (2-bit swapped latch). Trivial.
+
+**Mapper 67 — Sunsoft 3** [S] — 2 games
+- Games: Fantasy Zone II, Mito Koumon II
+- IRQ counter + CHR banking.
+
+**Mapper 88 — Namcot 3433** [XS] — 3 games
+- Games: Dragon Spirit, Quinty (Mendel Palace JP)
+- Subset of mapper 206/Namco 108.
+
+**Mapper 152 — Bandai discrete** [XS] — 3 games
+- Games: Arkanoid II, Ge Ge Ge no Kitarou 2, Saint Seiya
+- Single-screen mirroring + CHR banking.
+
+**Mapper 140 — Jaleco JF-11** [XS] — ~5 games
+- Games: Ninja-kun, Mississippi Satsujin Jiken
+- 32KB PRG + 8KB CHR via single register. Trivial.
+
+**Mapper 180 — Nihon Bussan** [XS] — 1 game
+- Games: Crazy Climber (arcade port)
+- UxROM variant with fixed first bank. One register.
+
+**Mapper 185 — CNROM+protection** [XS] — ~5 games
+- Games: Bird Week, B-Wings, Spy vs Spy (JP)
+- CNROM with copy protection diodes. Trivial with a quirk.
+
+**Mapper 184 — Sunsoft** [XS] — ~3 games
+- Games: Atlantis no Nazo, Wing of Madoola
+- 4KB CHR banking.
+
+### Priority 8: Unlicensed
 
 **Mapper 11 — Color Dreams** [XS] — ~31 games
-**Mapper 71 — Camerica/Codemasters** [XS] — ~20 games
-**Mapper 79 — NINA-03/NINA-06 (AVE)** [XS] — ~15 games
-**Mapper 64 — RAMBO-1 (Tengen)** [M] — ~5 games
+- Games: Bible Adventures, Spiritual Warfare, Captain Comic, Crystal Mines, Menace Beach
+- 32KB PRG + 8KB CHR via single register. Trivial.
+
+**Mapper 71 — Camerica/Codemasters** [XS-S] — ~21 games
+- Games: Micro Machines, Fantastic Adventures of Dizzy, The Ultimate Stuntman, Big Nose the Caveman
+- UxROM-like 16KB PRG banking. Fire Hawk variant adds single-screen mirroring.
+
+**Mapper 79 — NINA-03/NINA-06 (AVE)** [XS] — 16 games
+- Games: Tiles of Fate, Krazy Kreatures, Deathbots, F-15 City War
+- 32KB PRG + 8KB CHR banking. Trivial.
+
+**Mapper 64 — RAMBO-1 (Tengen)** [M] — 5 games
+- Games: Shinobi, Rolling Thunder, Klax, Skull & Crossbones
+- MMC3 clone with extra PRG mode + cycle-counting IRQ variant.
+
+**Mapper 228 — Action 52** [S] — 1 cart (52 mini-games)
+- Games: Action 52, Cheetahmen II. Historically notable novelty.
 
 ### Mapper coverage summary
 
-| Step | Mappers | New games | Cumulative |
-|------|---------|-----------|------------|
-| Done | 0,1,2,3,4,5,7,9,34,66,68,69,105,118,119 | 695 | 695/695 (100%) |
-| Priority 5 | 11, 71, 79, 64 | ~71 unlicensed | — |
+| Priority | Mappers | Category | New games | Highlight titles |
+|----------|---------|----------|-----------|------------------|
+| Done | 0,1,2,3,4,5,7,9,21,22,23,25,34,66,68,69,105,118,119 | Licensed NTSC + Famicom | 695 + ~20 | 100% US licensed + VRC2/VRC4 |
+| 5 | 21,22,23,24,25,26,73,75,85 | Famicom (Konami VRC) | ~32 | Crisis Force, Gradius II, Castlevania III JP, Salamander |
+| 6 | 16,18,19,33,48,65,78,80,159,206,210 | Famicom (other) | ~130 | Mappy-Land, Megami Tensei II, Holy Diver, Dragon Ball Z |
+| 7 | 67,87,88,140,152,180,184,185 | Famicom (trivial) | ~32 | TwinBee, Goonies JP, Dragon Spirit |
+| 8 | 11,64,71,79,228 | Unlicensed | ~125 | Micro Machines, Bible Adventures, Shinobi |
+
+PAL-exclusive licensed games need **zero** new mappers — all use mappers 0/1/2/4/7 already supported.
 
 ---
 

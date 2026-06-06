@@ -367,6 +367,15 @@ fn load_nes_from_bytes_inner(
             sram_data,
         )),
         105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
+        21 | 22 | 23 | 25 => Box::new(mapper::vrc2_4::Vrc2_4Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+            mapper_id as u8,
+            submapper,
+        )),
         _ => return Err(format!("Mapper {} not implemented", mapper_id)),
     };
 
