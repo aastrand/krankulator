@@ -1015,7 +1015,7 @@ mod tests {
         );
     }
 
-    // --- sprdma_and_dmc_dma ---
+    // --- sprdma_and_dmc_dma (fails — DMA cycle timing off by 1) ---
 
     #[test]
     #[ignore]
