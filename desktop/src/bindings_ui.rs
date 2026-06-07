@@ -12,6 +12,32 @@ const ITEMS_PER_PAGE: usize = 20;
 
 const BINDABLE_ACTIONS: &[Action] = Action::ALL;
 
+fn p2_to_p1(action: Action) -> Option<Action> {
+    match action {
+        Action::P2A => Some(Action::P1A),
+        Action::P2B => Some(Action::P1B),
+        Action::P2Start => Some(Action::P1Start),
+        Action::P2Select => Some(Action::P1Select),
+        Action::P2Up => Some(Action::P1Up),
+        Action::P2Down => Some(Action::P1Down),
+        Action::P2Left => Some(Action::P1Left),
+        Action::P2Right => Some(Action::P1Right),
+        _ => None,
+    }
+}
+
+fn effective_gamepad_binding(bindings: &InputBindings, action: Action) -> Option<String> {
+    if let Some(b) = bindings.gamepad_binding_for(action) {
+        return Some(b.display_name().to_string());
+    }
+    if let Some(p1) = p2_to_p1(action) {
+        if let Some(b) = bindings.gamepad_binding_for(p1) {
+            return Some(format!("{}(G2)", b.display_name()));
+        }
+    }
+    None
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum WaitKind {
     Keyboard,
@@ -272,10 +298,8 @@ impl BindingUi {
                         .keyboard_binding_for(action)
                         .map(|k| k.display_name().to_string())
                         .unwrap_or_else(|| "-".into());
-                    let gp = bindings
-                        .gamepad_binding_for(action)
-                        .map(|b| b.display_name().to_string())
-                        .unwrap_or_else(|| "-".into());
+                    let gp =
+                        effective_gamepad_binding(bindings, action).unwrap_or_else(|| "-".into());
 
                     let fg = if selected { YELLOW } else { WHITE };
                     let prefix = if selected { ">" } else { " " };
@@ -317,9 +341,8 @@ impl BindingUi {
                     .keyboard_binding_for(action)
                     .map(|k| format!("Key: {}", k.display_name()))
                     .unwrap_or_else(|| "Key: -".into());
-                let gp = bindings
-                    .gamepad_binding_for(action)
-                    .map(|b| format!("Btn: {}", b.display_name()))
+                let gp = effective_gamepad_binding(bindings, action)
+                    .map(|s| format!("Btn: {s}"))
                     .unwrap_or_else(|| "Btn: -".into());
                 draw_string(buf, 20, 100, &kb, GRAY, BLACK);
                 draw_string(buf, 20, 114, &gp, GRAY, BLACK);
