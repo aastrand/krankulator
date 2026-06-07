@@ -516,8 +516,7 @@ impl Emulator {
             let _ = self.load_state_from_bytes(&savestate);
         }
         let secs = self.rewind_buffer.len() as f64 / rewind::CAPTURES_PER_SECOND;
-        self.overlay
-            .set_rewind_status(Some(format!("<< REWIND {secs:.1}s")));
+        self.overlay.set_rewind_status(Some(format!("{secs:.1}s")));
         self.overlay.draw(&mut self.buf);
         if self.overscan && self.region.region != region::Region::Pal {
             self.buf.mask_overscan();
@@ -717,6 +716,7 @@ impl Emulator {
                 self.rewinding = true;
                 self.audio.clear();
             }
+            self.overlay.set_fast_forward(result.fast_forward);
             if result.toggle_overlay {
                 self.overlay.toggle();
             }

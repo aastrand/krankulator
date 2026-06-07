@@ -823,6 +823,7 @@ impl IOHandler for GtkPixelsIOHandler {
             reset,
             toggle_overlay,
             rewind: self.rewind_flag.get(),
+            fast_forward: self.fast_forward.get(),
             toasts,
             open_rom: open_rom_path,
             set_overscan: if self.overscan_changed.get() {

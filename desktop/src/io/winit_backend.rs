@@ -684,6 +684,7 @@ impl IOHandler for WinitPixelsIOHandler {
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
             rewind,
+            fast_forward: self.fast_forward,
             toasts: handler.toasts,
             open_rom,
             set_overscan: if handler.overscan_changed {

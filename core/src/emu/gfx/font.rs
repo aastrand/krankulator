@@ -238,6 +238,56 @@ fn draw_glyph(
     }
 }
 
+#[rustfmt::skip]
+const ARROW_LEFT: [u8; 8] = [
+    0x10, // ...X....
+    0x30, // ..XX....
+    0x70, // .XXX....
+    0xF0, // XXXX....
+    0x70, // .XXX....
+    0x30, // ..XX....
+    0x10, // ...X....
+    0x00,
+];
+
+#[rustfmt::skip]
+const ARROW_RIGHT: [u8; 8] = [
+    0x80, // X.......
+    0xC0, // XX......
+    0xE0, // XXX.....
+    0xF0, // XXXX....
+    0xE0, // XXX.....
+    0xC0, // XX......
+    0x80, // X.......
+    0x00,
+];
+
+pub enum ArrowDir {
+    Left,
+    Right,
+}
+
+pub fn draw_double_arrow(
+    buf: &mut super::buf::Buffer,
+    x: i32,
+    y: i32,
+    dir: ArrowDir,
+    fg: (u8, u8, u8),
+    outline: (u8, u8, u8),
+) -> i32 {
+    let glyph = match dir {
+        ArrowDir::Left => &ARROW_LEFT,
+        ArrowDir::Right => &ARROW_RIGHT,
+    };
+    for &(dx, dy) in &OUTLINE_OFFSETS {
+        draw_glyph(buf, x + dx, y + dy, glyph, outline);
+        draw_glyph(buf, x + 5 + dx, y + dy, glyph, outline);
+    }
+    draw_glyph(buf, x, y, glyph, fg);
+    draw_glyph(buf, x + 5, y, glyph, fg);
+    10
+}
+
 pub fn draw_string(
     buf: &mut super::buf::Buffer,
     x: i32,

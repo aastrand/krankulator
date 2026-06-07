@@ -11,13 +11,18 @@ struct Toast {
     frames_remaining: u32,
 }
 
+enum TransportStatus {
+    Rewind(String),
+    FastForward,
+}
+
 pub struct Overlay {
     enabled: bool,
     frame_time_text: String,
     frame_budget_ms: f64,
     toasts: Vec<Toast>,
     banner: Option<String>,
-    rewind_status: Option<String>,
+    transport: Option<TransportStatus>,
     overscan: u8,
 }
 
@@ -35,7 +40,7 @@ impl Overlay {
             frame_budget_ms: 16.64,
             toasts: Vec::new(),
             banner: None,
-            rewind_status: None,
+            transport: None,
             overscan: 0,
         }
     }
@@ -58,7 +63,15 @@ impl Overlay {
     }
 
     pub fn set_rewind_status(&mut self, text: Option<String>) {
-        self.rewind_status = text;
+        self.transport = text.map(TransportStatus::Rewind);
+    }
+
+    pub fn set_fast_forward(&mut self, active: bool) {
+        match (&self.transport, active) {
+            (Some(TransportStatus::Rewind(_)), _) => {}
+            (_, true) => self.transport = Some(TransportStatus::FastForward),
+            (_, false) => self.transport = None,
+        }
     }
 
     pub fn set_overscan(&mut self, lines: u8) {
@@ -95,10 +108,37 @@ impl Overlay {
         }
 
         let mut y = buf.height as i32 - 12 - os;
-        if let Some(ref text) = self.rewind_status {
-            let x = (buf.width as i32 - text.len() as i32 * 8) / 2;
-            font::draw_string(buf, x, y, text, FG, OUTLINE);
-            y -= TOAST_LINE_SPACING;
+        match &self.transport {
+            Some(TransportStatus::Rewind(time_text)) => {
+                let label = "REWIND ";
+                let arrow_w = 10;
+                let space_w = 4;
+                let time_w = time_text.len() as i32 * 8;
+                let total_w = label.len() as i32 * 8 + arrow_w + space_w + time_w;
+                let x = (buf.width as i32 - total_w) / 2;
+                font::draw_string(buf, x, y, label, FG, OUTLINE);
+                let ax = x + label.len() as i32 * 8;
+                font::draw_double_arrow(buf, ax, y, font::ArrowDir::Left, FG, OUTLINE);
+                font::draw_string(buf, ax + arrow_w + space_w, y, time_text, FG, OUTLINE);
+                y -= TOAST_LINE_SPACING;
+            }
+            Some(TransportStatus::FastForward) => {
+                let label = "FF ";
+                let arrow_w = 10;
+                let total_w = label.len() as i32 * 8 + arrow_w;
+                let x = (buf.width as i32 - total_w) / 2;
+                font::draw_string(buf, x, y, label, FG, OUTLINE);
+                font::draw_double_arrow(
+                    buf,
+                    x + label.len() as i32 * 8,
+                    y,
+                    font::ArrowDir::Right,
+                    FG,
+                    OUTLINE,
+                );
+                y -= TOAST_LINE_SPACING;
+            }
+            None => {}
         }
         for toast in self.toasts.iter().rev() {
             let x = (buf.width as i32 - toast.text.len() as i32 * 8) / 2;
