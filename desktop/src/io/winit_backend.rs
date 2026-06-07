@@ -16,7 +16,6 @@ use winit::{
 use krankulator_core::emu::apu;
 use krankulator_core::emu::dbg;
 use krankulator_core::emu::gfx;
-use krankulator_core::emu::io::controller;
 use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
 use krankulator_core::util;
@@ -25,6 +24,8 @@ use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
     populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
 };
+use crate::bindings::{Action, InputBindings, KeyId};
+use crate::bindings_ui::{BindingUi, UiEvent};
 use crate::gamepad::Gamepads;
 use crate::settings::{self, Settings};
 
@@ -54,6 +55,7 @@ pub struct WinitPixelsIOHandler {
     last_frame_time: Instant,
     last_frame_ms: f64,
     kb_state: u8,
+    p2_kb_state: u8,
     fast_forward: bool,
     pixel_perfect: bool,
     rewind_held: bool,
@@ -64,6 +66,9 @@ pub struct WinitPixelsIOHandler {
     _menu: Menu,
     menu_ids: MenuIds,
     menu_items: MenuItems,
+    bindings: InputBindings,
+    binding_ui: BindingUi,
+    ui_buf: gfx::buf::Buffer,
 }
 
 struct InitHandler {
@@ -102,7 +107,7 @@ impl ApplicationHandler for InitHandler {
 }
 
 impl WinitPixelsIOHandler {
-    pub fn new(width: u32, height: u32, rom_name: &str, settings: &Settings) -> Self {
+    pub fn new(width: u32, height: u32, rom_name: &str, settings: &mut Settings) -> Self {
         let mut event_loop = EventLoop::new().unwrap();
 
         let mut init = InitHandler {
@@ -166,6 +171,7 @@ impl WinitPixelsIOHandler {
             last_frame_time: Instant::now(),
             last_frame_ms: 0.0,
             kb_state: 0,
+            p2_kb_state: 0,
             fast_forward: false,
             pixel_perfect: settings.integer_scaling,
             rewind_held: false,
@@ -176,6 +182,9 @@ impl WinitPixelsIOHandler {
             _menu: menu,
             menu_ids,
             menu_items,
+            bindings: std::mem::take(&mut settings.bindings),
+            binding_ui: BindingUi::new(),
+            ui_buf: gfx::buf::Buffer::new(),
         }
     }
 }
@@ -351,6 +360,7 @@ struct PollHandler<'a> {
     overscan: &'a mut bool,
     overscan_changed: bool,
     kb_state: &'a mut u8,
+    p2_kb_state: &'a mut u8,
     fast_forward: &'a mut bool,
     exit: bool,
     save_state: bool,
@@ -364,6 +374,10 @@ struct PollHandler<'a> {
     recent_rom_path: Option<String>,
     menu_ids: &'a MenuIds,
     menu_items: &'a MenuItems,
+    bindings: &'a InputBindings,
+    needs_save: bool,
+    binding_ui_active: bool,
+    captured_keys: Vec<(KeyId, bool)>,
 }
 
 fn toggle_fullscreen(window: &Window, menu_item: &muda::CheckMenuItem, toasts: &mut Vec<String>) {
@@ -398,176 +412,125 @@ impl ApplicationHandler for PollHandler<'_> {
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(key) = event.physical_key {
                     let pressed = event.state == ElementState::Pressed;
+                    let key_id = KeyId::from_winit(key);
 
-                    match key {
-                        KeyCode::F11 => {
-                            if pressed {
-                                toggle_fullscreen(
-                                    self.window,
-                                    &self.menu_items.fullscreen,
-                                    &mut self.toasts,
-                                );
-                            }
+                    if self.binding_ui_active {
+                        if pressed {
+                            self.captured_keys.push((key_id, pressed));
                         }
-                        KeyCode::KeyI => {
-                            if pressed {
-                                *self.pixel_perfect = !*self.pixel_perfect;
-                                self.menu_items.scaling.set_checked(*self.pixel_perfect);
-                                if *self.pixel_perfect {
-                                    self.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
-                                    self.toasts.push("Integer scaling".into());
-                                } else {
-                                    self.pixels.set_scaling_mode(ScalingMode::Fill);
-                                    self.toasts.push("Fill scaling".into());
+                        return;
+                    }
+
+                    if pressed && key == KeyCode::F10 {
+                        self.binding_ui_active = true;
+                        return;
+                    }
+
+                    for action in self.bindings.keyboard_action(&key_id) {
+                        match action {
+                            Action::Fullscreen => {
+                                if pressed {
+                                    toggle_fullscreen(
+                                        self.window,
+                                        &self.menu_items.fullscreen,
+                                        &mut self.toasts,
+                                    );
                                 }
-                                self.window.request_redraw();
-                                settings::save_settings(&Settings {
-                                    integer_scaling: *self.pixel_perfect,
-                                    scanlines: *self.scanlines,
-                                    overscan: *self.overscan,
-                                });
+                            }
+                            Action::ToggleScaling => {
+                                if pressed {
+                                    *self.pixel_perfect = !*self.pixel_perfect;
+                                    self.menu_items.scaling.set_checked(*self.pixel_perfect);
+                                    if *self.pixel_perfect {
+                                        self.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
+                                        self.toasts.push("Integer scaling".into());
+                                    } else {
+                                        self.pixels.set_scaling_mode(ScalingMode::Fill);
+                                        self.toasts.push("Fill scaling".into());
+                                    }
+                                    self.window.request_redraw();
+                                    self.needs_save = true;
+                                }
+                            }
+                            Action::Mute => {
+                                if pressed {
+                                    *self.muted ^= true;
+                                }
+                            }
+                            Action::Reset => {
+                                if pressed {
+                                    self.reset = true;
+                                }
+                            }
+                            Action::SaveState => {
+                                if pressed {
+                                    self.save_state = true;
+                                }
+                            }
+                            Action::LoadState => {
+                                if pressed {
+                                    self.load_state = true;
+                                }
+                            }
+                            Action::CycleSlot => {
+                                if pressed {
+                                    self.cycle_slot = true;
+                                }
+                            }
+                            Action::ToggleOverlay => {
+                                if pressed {
+                                    self.toggle_overlay = true;
+                                }
+                            }
+                            Action::ToggleScanlines => {
+                                if pressed {
+                                    *self.scanlines = !*self.scanlines;
+                                    if *self.scanlines {
+                                        self.toasts.push("CRT scanlines ON".into());
+                                    } else {
+                                        self.toasts.push("CRT scanlines OFF".into());
+                                    }
+                                    self.menu_items.scanlines.set_checked(*self.scanlines);
+                                    self.needs_save = true;
+                                }
+                            }
+                            Action::Rewind => {
+                                *self.rewind = pressed;
+                            }
+                            Action::FastForward => {
+                                *self.fast_forward = pressed;
+                            }
+                            action => {
+                                if let Some((player, bit)) = action.controller_bit() {
+                                    let state = if player == 0 {
+                                        &mut *self.kb_state
+                                    } else {
+                                        &mut *self.p2_kb_state
+                                    };
+                                    if pressed {
+                                        *state |= bit;
+                                    } else {
+                                        *state &= !bit;
+                                    }
+                                }
                             }
                         }
-                        KeyCode::KeyM => {
-                            if pressed {
-                                *self.muted ^= true;
-                            }
-                        }
-                        KeyCode::KeyR => {
-                            if pressed {
-                                self.reset = true;
-                            }
-                        }
-                        KeyCode::KeyS => {
-                            if pressed {
-                                self.save_state = true;
-                            }
-                        }
-                        KeyCode::KeyA => {
-                            if pressed {
-                                self.load_state = true;
-                            }
-                        }
-                        KeyCode::KeyQ => {
-                            if pressed {
-                                self.cycle_slot = true;
-                            }
-                        }
-                        KeyCode::Digit1 => {
-                            if pressed {
-                                self.apu.toggle_mute_bit(0x01, "Pulse1");
-                            }
-                        }
-                        KeyCode::Digit2 => {
-                            if pressed {
-                                self.apu.toggle_mute_bit(0x02, "Pulse2");
-                            }
-                        }
-                        KeyCode::Digit3 => {
-                            if pressed {
-                                self.apu.toggle_mute_bit(0x04, "Triangle");
-                            }
-                        }
-                        KeyCode::Digit4 => {
-                            if pressed {
-                                self.apu.toggle_mute_bit(0x08, "Noise");
-                            }
-                        }
-                        KeyCode::Digit5 => {
-                            if pressed {
-                                self.apu.toggle_mute_bit(0x10, "DMC");
-                            }
-                        }
-                        KeyCode::Digit0 => {
-                            if pressed {
+                    }
+
+                    // Channel mutes stay hardcoded (not rebindable)
+                    if pressed {
+                        match key {
+                            KeyCode::Digit1 => self.apu.toggle_mute_bit(0x01, "Pulse1"),
+                            KeyCode::Digit2 => self.apu.toggle_mute_bit(0x02, "Pulse2"),
+                            KeyCode::Digit3 => self.apu.toggle_mute_bit(0x04, "Triangle"),
+                            KeyCode::Digit4 => self.apu.toggle_mute_bit(0x08, "Noise"),
+                            KeyCode::Digit5 => self.apu.toggle_mute_bit(0x10, "DMC"),
+                            KeyCode::Digit0 => {
                                 let on = !self.apu.get_master_mute();
                                 self.apu.set_master_mute(on);
                             }
+                            _ => {}
                         }
-                        KeyCode::Tab => {
-                            if pressed {
-                                self.toggle_overlay = true;
-                            }
-                        }
-                        KeyCode::F9 => {
-                            if pressed {
-                                *self.scanlines = !*self.scanlines;
-                                if *self.scanlines {
-                                    self.toasts.push("CRT scanlines ON".into());
-                                } else {
-                                    self.toasts.push("CRT scanlines OFF".into());
-                                }
-                                self.menu_items.scanlines.set_checked(*self.scanlines);
-                                settings::save_settings(&Settings {
-                                    integer_scaling: *self.pixel_perfect,
-                                    scanlines: *self.scanlines,
-                                    overscan: *self.overscan,
-                                });
-                            }
-                        }
-                        KeyCode::KeyW => {
-                            *self.rewind = pressed;
-                        }
-                        KeyCode::Space => {
-                            *self.fast_forward = pressed;
-                        }
-                        KeyCode::KeyZ => {
-                            if pressed {
-                                *self.kb_state |= controller::A;
-                            } else {
-                                *self.kb_state &= !controller::A;
-                            }
-                        }
-                        KeyCode::KeyX => {
-                            if pressed {
-                                *self.kb_state |= controller::B;
-                            } else {
-                                *self.kb_state &= !controller::B;
-                            }
-                        }
-                        KeyCode::KeyC => {
-                            if pressed {
-                                *self.kb_state |= controller::START;
-                            } else {
-                                *self.kb_state &= !controller::START;
-                            }
-                        }
-                        KeyCode::KeyV => {
-                            if pressed {
-                                *self.kb_state |= controller::SELECT;
-                            } else {
-                                *self.kb_state &= !controller::SELECT;
-                            }
-                        }
-                        KeyCode::ArrowLeft => {
-                            if pressed {
-                                *self.kb_state |= controller::LEFT;
-                            } else {
-                                *self.kb_state &= !controller::LEFT;
-                            }
-                        }
-                        KeyCode::ArrowRight => {
-                            if pressed {
-                                *self.kb_state |= controller::RIGHT;
-                            } else {
-                                *self.kb_state &= !controller::RIGHT;
-                            }
-                        }
-                        KeyCode::ArrowUp => {
-                            if pressed {
-                                *self.kb_state |= controller::UP;
-                            } else {
-                                *self.kb_state &= !controller::UP;
-                            }
-                        }
-                        KeyCode::ArrowDown => {
-                            if pressed {
-                                *self.kb_state |= controller::DOWN;
-                            } else {
-                                *self.kb_state &= !controller::DOWN;
-                            }
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -581,6 +544,15 @@ impl WinitPixelsIOHandler {
         let submenu = &self.menu_items.recent_submenu;
         while submenu.remove_at(0).is_some() {}
         self.menu_items.recent_items = populate_recent_submenu(submenu);
+    }
+
+    fn save_display_settings(&self) {
+        settings::save_settings(&Settings {
+            integer_scaling: self.pixel_perfect,
+            scanlines: self.scanlines,
+            overscan: self.overscan,
+            bindings: self.bindings.clone(),
+        });
     }
 }
 
@@ -608,6 +580,7 @@ impl IOHandler for WinitPixelsIOHandler {
             overscan: &mut self.overscan,
             overscan_changed: false,
             kb_state: &mut self.kb_state,
+            p2_kb_state: &mut self.p2_kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
             save_state: false,
@@ -621,6 +594,10 @@ impl IOHandler for WinitPixelsIOHandler {
             recent_rom_path: None,
             menu_ids: &self.menu_ids,
             menu_items: &self.menu_items,
+            bindings: &self.bindings,
+            needs_save: false,
+            binding_ui_active: self.binding_ui.is_active(),
+            captured_keys: Vec::new(),
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
@@ -639,6 +616,8 @@ impl IOHandler for WinitPixelsIOHandler {
                 handler.load_state = true;
             } else if *id == handler.menu_ids.cycle_slot {
                 handler.cycle_slot = true;
+            } else if *id == handler.menu_ids.input_settings {
+                handler.binding_ui_active = true;
             } else if *id == handler.menu_ids.fullscreen {
                 toggle_fullscreen(
                     handler.window,
@@ -656,11 +635,7 @@ impl IOHandler for WinitPixelsIOHandler {
                     handler.toasts.push("Fill scaling".into());
                 }
                 handler.window.request_redraw();
-                settings::save_settings(&Settings {
-                    integer_scaling: *handler.pixel_perfect,
-                    scanlines: *handler.scanlines,
-                    overscan: *handler.overscan,
-                });
+                handler.needs_save = true;
             } else if *id == handler.menu_ids.scanlines {
                 *handler.scanlines = !*handler.scanlines;
                 self.menu_items.scanlines.set_checked(*handler.scanlines);
@@ -669,11 +644,7 @@ impl IOHandler for WinitPixelsIOHandler {
                 } else {
                     handler.toasts.push("CRT scanlines OFF".into());
                 }
-                settings::save_settings(&Settings {
-                    integer_scaling: *handler.pixel_perfect,
-                    scanlines: *handler.scanlines,
-                    overscan: *handler.overscan,
-                });
+                handler.needs_save = true;
             } else if *id == handler.menu_ids.overscan {
                 *handler.overscan = !*handler.overscan;
                 handler.overscan_changed = true;
@@ -683,11 +654,7 @@ impl IOHandler for WinitPixelsIOHandler {
                 } else {
                     handler.toasts.push("Overscan visible".into());
                 }
-                settings::save_settings(&Settings {
-                    integer_scaling: *handler.pixel_perfect,
-                    scanlines: *handler.scanlines,
-                    overscan: *handler.overscan,
-                });
+                handler.needs_save = true;
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -705,7 +672,10 @@ impl IOHandler for WinitPixelsIOHandler {
             handler.recent_rom_path.take()
         };
 
+        let open_binding_ui = handler.binding_ui_active && !self.binding_ui.is_active();
+        let captured_keys = std::mem::take(&mut handler.captured_keys);
         let rewind = *handler.rewind;
+        let mut needs_save = handler.needs_save;
         let mut result = PollResult {
             exit: handler.exit,
             save_state: handler.save_state,
@@ -723,12 +693,51 @@ impl IOHandler for WinitPixelsIOHandler {
             },
         };
 
+        if open_binding_ui {
+            self.binding_ui.open();
+        }
+        for (key_id, _pressed) in &captured_keys {
+            match self.binding_ui.handle_key(key_id, &mut self.bindings) {
+                UiEvent::Close | UiEvent::None => {}
+                UiEvent::BindingsChanged => {
+                    needs_save = true;
+                }
+            }
+        }
+
         if let Some(ref path) = result.open_rom {
             add_recent_rom(path);
             self.refresh_recent_menu();
         }
 
-        apply_gamepad(&mut self.gamepads, self.kb_state, mem, &mut result);
+        if needs_save {
+            self.save_display_settings();
+        }
+
+        if self.binding_ui.is_active() {
+            for btn in self.gamepads.poll_raw_buttons() {
+                match self
+                    .binding_ui
+                    .handle_gamepad_button(btn, &mut self.bindings)
+                {
+                    UiEvent::BindingsChanged => {
+                        self.save_display_settings();
+                    }
+                    UiEvent::Close | UiEvent::None => {}
+                }
+            }
+            mem.controllers()[0].load_status(0);
+            mem.controllers()[1].load_status(0);
+        } else {
+            apply_gamepad(
+                &mut self.gamepads,
+                &self.bindings,
+                self.kb_state,
+                self.p2_kb_state,
+                mem,
+                &mut result,
+            );
+        }
 
         self.event_loop = Some(event_loop);
         result
@@ -756,14 +765,22 @@ impl IOHandler for WinitPixelsIOHandler {
             self.frame_duration,
         );
 
+        let render_buf = if self.binding_ui.is_active() {
+            self.ui_buf.data.copy_from_slice(&buf.data);
+            self.binding_ui.draw(&mut self.ui_buf, &self.bindings);
+            &self.ui_buf
+        } else {
+            buf
+        };
+
         let window = self.window.unwrap();
         let pixels = self.pixels.as_mut().unwrap();
         let size = window.inner_size();
         let _ = pixels.resize_surface(size.width, size.height);
         let frame = pixels.frame_mut();
-        let pixel_count = buf.data.len() / 3;
+        let pixel_count = render_buf.data.len() / 3;
         for i in 0..pixel_count {
-            let rgb = &buf.data[i * 3..i * 3 + 3];
+            let rgb = &render_buf.data[i * 3..i * 3 + 3];
             let j = i * 4;
             if j + 3 < frame.len() {
                 frame[j] = rgb[0];

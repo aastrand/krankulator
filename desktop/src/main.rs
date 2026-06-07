@@ -1,4 +1,6 @@
 mod audio;
+pub(crate) mod bindings;
+mod bindings_ui;
 mod gamepad;
 mod io;
 pub(crate) mod settings;
@@ -121,7 +123,7 @@ fn detect_region_from_file(path: &str) -> emu::Region {
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
-    let settings = settings::load_settings();
+    let mut settings = settings::load_settings();
 
     let mut emu = if let Some(ref input) = args.input {
         match args.loader.as_str() {
@@ -163,8 +165,12 @@ fn main() -> Result<(), String> {
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or(input);
-                        let io =
-                            Box::new(io::PlatformIOHandler::new(256, 240, rom_name, &settings));
+                        let io = Box::new(io::PlatformIOHandler::new(
+                            256,
+                            240,
+                            rom_name,
+                            &mut settings,
+                        ));
                         emu::Emulator::new_with_region(io, mapper, audio, region)
                     } else {
                         emu::Emulator::new_headless_with_region(mapper, region)
@@ -198,7 +204,7 @@ fn main() -> Result<(), String> {
             256,
             240,
             "krankulator",
-            &settings,
+            &mut settings,
         ));
         let mut emu = emu::Emulator::new_with(io, mapper, audio);
         emu.toggle_should_exit_on_infinite_loop(false);

@@ -21,6 +21,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
+- **Configurable input bindings** — rebind keyboard and gamepad buttons via in-game press-to-bind UI (F10 or Emulation → Input Settings); persisted to settings file
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **RetroArch / libretro core** — load as a core in RetroArch for shaders, netplay, achievements, and universal controller support (Linux x86_64/aarch64, Windows, macOS)
@@ -184,7 +185,9 @@ OPTIONS:
 
 ### Controls
 
-#### Keyboard
+All keyboard and gamepad bindings are configurable. Press **F10** or use **Emulation → Input Settings** to rebind. Defaults below:
+
+#### Keyboard (defaults)
 
 | Key | Action |
 |-----|--------|
@@ -197,9 +200,12 @@ OPTIONS:
 | A | Load state |
 | Q | Cycle save slot (0-3) |
 | R | Reset |
+| W | Rewind (hold) |
 | M | Mute/unmute log |
 | 1-5 | Toggle individual APU channels |
 | 0 | Master mute |
+| F9 | Toggle CRT scanlines |
+| F10 | Input settings |
 | F11 | Toggle fullscreen |
 | I | Toggle integer/fill scaling |
 | Space | Fast-forward (hold) |

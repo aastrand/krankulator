@@ -1,12 +1,8 @@
+use crate::bindings::{Action, InputBindings};
+
 pub struct GamepadState {
-    pub a: bool,
-    pub b: bool,
-    pub start: bool,
-    pub select: bool,
-    pub up: bool,
-    pub down: bool,
-    pub left: bool,
-    pub right: bool,
+    pub p1_bits: u8,
+    pub p2_bits: u8,
     pub save_state: bool,
     pub load_state: bool,
     pub cycle_slot: bool,
@@ -29,14 +25,41 @@ struct RawState {
     right_trigger: bool,
 }
 
+impl RawState {
+    fn pressed_buttons(&self) -> impl Iterator<Item = &'static str> {
+        [
+            (self.a, "East"),
+            (self.b, "South"),
+            (self.start, "Start"),
+            (self.select, "Select"),
+            (self.up, "DPadUp"),
+            (self.down, "DPadDown"),
+            (self.left, "DPadLeft"),
+            (self.right, "DPadRight"),
+            (self.left_shoulder, "LeftTrigger"),
+            (self.right_shoulder, "RightTrigger"),
+            (self.left_trigger, "LeftTrigger2"),
+            (self.right_trigger, "RightTrigger2"),
+        ]
+        .into_iter()
+        .filter_map(|(pressed, name)| pressed.then_some(name))
+    }
+}
+
 pub struct GamepadPollResult {
     pub states: [Option<GamepadState>; 2],
     pub toasts: Vec<String>,
 }
 
+struct MetaState {
+    save: bool,
+    load: bool,
+    cycle: bool,
+}
+
 pub struct Gamepads {
     inner: PlatformGamepads,
-    prev_shoulders: [[bool; 3]; 2],
+    prev_meta: [MetaState; 2],
     was_connected: [bool; 2],
 }
 
@@ -44,12 +67,34 @@ impl Gamepads {
     pub fn new() -> Self {
         Self {
             inner: PlatformGamepads::new(),
-            prev_shoulders: [[false; 3]; 2],
+            prev_meta: [
+                MetaState {
+                    save: false,
+                    load: false,
+                    cycle: false,
+                },
+                MetaState {
+                    save: false,
+                    load: false,
+                    cycle: false,
+                },
+            ],
             was_connected: [false; 2],
         }
     }
 
-    pub fn poll(&mut self) -> GamepadPollResult {
+    pub fn poll_raw_buttons(&mut self) -> Vec<&'static str> {
+        let (raw, _names) = self.inner.poll();
+        let mut buttons = Vec::new();
+        for state in &raw {
+            if let Some(s) = state {
+                buttons.extend(s.pressed_buttons());
+            }
+        }
+        buttons
+    }
+
+    pub fn poll(&mut self, bindings: &InputBindings) -> GamepadPollResult {
         let (raw, _names) = self.inner.poll();
         let mut states: [Option<GamepadState>; 2] = [None, None];
         let mut toasts = Vec::new();
@@ -64,26 +109,47 @@ impl Gamepads {
             self.was_connected[i] = is_connected;
 
             if let Some(s) = state {
-                let prev = &mut self.prev_shoulders[i];
-                let save = s.right_shoulder && !prev[0];
-                let load = s.left_shoulder && !prev[1];
-                let cycle = s.left_trigger && !prev[2];
-                prev[0] = s.right_shoulder;
-                prev[1] = s.left_shoulder;
-                prev[2] = s.left_trigger;
+                let mut p1_bits: u8 = 0;
+                let mut p2_bits: u8 = 0;
+                let mut save_raw = false;
+                let mut load_raw = false;
+                let mut cycle_raw = false;
+                let mut rewind = false;
+
+                for btn_name in s.pressed_buttons() {
+                    for action in bindings.gamepad_action(btn_name) {
+                        if let Some((player, bit)) = action.controller_bit() {
+                            if player == 0 {
+                                p1_bits |= bit;
+                            } else {
+                                p2_bits |= bit;
+                            }
+                        }
+                        match action {
+                            Action::SaveState => save_raw = true,
+                            Action::LoadState => load_raw = true,
+                            Action::CycleSlot => cycle_raw = true,
+                            Action::Rewind => rewind = true,
+                            _ => {}
+                        }
+                    }
+                }
+
+                let prev = &mut self.prev_meta[i];
+                let save_edge = save_raw && !prev.save;
+                let load_edge = load_raw && !prev.load;
+                let cycle_edge = cycle_raw && !prev.cycle;
+                prev.save = save_raw;
+                prev.load = load_raw;
+                prev.cycle = cycle_raw;
+
                 states[i] = Some(GamepadState {
-                    a: s.a,
-                    b: s.b,
-                    start: s.start,
-                    select: s.select,
-                    up: s.up,
-                    down: s.down,
-                    left: s.left,
-                    right: s.right,
-                    save_state: save,
-                    load_state: load,
-                    cycle_slot: cycle,
-                    rewind: s.right_trigger,
+                    p1_bits,
+                    p2_bits,
+                    save_state: save_edge,
+                    load_state: load_edge,
+                    cycle_slot: cycle_edge,
+                    rewind,
                 });
             }
         }

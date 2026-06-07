@@ -263,9 +263,15 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Edge-detected save/load state and slot cycling on P1
   - All platforms: input sources OR-merged so keyboard and gamepad work simultaneously
 - [x] Inhibit screensaver/suspend while running (D-Bus `org.freedesktop.ScreenSaver.Inhibit` via gdbus on Linux) [S]
-- [ ] Configurable key/button bindings [S]
-  - Save bindings to a config file
-  - Per-controller profiles
+- [x] Configurable key/button bindings [M]
+  - `Action` enum (27 variants): P1/P2 NES buttons + system actions (save/load/rewind/mute/etc.)
+  - `InputBindings` with separate keyboard (`KeyId`) and gamepad (`GamepadButtonId`) binding vectors
+  - Press-to-bind overlay UI: F10 or Emulation → Input Settings menu item
+  - In-framebuffer overlay using 8x8 font, state machine (SelectAction → ActionMenu → WaitingForInput)
+  - Persisted in settings.txt as `bind_kb_*` / `bind_gp_*` key=value pairs; no bind keys = defaults (backward compatible)
+  - Two-player keyboard support (P2 bindings assignable, no defaults)
+  - Desktop only (web/libretro excluded — libretro has its own remapping, web can follow later)
+- [ ] Per-controller gamepad profiles [S]
 - [ ] Turbo A/B buttons (optional toggle) [XS]
 
 ---

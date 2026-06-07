@@ -15,10 +15,10 @@ use muda::{
     Submenu,
 };
 
-use krankulator_core::emu::io::controller;
 use krankulator_core::emu::io::PollResult;
 use krankulator_core::emu::memory;
 
+use crate::bindings::InputBindings;
 use crate::gamepad::Gamepads;
 
 pub(crate) const NTSC_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
@@ -35,6 +35,7 @@ pub(crate) struct MenuIds {
     pub save_state: muda::MenuId,
     pub load_state: muda::MenuId,
     pub cycle_slot: muda::MenuId,
+    pub input_settings: muda::MenuId,
     pub fullscreen: muda::MenuId,
     pub scaling: muda::MenuId,
     pub scanlines: muda::MenuId,
@@ -164,11 +165,15 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
     let load_state_id = load_state.id().clone();
     let cycle_slot = MenuItem::new("Cycle Save Slot", true, None::<Accelerator>);
     let cycle_slot_id = cycle_slot.id().clone();
+    let input_settings = MenuItem::new("Input Settings...", true, None::<Accelerator>);
+    let input_settings_id = input_settings.id().clone();
     emu_menu.append(&reset).unwrap();
     emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
     emu_menu.append(&save_state).unwrap();
     emu_menu.append(&load_state).unwrap();
     emu_menu.append(&cycle_slot).unwrap();
+    emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    emu_menu.append(&input_settings).unwrap();
 
     let view_menu = Submenu::new("Display", true);
     let fullscreen = CheckMenuItem::new(
@@ -220,6 +225,7 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         save_state: save_state_id,
         load_state: load_state_id,
         cycle_slot: cycle_slot_id,
+        input_settings: input_settings_id,
         fullscreen: fullscreen_id,
         scaling: scaling_id,
         scanlines: scanlines_id,
@@ -252,49 +258,25 @@ pub(crate) fn open_rom_dialog() -> Option<String> {
     })
 }
 
-fn gamepad_state_to_bits(s: &crate::gamepad::GamepadState) -> u8 {
-    let mut bits: u8 = 0;
-    if s.a {
-        bits |= controller::A;
-    }
-    if s.b {
-        bits |= controller::B;
-    }
-    if s.start {
-        bits |= controller::START;
-    }
-    if s.select {
-        bits |= controller::SELECT;
-    }
-    if s.up {
-        bits |= controller::UP;
-    }
-    if s.down {
-        bits |= controller::DOWN;
-    }
-    if s.left {
-        bits |= controller::LEFT;
-    }
-    if s.right {
-        bits |= controller::RIGHT;
-    }
-    bits
-}
-
 pub(crate) fn apply_gamepad(
     gamepads: &mut Gamepads,
-    kb_state: u8,
+    bindings: &InputBindings,
+    p1_kb_state: u8,
+    p2_kb_state: u8,
     mem: &mut dyn memory::MemoryMapper,
     result: &mut PollResult,
 ) {
-    let gp = gamepads.poll();
+    let gp = gamepads.poll(bindings);
     for msg in gp.toasts {
         result.toasts.push(msg);
     }
 
-    let mut p0_state = kb_state;
+    let mut p0_state = p1_kb_state;
+    let mut p1_state = p2_kb_state;
+
     if let Some(s) = &gp.states[0] {
-        p0_state |= gamepad_state_to_bits(s);
+        p0_state |= s.p1_bits;
+        p1_state |= s.p2_bits;
         if s.save_state {
             result.save_state = true;
         }
@@ -308,11 +290,25 @@ pub(crate) fn apply_gamepad(
             result.rewind = true;
         }
     }
-    mem.controllers()[0].load_status(p0_state);
-
     if let Some(s) = &gp.states[1] {
-        mem.controllers()[1].load_status(gamepad_state_to_bits(s));
+        p0_state |= s.p1_bits;
+        p1_state |= s.p2_bits;
+        if s.save_state {
+            result.save_state = true;
+        }
+        if s.load_state {
+            result.load_state = true;
+        }
+        if s.cycle_slot {
+            result.cycle_slot = true;
+        }
+        if s.rewind {
+            result.rewind = true;
+        }
     }
+
+    mem.controllers()[0].load_status(p0_state);
+    mem.controllers()[1].load_status(p1_state);
 }
 
 pub(crate) fn frame_pace(
@@ -338,61 +334,6 @@ pub(crate) fn frame_pace(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gamepad::GamepadState;
-
-    fn default_gamepad_state() -> GamepadState {
-        GamepadState {
-            a: false,
-            b: false,
-            start: false,
-            select: false,
-            up: false,
-            down: false,
-            left: false,
-            right: false,
-            save_state: false,
-            load_state: false,
-            cycle_slot: false,
-            rewind: false,
-        }
-    }
-
-    #[test]
-    fn test_gamepad_state_to_bits_empty() {
-        assert_eq!(gamepad_state_to_bits(&default_gamepad_state()), 0);
-    }
-
-    #[test]
-    fn test_gamepad_state_to_bits_all() {
-        let s = GamepadState {
-            a: true,
-            b: true,
-            start: true,
-            select: true,
-            up: true,
-            down: true,
-            left: true,
-            right: true,
-            save_state: false,
-            load_state: false,
-            cycle_slot: false,
-            rewind: false,
-        };
-        let bits = gamepad_state_to_bits(&s);
-        assert_eq!(bits, 0xFF);
-    }
-
-    #[test]
-    fn test_gamepad_state_to_bits_individual() {
-        let mut s = default_gamepad_state();
-        s.a = true;
-        assert_eq!(gamepad_state_to_bits(&s), controller::A);
-
-        let mut s = default_gamepad_state();
-        s.left = true;
-        s.up = true;
-        assert_eq!(gamepad_state_to_bits(&s), controller::LEFT | controller::UP);
-    }
 
     #[test]
     fn test_frame_pace_fast_forward_skips_sleep() {

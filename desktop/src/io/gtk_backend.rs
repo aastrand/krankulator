@@ -12,7 +12,6 @@ use muda::{Menu, MenuEvent};
 
 use krankulator_core::emu::apu;
 use krankulator_core::emu::gfx;
-use krankulator_core::emu::io::controller;
 use krankulator_core::emu::io::{IOHandler, PollResult};
 use krankulator_core::emu::memory;
 
@@ -20,6 +19,8 @@ use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
     populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
 };
+use crate::bindings::{Action, InputBindings, KeyId};
+use crate::bindings_ui::{BindingUi, UiEvent};
 use crate::gamepad::Gamepads;
 use crate::settings;
 use crate::settings::Settings;
@@ -116,6 +117,7 @@ pub struct GtkPixelsIOHandler {
     last_frame_ms: f64,
     frame_duration: Duration,
     kb_state: Rc<Cell<u8>>,
+    p2_kb_state: Rc<Cell<u8>>,
     fast_forward: Rc<Cell<bool>>,
     pixel_perfect: Rc<Cell<bool>>,
     scanlines: Rc<Cell<bool>>,
@@ -133,10 +135,15 @@ pub struct GtkPixelsIOHandler {
     menu_ids: MenuIds,
     menu_items: MenuItems,
     screensaver_cookie: Option<u32>,
+    bindings: Rc<RefCell<InputBindings>>,
+    binding_ui: BindingUi,
+    ui_buf: gfx::buf::Buffer,
+    binding_ui_active: Rc<Cell<bool>>,
+    captured_keys: Rc<RefCell<Vec<KeyId>>>,
 }
 
 impl GtkPixelsIOHandler {
-    pub fn new(_width: u32, _height: u32, rom_name: &str, settings: &Settings) -> Self {
+    pub fn new(_width: u32, _height: u32, rom_name: &str, settings: &mut Settings) -> Self {
         gtk::init().expect("Failed to initialize GTK");
 
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
@@ -223,6 +230,7 @@ impl GtkPixelsIOHandler {
 
         let exit_flag = Rc::new(Cell::new(false));
         let kb_state = Rc::new(Cell::new(0u8));
+        let p2_kb_state = Rc::new(Cell::new(0u8));
         let fast_forward = Rc::new(Cell::new(false));
         let muted = Rc::new(Cell::new(false));
         let save_state_flag = Rc::new(Cell::new(false));
@@ -233,6 +241,9 @@ impl GtkPixelsIOHandler {
         let rewind_flag = Rc::new(Cell::new(false));
         let fullscreen_flag = Rc::new(Cell::new(false));
         let overscan = Rc::new(Cell::new(settings.overscan));
+        let bindings = Rc::new(RefCell::new(std::mem::take(&mut settings.bindings)));
+        let binding_ui_active = Rc::new(Cell::new(false));
+        let captured_keys: Rc<RefCell<Vec<KeyId>>> = Rc::new(RefCell::new(Vec::new()));
 
         {
             let flag = exit_flag.clone();
@@ -244,6 +255,7 @@ impl GtkPixelsIOHandler {
 
         {
             let kb = kb_state.clone();
+            let p2kb = p2_kb_state.clone();
             let ff = fast_forward.clone();
             let mt = muted.clone();
             let save = save_state_flag.clone();
@@ -256,10 +268,23 @@ impl GtkPixelsIOHandler {
             let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
+            let bi = bindings.clone();
+            let bua = binding_ui_active.clone();
+            let ck = captured_keys.clone();
             window.connect_key_press_event(move |_, event| {
+                if bua.get() {
+                    if let Some(key_id) = KeyId::from_gdk(event.keyval()) {
+                        ck.borrow_mut().push(key_id);
+                    }
+                    return glib::Propagation::Proceed;
+                }
+                if event.keyval() == gdk_key::F10 {
+                    bua.set(true);
+                    return glib::Propagation::Proceed;
+                }
                 handle_key(
-                    event, true, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
-                    &ex, &pp, &sl,
+                    event, true, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw,
+                    &fs, &ex, &pp, &sl, &bi,
                 );
                 glib::Propagation::Proceed
             });
@@ -267,6 +292,7 @@ impl GtkPixelsIOHandler {
 
         {
             let kb = kb_state.clone();
+            let p2kb = p2_kb_state.clone();
             let ff = fast_forward.clone();
             let mt = muted.clone();
             let save = save_state_flag.clone();
@@ -279,10 +305,15 @@ impl GtkPixelsIOHandler {
             let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
+            let bi = bindings.clone();
+            let bua = binding_ui_active.clone();
             window.connect_key_release_event(move |_, event| {
+                if bua.get() {
+                    return glib::Propagation::Proceed;
+                }
                 handle_key(
-                    event, false, &kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw, &fs,
-                    &ex, &pp, &sl,
+                    event, false, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay,
+                    &rw, &fs, &ex, &pp, &sl, &bi,
                 );
                 glib::Propagation::Proceed
             });
@@ -303,6 +334,7 @@ impl GtkPixelsIOHandler {
             last_frame_ms: 0.0,
             frame_duration: NTSC_FRAME_DURATION,
             kb_state,
+            p2_kb_state,
             fast_forward,
             pixel_perfect,
             scanlines,
@@ -320,7 +352,21 @@ impl GtkPixelsIOHandler {
             menu_ids,
             menu_items,
             screensaver_cookie: screensaver_inhibit(),
+            bindings,
+            binding_ui: BindingUi::new(),
+            ui_buf: gfx::buf::Buffer::new(),
+            binding_ui_active,
+            captured_keys,
         }
+    }
+
+    fn save_display_settings(&self) {
+        settings::save_settings(&Settings {
+            integer_scaling: self.pixel_perfect.get(),
+            scanlines: self.scanlines.get(),
+            overscan: self.overscan.get(),
+            bindings: self.bindings.borrow().clone(),
+        });
     }
 
     fn toggle_fullscreen(&self, toasts: &mut Vec<String>) {
@@ -540,6 +586,7 @@ fn handle_key(
     event: &gdk::EventKey,
     pressed: bool,
     kb_state: &Rc<Cell<u8>>,
+    p2_kb_state: &Rc<Cell<u8>>,
     fast_forward: &Rc<Cell<bool>>,
     muted: &Rc<Cell<bool>>,
     save_state: &Rc<Cell<bool>>,
@@ -552,13 +599,13 @@ fn handle_key(
     exit: &Rc<Cell<bool>>,
     pixel_perfect: &Rc<Cell<bool>>,
     scanlines: &Rc<Cell<bool>>,
+    bindings: &Rc<RefCell<InputBindings>>,
 ) {
-    let key = event.keyval();
+    let gdk_key = event.keyval();
     let ctrl = event.state().contains(gdk::ModifierType::CONTROL_MASK);
-    let mut kb = kb_state.get();
 
     if pressed && ctrl {
-        match key {
+        match gdk_key {
             k if k == gdk_key::f || k == gdk_key::F => fullscreen.set(true),
             k if k == gdk_key::q || k == gdk_key::Q => exit.set(true),
             _ => {}
@@ -566,90 +613,82 @@ fn handle_key(
         return;
     }
 
-    match key {
-        k if k == gdk_key::z || k == gdk_key::Z => {
-            if pressed {
-                kb |= controller::A;
-            } else {
-                kb &= !controller::A;
+    let Some(key_id) = KeyId::from_gdk(gdk_key) else {
+        return;
+    };
+
+    let bindings = bindings.borrow();
+    let mut p1_kb = kb_state.get();
+    let mut p2_kb = p2_kb_state.get();
+
+    for action in bindings.keyboard_action(&key_id) {
+        match action {
+            Action::Fullscreen => {
+                if pressed {
+                    fullscreen.set(true);
+                }
             }
-        }
-        k if k == gdk_key::x || k == gdk_key::X => {
-            if pressed {
-                kb |= controller::B;
-            } else {
-                kb &= !controller::B;
+            Action::ToggleScaling => {
+                if pressed {
+                    pixel_perfect.set(!pixel_perfect.get());
+                }
             }
-        }
-        k if k == gdk_key::c || k == gdk_key::C => {
-            if pressed {
-                kb |= controller::START;
-            } else {
-                kb &= !controller::START;
+            Action::Mute => {
+                if pressed {
+                    muted.set(!muted.get());
+                }
             }
-        }
-        k if k == gdk_key::v || k == gdk_key::V => {
-            if pressed {
-                kb |= controller::SELECT;
-            } else {
-                kb &= !controller::SELECT;
+            Action::Reset => {
+                if pressed {
+                    reset.set(true);
+                }
             }
-        }
-        k if k == gdk_key::Left => {
-            if pressed {
-                kb |= controller::LEFT;
-            } else {
-                kb &= !controller::LEFT;
+            Action::SaveState => {
+                if pressed {
+                    save_state.set(true);
+                }
             }
-        }
-        k if k == gdk_key::Right => {
-            if pressed {
-                kb |= controller::RIGHT;
-            } else {
-                kb &= !controller::RIGHT;
+            Action::LoadState => {
+                if pressed {
+                    load_state.set(true);
+                }
             }
-        }
-        k if k == gdk_key::Up => {
-            if pressed {
-                kb |= controller::UP;
-            } else {
-                kb &= !controller::UP;
+            Action::CycleSlot => {
+                if pressed {
+                    cycle_slot.set(true);
+                }
             }
-        }
-        k if k == gdk_key::Down => {
-            if pressed {
-                kb |= controller::DOWN;
-            } else {
-                kb &= !controller::DOWN;
+            Action::ToggleOverlay => {
+                if pressed {
+                    toggle_overlay.set(true);
+                }
             }
-        }
-        k if k == gdk_key::w || k == gdk_key::W => {
-            rewind.set(pressed);
-        }
-        k if k == gdk_key::space => {
-            fast_forward.set(pressed);
-        }
-        _ => {
-            if pressed {
-                match key {
-                    k if k == gdk_key::s || k == gdk_key::S => save_state.set(true),
-                    k if k == gdk_key::a || k == gdk_key::A => load_state.set(true),
-                    k if k == gdk_key::q || k == gdk_key::Q => cycle_slot.set(true),
-                    k if k == gdk_key::r || k == gdk_key::R => reset.set(true),
-                    k if k == gdk_key::m || k == gdk_key::M => muted.set(!muted.get()),
-                    k if k == gdk_key::Tab => toggle_overlay.set(true),
-                    k if k == gdk_key::F9 => scanlines.set(!scanlines.get()),
-                    k if k == gdk_key::F11 => fullscreen.set(true),
-                    k if k == gdk_key::i || k == gdk_key::I => {
-                        pixel_perfect.set(!pixel_perfect.get());
+            Action::ToggleScanlines => {
+                if pressed {
+                    scanlines.set(!scanlines.get());
+                }
+            }
+            Action::Rewind => {
+                rewind.set(pressed);
+            }
+            Action::FastForward => {
+                fast_forward.set(pressed);
+            }
+            action => {
+                if let Some((player, bit)) = action.controller_bit() {
+                    let state = if player == 0 { &mut p1_kb } else { &mut p2_kb };
+                    if pressed {
+                        *state |= bit;
+                    } else {
+                        *state &= !bit;
                     }
-                    _ => {}
                 }
             }
         }
     }
 
-    kb_state.set(kb);
+    kb_state.set(p1_kb);
+    p2_kb_state.set(p2_kb);
 }
 
 impl IOHandler for GtkPixelsIOHandler {
@@ -722,6 +761,8 @@ impl IOHandler for GtkPixelsIOHandler {
                 load_state = true;
             } else if *id == self.menu_ids.cycle_slot {
                 cycle_slot = true;
+            } else if *id == self.menu_ids.input_settings {
+                self.binding_ui_active.set(true);
             } else if *id == self.menu_ids.fullscreen {
                 self.toggle_fullscreen(&mut toasts);
             } else if *id == self.menu_ids.scaling {
@@ -734,11 +775,7 @@ impl IOHandler for GtkPixelsIOHandler {
                 } else {
                     toasts.push("Fill scaling".into());
                 }
-                settings::save_settings(&Settings {
-                    integer_scaling: self.pixel_perfect.get(),
-                    scanlines: self.scanlines.get(),
-                    overscan: self.overscan.get(),
-                });
+                self.save_display_settings();
             } else if *id == self.menu_ids.scanlines {
                 self.scanlines.set(!self.scanlines.get());
                 self.menu_items.scanlines.set_checked(self.scanlines.get());
@@ -747,11 +784,7 @@ impl IOHandler for GtkPixelsIOHandler {
                 } else {
                     toasts.push("CRT scanlines OFF".into());
                 }
-                settings::save_settings(&Settings {
-                    integer_scaling: self.pixel_perfect.get(),
-                    scanlines: self.scanlines.get(),
-                    overscan: self.overscan.get(),
-                });
+                self.save_display_settings();
             } else if *id == self.menu_ids.overscan {
                 let val = !self.overscan.get();
                 self.overscan.set(val);
@@ -762,11 +795,7 @@ impl IOHandler for GtkPixelsIOHandler {
                 } else {
                     toasts.push("Overscan visible".into());
                 }
-                settings::save_settings(&Settings {
-                    integer_scaling: self.pixel_perfect.get(),
-                    scanlines: self.scanlines.get(),
-                    overscan: val,
-                });
+                self.save_display_settings();
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -804,12 +833,60 @@ impl IOHandler for GtkPixelsIOHandler {
             },
         };
 
+        if self.binding_ui_active.get() && !self.binding_ui.is_active() {
+            self.binding_ui.open();
+            self.binding_ui_active.set(true);
+        }
+
+        let keys: Vec<KeyId> = self.captured_keys.borrow_mut().drain(..).collect();
+        let mut bindings_changed = false;
+        for key_id in &keys {
+            match self
+                .binding_ui
+                .handle_key(key_id, &mut self.bindings.borrow_mut())
+            {
+                UiEvent::Close => {
+                    self.binding_ui_active.set(false);
+                }
+                UiEvent::BindingsChanged => {
+                    bindings_changed = true;
+                }
+                UiEvent::None => {}
+            }
+        }
+        if bindings_changed {
+            self.save_display_settings();
+        }
+
         if let Some(ref path) = result.open_rom {
             add_recent_rom(path);
             self.refresh_recent_menu();
         }
 
-        apply_gamepad(&mut self.gamepads, self.kb_state.get(), mem, &mut result);
+        if self.binding_ui.is_active() {
+            for btn in self.gamepads.poll_raw_buttons() {
+                match self
+                    .binding_ui
+                    .handle_gamepad_button(btn, &mut self.bindings.borrow_mut())
+                {
+                    UiEvent::BindingsChanged => {
+                        self.save_display_settings();
+                    }
+                    UiEvent::Close | UiEvent::None => {}
+                }
+            }
+            mem.controllers()[0].load_status(0);
+            mem.controllers()[1].load_status(0);
+        } else {
+            apply_gamepad(
+                &mut self.gamepads,
+                &self.bindings.borrow(),
+                self.kb_state.get(),
+                self.p2_kb_state.get(),
+                mem,
+                &mut result,
+            );
+        }
 
         result
     }
@@ -836,16 +913,25 @@ impl IOHandler for GtkPixelsIOHandler {
             self.frame_duration,
         );
 
+        let render_buf = if self.binding_ui.is_active() {
+            self.ui_buf.data.copy_from_slice(&buf.data);
+            self.binding_ui
+                .draw(&mut self.ui_buf, &self.bindings.borrow());
+            &self.ui_buf
+        } else {
+            buf
+        };
+
         {
             let mut rgba = self.rgba_buf.borrow_mut();
-            let pixel_count = buf.data.len() / 3;
+            let pixel_count = render_buf.data.len() / 3;
             for i in 0..pixel_count {
                 let src = i * 3;
                 let dst = i * 4;
                 if dst + 3 < rgba.len() {
-                    rgba[dst] = buf.data[src];
-                    rgba[dst + 1] = buf.data[src + 1];
-                    rgba[dst + 2] = buf.data[src + 2];
+                    rgba[dst] = render_buf.data[src];
+                    rgba[dst + 1] = render_buf.data[src + 1];
+                    rgba[dst + 2] = render_buf.data[src + 2];
                     rgba[dst + 3] = 255;
                 }
             }
@@ -855,11 +941,7 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn exit(&self, s: String) {
-        settings::save_settings(&Settings {
-            integer_scaling: self.pixel_perfect.get(),
-            scanlines: self.scanlines.get(),
-            overscan: self.overscan.get(),
-        });
+        self.save_display_settings();
         if let Some(cookie) = self.screensaver_cookie {
             screensaver_uninhibit(cookie);
         }
