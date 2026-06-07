@@ -675,6 +675,7 @@ impl IOHandler for WinitPixelsIOHandler {
         let open_binding_ui = handler.binding_ui_active && !self.binding_ui.is_active();
         let captured_keys = std::mem::take(&mut handler.captured_keys);
         let rewind = *handler.rewind;
+        let fast_forward = *handler.fast_forward;
         let mut needs_save = handler.needs_save;
         let mut result = PollResult {
             exit: handler.exit,
@@ -684,7 +685,7 @@ impl IOHandler for WinitPixelsIOHandler {
             reset: handler.reset,
             toggle_overlay: handler.toggle_overlay,
             rewind,
-            fast_forward: self.fast_forward,
+            fast_forward,
             toasts: handler.toasts,
             open_rom,
             set_overscan: if handler.overscan_changed {
