@@ -95,13 +95,7 @@ impl MemoryMapper for Namco175_340Mapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
-            0x6000..=0x7FFF => {
-                if self.prg_ram_enabled {
-                    self.prg_ram[(addr - 0x6000) as usize]
-                } else {
-                    0
-                }
-            }
+            0x6000..=0x7FFF if self.prg_ram_enabled => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0x9FFF => {
                 let bank = self.prg_bank_index(self.prg_banks[0]);
                 self.prg_rom
@@ -133,10 +127,8 @@ impl MemoryMapper for Namco175_340Mapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x6000..=0x7FFF => {
-                if self.prg_ram_enabled {
-                    self.prg_ram[(addr - 0x6000) as usize] = value;
-                }
+            0x6000..=0x7FFF if self.prg_ram_enabled => {
+                self.prg_ram[(addr - 0x6000) as usize] = value;
             }
             0x8000..=0x87FF => self.chr_banks[0] = value,
             0x8800..=0x8FFF => self.chr_banks[1] = value,
@@ -146,10 +138,8 @@ impl MemoryMapper for Namco175_340Mapper {
             0xA800..=0xAFFF => self.chr_banks[5] = value,
             0xB000..=0xB7FF => self.chr_banks[6] = value,
             0xB800..=0xBFFF => self.chr_banks[7] = value,
-            0xC000..=0xC7FF => {
-                if !self.is_namco340 {
-                    self.prg_ram_enabled = value & 1 != 0;
-                }
+            0xC000..=0xC7FF if !self.is_namco340 => {
+                self.prg_ram_enabled = value & 1 != 0;
             }
             0xE000..=0xE7FF => {
                 self.prg_banks[0] = value & 0x3F;

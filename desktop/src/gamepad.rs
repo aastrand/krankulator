@@ -86,10 +86,8 @@ impl Gamepads {
     pub fn poll_raw_buttons(&mut self) -> Vec<&'static str> {
         let (raw, _names) = self.inner.poll();
         let mut buttons = Vec::new();
-        for state in &raw {
-            if let Some(s) = state {
-                buttons.extend(s.pressed_buttons());
-            }
+        for s in raw.iter().flatten() {
+            buttons.extend(s.pressed_buttons());
         }
         buttons
     }

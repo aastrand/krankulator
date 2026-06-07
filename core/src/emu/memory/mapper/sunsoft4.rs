@@ -151,13 +151,7 @@ impl MemoryMapper for Sunsoft4Mapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
-            0x6000..=0x7FFF => {
-                if self.prg_ram_enabled {
-                    self.prg_ram[(addr - 0x6000) as usize]
-                } else {
-                    0
-                }
-            }
+            0x6000..=0x7FFF if self.prg_ram_enabled => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xBFFF => {
                 let bank = self.prg_bank as usize % self.prg_rom.len().max(1);
                 self.prg_rom
@@ -177,10 +171,8 @@ impl MemoryMapper for Sunsoft4Mapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x6000..=0x7FFF => {
-                if self.prg_ram_enabled {
-                    self.prg_ram[(addr - 0x6000) as usize] = value;
-                }
+            0x6000..=0x7FFF if self.prg_ram_enabled => {
+                self.prg_ram[(addr - 0x6000) as usize] = value;
             }
             0x8000..=0x8FFF => self.chr_banks[0] = value,
             0x9000..=0x9FFF => self.chr_banks[1] = value,
@@ -226,13 +218,11 @@ impl MemoryMapper for Sunsoft4Mapper {
                     unsafe { std::ptr::copy(b.as_ptr().add(offset), dest, copy_size) }
                 }
             }
-            0x2000..=0x3EFF => {
-                if !self.use_chr_nametables {
-                    let mirrored = mirror_nametable_addr(addr, self.mirroring_mode());
-                    let vram_addr = (mirrored & 0x7FF) as usize;
-                    let copy_size = size.min(VRAM_SIZE as usize - vram_addr);
-                    unsafe { std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size) }
-                }
+            0x2000..=0x3EFF if !self.use_chr_nametables => {
+                let mirrored = mirror_nametable_addr(addr, self.mirroring_mode());
+                let vram_addr = (mirrored & 0x7FF) as usize;
+                let copy_size = size.min(VRAM_SIZE as usize - vram_addr);
+                unsafe { std::ptr::copy(self.vram.as_ptr().add(vram_addr), dest, copy_size) }
             }
             _ => {}
         }

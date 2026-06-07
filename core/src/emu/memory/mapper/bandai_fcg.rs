@@ -320,17 +320,13 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
-            0x60 | 0x70 => {
-                if self.submapper == Submapper::Lz93d50 {
-                    if let Some(ref eeprom) = self.eeprom {
-                        let bit = eeprom.read_bit();
-                        if bit {
-                            0x10
-                        } else {
-                            0x00
-                        }
+            0x60 | 0x70 if self.submapper == Submapper::Lz93d50 => {
+                if let Some(ref eeprom) = self.eeprom {
+                    let bit = eeprom.read_bit();
+                    if bit {
+                        0x10
                     } else {
-                        0
+                        0x00
                     }
                 } else {
                     0
@@ -359,17 +355,13 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 | 0x40 | 0x50 => {}
-            0x60 | 0x70 => {
-                if self.submapper == Submapper::Fcg {
-                    let reg = (addr & 0x0F) as u8;
-                    self.write_register(reg, value);
-                }
+            0x60 | 0x70 if self.submapper == Submapper::Fcg => {
+                let reg = (addr & 0x0F) as u8;
+                self.write_register(reg, value);
             }
-            0x80..=0xF0 => {
-                if self.submapper == Submapper::Lz93d50 {
-                    let reg = (addr & 0x0F) as u8;
-                    self.write_register(reg, value);
-                }
+            0x80..=0xF0 if self.submapper == Submapper::Lz93d50 => {
+                let reg = (addr & 0x0F) as u8;
+                self.write_register(reg, value);
             }
             _ => {}
         }

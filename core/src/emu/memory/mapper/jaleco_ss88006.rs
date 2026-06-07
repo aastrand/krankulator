@@ -194,13 +194,7 @@ impl MemoryMapper for JalecoSS88006Mapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
-            0x60 | 0x70 => {
-                if self.prg_ram_enabled {
-                    self.prg_ram[(addr - 0x6000) as usize]
-                } else {
-                    0
-                }
-            }
+            0x60 | 0x70 if self.prg_ram_enabled => self.prg_ram[(addr - 0x6000) as usize],
             0x80 | 0x90 => {
                 let bank = self.prg_bank(0);
                 self.prg_rom[bank][(addr - 0x8000) as usize]
@@ -227,10 +221,8 @@ impl MemoryMapper for JalecoSS88006Mapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 | 0x40 | 0x50 => {}
-            0x60 | 0x70 => {
-                if self.prg_ram_enabled && self.prg_ram_writable {
-                    self.prg_ram[(addr - 0x6000) as usize] = value;
-                }
+            0x60 | 0x70 if self.prg_ram_enabled && self.prg_ram_writable => {
+                self.prg_ram[(addr - 0x6000) as usize] = value;
             }
             0x80..=0xF0 => self.write_register(addr, value),
             _ => {}

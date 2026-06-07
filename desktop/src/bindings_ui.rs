@@ -98,33 +98,29 @@ impl BindingUi {
                         self.active = false;
                         return UiEvent::Close;
                     }
-                    "ArrowUp" | "KeyW" => {
-                        if cursor > 0 {
-                            let new_cursor = cursor - 1;
-                            let new_scroll = if new_cursor < scroll {
-                                new_cursor
-                            } else {
-                                scroll
-                            };
-                            self.state = State::SelectAction {
-                                cursor: new_cursor,
-                                scroll: new_scroll,
-                            };
-                        }
+                    "ArrowUp" | "KeyW" if cursor > 0 => {
+                        let new_cursor = cursor - 1;
+                        let new_scroll = if new_cursor < scroll {
+                            new_cursor
+                        } else {
+                            scroll
+                        };
+                        self.state = State::SelectAction {
+                            cursor: new_cursor,
+                            scroll: new_scroll,
+                        };
                     }
-                    "ArrowDown" | "KeyS" => {
-                        if cursor + 1 < BINDABLE_ACTIONS.len() {
-                            let new_cursor = cursor + 1;
-                            let new_scroll = if new_cursor >= scroll + ITEMS_PER_PAGE {
-                                new_cursor - ITEMS_PER_PAGE + 1
-                            } else {
-                                scroll
-                            };
-                            self.state = State::SelectAction {
-                                cursor: new_cursor,
-                                scroll: new_scroll,
-                            };
-                        }
+                    "ArrowDown" | "KeyS" if cursor + 1 < BINDABLE_ACTIONS.len() => {
+                        let new_cursor = cursor + 1;
+                        let new_scroll = if new_cursor >= scroll + ITEMS_PER_PAGE {
+                            new_cursor - ITEMS_PER_PAGE + 1
+                        } else {
+                            scroll
+                        };
+                        self.state = State::SelectAction {
+                            cursor: new_cursor,
+                            scroll: new_scroll,
+                        };
                     }
                     "Enter" | "KeyZ" => {
                         self.state = State::ActionMenu {
@@ -153,21 +149,17 @@ impl BindingUi {
                             scroll,
                         };
                     }
-                    "ArrowUp" | "KeyW" => {
-                        if menu_cursor > 0 {
-                            self.state = State::ActionMenu {
-                                action_idx,
-                                cursor: menu_cursor - 1,
-                            };
-                        }
+                    "ArrowUp" | "KeyW" if menu_cursor > 0 => {
+                        self.state = State::ActionMenu {
+                            action_idx,
+                            cursor: menu_cursor - 1,
+                        };
                     }
-                    "ArrowDown" => {
-                        if menu_cursor < 3 {
-                            self.state = State::ActionMenu {
-                                action_idx,
-                                cursor: menu_cursor + 1,
-                            };
-                        }
+                    "ArrowDown" if menu_cursor < 3 => {
+                        self.state = State::ActionMenu {
+                            action_idx,
+                            cursor: menu_cursor + 1,
+                        };
                     }
                     "Enter" | "KeyZ" => match menu_cursor {
                         0 => {

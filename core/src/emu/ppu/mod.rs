@@ -822,7 +822,7 @@ impl PPU {
             && rendering_enabled
             && self.cycle >= SPRITE_EVAL_START
             && self.cycle <= SPRITE_EVAL_END
-            && (self.cycle - SPRITE_EVAL_START) % 2 == 0
+            && (self.cycle - SPRITE_EVAL_START).is_multiple_of(2)
         {
             self.sprite_evaluation_tick();
         }
@@ -864,7 +864,7 @@ impl PPU {
             if matches!(self.cycle, 328 | 336)
                 || (self.cycle >= TILE_WIDTH
                     && self.cycle <= LAST_VISIBLE_DOT
-                    && self.cycle % TILE_WIDTH == 0)
+                    && self.cycle.is_multiple_of(TILE_WIDTH))
             {
                 self.inc_coarse_x();
             }

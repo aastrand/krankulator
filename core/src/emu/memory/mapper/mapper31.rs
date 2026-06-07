@@ -80,14 +80,13 @@ impl MemoryMapper for Mapper31 {
 
         match page {
             0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
-            0x50 => {
+            0x50
                 // $5FF8-$5FFF: bank registers
-                if addr >= 0x5FF8 {
+                if addr >= 0x5FF8 => {
                     let slot = (addr - 0x5FF8) as usize;
                     self.bank_regs[slot] = value;
                     self.apply_bank(slot);
                 }
-            }
             0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {}
             _ => {}
         }

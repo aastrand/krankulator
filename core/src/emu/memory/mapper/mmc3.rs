@@ -282,13 +282,7 @@ impl MMC3Mapper {
                     (0, false)
                 }
             }
-            0x1400..=0x17FF => {
-                if self.chr_bank_mode == 0 {
-                    (3, true)
-                } else {
-                    (0, true)
-                }
-            }
+            0x1400..=0x17FF if self.chr_bank_mode == 0 => (3, true),
             0x1800..=0x1BFF => {
                 if self.chr_bank_mode == 0 {
                     (4, true)
@@ -432,14 +426,12 @@ impl MemoryMapper for MMC3Mapper {
                     }
                 }
             }
-            0xA000..=0xBFFF => {
-                if addr & 1 == 0 && self.variant != MMC3Variant::TxSROM {
-                    self.mirroring = if value & 1 == 0 {
-                        NametableMirror::Vertical
-                    } else {
-                        NametableMirror::Horizontal
-                    };
-                }
+            0xA000..=0xBFFF if addr & 1 == 0 && self.variant != MMC3Variant::TxSROM => {
+                self.mirroring = if value & 1 == 0 {
+                    NametableMirror::Vertical
+                } else {
+                    NametableMirror::Horizontal
+                };
             }
             0xC000..=0xDFFF => {
                 if addr & 1 == 0 {

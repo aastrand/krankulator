@@ -389,13 +389,11 @@ impl MemoryMapper for Vrc2_4Mapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         match addr {
-            0x0000..=0x1FFF => {
-                if self.chr_is_ram {
-                    let slot = (addr >> 10) as usize & 7;
-                    let bank = self.chr_bank_number(slot);
-                    if let Some(b) = self.chr_rom.get_mut(bank) {
-                        b[addr as usize & 0x3FF] = value;
-                    }
+            0x0000..=0x1FFF if self.chr_is_ram => {
+                let slot = (addr >> 10) as usize & 7;
+                let bank = self.chr_bank_number(slot);
+                if let Some(b) = self.chr_rom.get_mut(bank) {
+                    b[addr as usize & 0x3FF] = value;
                 }
             }
             0x2000..=0x3EFF => {

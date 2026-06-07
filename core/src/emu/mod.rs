@@ -692,7 +692,7 @@ impl Emulator {
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
-        if self.cycles % self.region.input_poll_interval == 0 {
+        if self.cycles.is_multiple_of(self.region.input_poll_interval) {
             let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
             if result.exit {
                 state = CycleState::Exiting;

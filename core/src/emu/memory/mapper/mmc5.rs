@@ -573,13 +573,7 @@ impl MMC5Mapper {
         match source {
             0 => self.vram[offset],
             1 => self.vram[0x400 + offset],
-            2 => {
-                if self.exram_mode <= 1 {
-                    self.exram[offset]
-                } else {
-                    0
-                }
-            }
+            2 if self.exram_mode <= 1 => self.exram[offset],
             3 => {
                 // Fill mode
                 if offset < 960 {
@@ -603,10 +597,8 @@ impl MMC5Mapper {
         match source {
             0 => self.vram[offset] = value,
             1 => self.vram[0x400 + offset] = value,
-            2 => {
-                if self.exram_mode <= 1 {
-                    self.exram[offset] = value;
-                }
+            2 if self.exram_mode <= 1 => {
+                self.exram[offset] = value;
             }
             3 => {} // fill mode is read-only
             _ => {}
@@ -742,10 +734,8 @@ impl MemoryMapper for MMC5Mapper {
             0x5010 => {
                 self.pcm_read_mode = value & 0x01 != 0;
             }
-            0x5011 => {
-                if !self.pcm_read_mode && value != 0 {
-                    self.pcm_output = value as f32;
-                }
+            0x5011 if !self.pcm_read_mode && value != 0 => {
+                self.pcm_output = value as f32;
             }
             0x5015 => {
                 self.pulse1.set_enabled(value & 0x01 != 0);
@@ -840,13 +830,11 @@ impl MemoryMapper for MMC5Mapper {
                     _ => {} // Mode 3: read-only
                 }
             }
-            0x6000..=0x7FFF => {
-                if self.ram_writes_enabled() {
-                    let ram_bank = (self.prg_bank_regs[0] & 0x07) as usize;
-                    let offset = (addr - 0x6000) as usize;
-                    let ram_addr = (ram_bank * 8192 + offset) % PRG_RAM_SIZE;
-                    self.prg_ram[ram_addr] = value;
-                }
+            0x6000..=0x7FFF if self.ram_writes_enabled() => {
+                let ram_bank = (self.prg_bank_regs[0] & 0x07) as usize;
+                let offset = (addr - 0x6000) as usize;
+                let ram_addr = (ram_bank * 8192 + offset) % PRG_RAM_SIZE;
+                self.prg_ram[ram_addr] = value;
             }
             0x8000..=0xFFFF => {
                 match self.resolve_prg_addr(addr) {

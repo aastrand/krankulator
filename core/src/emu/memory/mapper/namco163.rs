@@ -331,10 +331,8 @@ impl MemoryMapper for Namco163Mapper {
                 self.irq_enabled = value & 0x80 != 0;
                 self.irq_pending = false;
             }
-            0x6000..=0x7FFF => {
-                if self.wram_writable() {
-                    self.prg_ram[(addr - 0x6000) as usize] = value;
-                }
+            0x6000..=0x7FFF if self.wram_writable() => {
+                self.prg_ram[(addr - 0x6000) as usize] = value;
             }
             0x8000..=0x87FF => self.chr_banks[0] = value,
             0x8800..=0x8FFF => self.chr_banks[1] = value,

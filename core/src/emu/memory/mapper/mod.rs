@@ -200,10 +200,8 @@ impl PpuBus {
         }
         let page = super::addr_to_page(addr);
         match page {
-            0x0 | 0x10 => {
-                if self.chr_writable {
-                    self.chr[addr as usize] = value;
-                }
+            0x0 | 0x10 if self.chr_writable => {
+                self.chr[addr as usize] = value;
             }
             // $3000-$3EFF mirrors $2000-$2EFF
             0x20 | 0x30 => {

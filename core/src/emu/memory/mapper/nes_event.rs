@@ -72,15 +72,11 @@ impl NesEventMapper {
         let i_bit = (self.reg1 & 0x10) != 0;
 
         match self.init_state {
-            0 => {
-                if !i_bit {
-                    self.init_state = 1;
-                }
+            0 if !i_bit => {
+                self.init_state = 1;
             }
-            1 => {
-                if i_bit {
-                    self.init_state = 2;
-                }
+            1 if i_bit => {
+                self.init_state = 2;
             }
             _ => {}
         }
@@ -199,13 +195,7 @@ impl MemoryMapper for NesEventMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
-            0x6000..=0x7FFF => {
-                if self.wram_enabled {
-                    self.wram[(addr - 0x6000) as usize]
-                } else {
-                    0
-                }
-            }
+            0x6000..=0x7FFF if self.wram_enabled => self.wram[(addr - 0x6000) as usize],
             0x8000..=0xFFFF => self.map_prg_read(addr),
             _ => 0,
         }
@@ -214,10 +204,8 @@ impl MemoryMapper for NesEventMapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x6000..=0x7FFF => {
-                if self.wram_enabled {
-                    self.wram[(addr - 0x6000) as usize] = value;
-                }
+            0x6000..=0x7FFF if self.wram_enabled => {
+                self.wram[(addr - 0x6000) as usize] = value;
             }
             0x8000..=0xFFFF => self.write_register(addr, value),
             _ => {}

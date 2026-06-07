@@ -220,8 +220,7 @@ fn main() -> Result<(), String> {
         emu::dbg::toggle_breakpoint(&breakpoint, &mut emu.breakpoints);
     }
 
-    if args.codeaddr.is_some() {
-        let input_addr = args.codeaddr.unwrap();
+    if let Some(input_addr) = args.codeaddr {
         match util::hex_str_to_u16(&input_addr) {
             Ok(addr) => emu.cpu.pc = addr,
             _ => {
