@@ -119,7 +119,9 @@ impl Gamepads {
                 for btn_name in s.pressed_buttons() {
                     for action in bindings.gamepad_action(btn_name) {
                         if let Some((player, bit)) = action.controller_bit() {
-                            if player == 0 {
+                            // Gamepad slot offsets the player: P1 actions on gamepad 1 go to P2
+                            let effective = (player as usize + i) % 2;
+                            if effective == 0 {
                                 p1_bits |= bit;
                             } else {
                                 p2_bits |= bit;
