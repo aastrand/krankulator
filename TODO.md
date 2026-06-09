@@ -397,7 +397,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | instr_test-v5 | official_only, all_instrs | ✅ | integration_tests.rs |
 | cpu_reset | ram_after_reset, registers | ✅ | integration_tests.rs |
 | cpu_exec_space | APU test | ✅ | apu/mod.rs |
-| cpu_exec_space | PPU I/O test | ❌ ignored | integration_tests.rs |
+| cpu_exec_space | PPU I/O test | ✅ | integration_tests.rs |
 | cpu_interrupts_v2 | 1-cli_latency | ✅ | integration_tests.rs |
 | cpu_interrupts_v2 | 2-nmi_and_brk, 3-nmi_and_irq, 4-irq_and_dma, 5-branch_delays_irq | ❌ ignored | integration_tests.rs |
 | instr_timing | 2-branch_timing | ✅ | integration_tests.rs |
@@ -454,7 +454,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | ~~`ppu_open_bus`~~ | ~~PPU bus bits decay to 0 after ~600ms~~ | ~~Low~~ | **FIXED** — per-bit decay timer + OAM attribute bit masking + palette partial refresh | ✅ |
 | **Priority 5 — Deprioritize** | | | | |
 | `oam_stress` | OAM address/read/write under stress | Low — test only passes 1/4 on real HW | PPU-CPU alignment jitter, may be unfixable deterministically | S |
-| `cpu_exec_space_ppuio` | Code execution from PPU I/O space | Very low — no real game does this | PPU open bus during instruction fetch | M |
+| ~~`cpu_exec_space_ppuio`~~ | ~~Code execution from PPU I/O space~~ | ~~Very low~~ | **FIXED** — added cycle-2 dummy read of PC+1 for RTS, RTI, and BRK | ✅ |
 
 **Attack order rationale:**
 
@@ -466,7 +466,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 
 4. **PPU open bus + IRQ/DMA** — lower game impact, more plumbing work.
 
-5. **oam_stress + cpu_exec_space_ppuio** — oam_stress is flaky on real hardware; ppuio tests a scenario no game uses.
+5. **oam_stress** — flaky on real hardware.
 
 ### Not automatable
 

@@ -1021,6 +1021,9 @@ impl Emulator {
             }
 
             opcodes::BRK => {
+                // Cycle 2: dummy read of the byte after BRK (the "signature byte")
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
+
                 // Sync PPU to the vector fetch point (cycle 5 of 7) so NMI
                 // edges that arrive during BRK can hijack the vector.
                 let vf_sub = self.instruction_start_sub + 3 * self.region.master_clocks_per_cpu;
@@ -1301,6 +1304,9 @@ impl Emulator {
             }
 
             opcodes::RTI => {
+                // Cycle 2: dummy read of the byte after RTI
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
+
                 // RTI retrieves the Processor Status Word (flags)
                 // and the Program Counter from the stack in that order
                 // (interrupts push the PC first and then the PSW).
@@ -1324,6 +1330,9 @@ impl Emulator {
             }
 
             opcodes::RTS => {
+                // Cycle 2: dummy read of the byte after RTS
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
+
                 // ReTurn from Subroutine
                 let lb: u8 = self.pull_from_stack();
                 let hb: u8 = self.pull_from_stack();

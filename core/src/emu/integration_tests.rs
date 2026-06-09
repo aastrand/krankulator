@@ -608,7 +608,6 @@ mod tests {
     // --- cpu_exec_space ---
 
     #[test]
-    #[ignore]
     fn test_cpu_exec_space_ppuio() {
         run_blargg_test(
             test_rom!("cpu_exec_space/test_cpu_exec_space_ppuio.nes"),

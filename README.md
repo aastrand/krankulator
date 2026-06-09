@@ -282,7 +282,7 @@ waveform, spectrum, and envelope comparisons.
 | PAL APU | All 10 tests (len_ctr, len_table, irq_flag, clock_jitter, len_timing, irq_timing, len_halt/reload) | ✅ |
 | DMC tests | status, status_irq, buffer_retained, latency | ✅ |
 | cpu_exec_space | APU register space execution | ✅ |
-| cpu_exec_space | PPU I/O space execution | ❌ |
+| cpu_exec_space | PPU I/O space execution | ✅ |
 | Instruction timing | Branch timing (2-branch_timing) | ✅ |
 | Instruction timing | Full instruction timing (1-instr_timing) | ✅ |
 | CPU timing test | All official instruction cycle counts | ✅ |
