@@ -440,13 +440,7 @@ mod tests {
     }
 
     fn run_blargg_test(rom_path: &str, test_name: &str) {
-        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
-        emu.cpu.status = 0x34;
-        emu.cpu.sp = 0xfd;
-        emu.toggle_should_trigger_nmi(true);
-        emu.toggle_debug_on_infinite_loop(false);
-        emu.toggle_quiet_mode(true);
-        emu.toggle_verbose_mode(false);
+        let mut emu = init_blargg_emu(rom_path);
         emu.run();
 
         let buf = get_status_str(&mut emu, 0x6004, 300);
@@ -459,6 +453,56 @@ mod tests {
             status,
             buf.trim()
         );
+    }
+
+    /// Run a test ROM that uses the older blargg framework (no $6000 protocol).
+    /// Runs up to `max_frames`, then scans PPU nametable VRAM for "Passed"/"Failed".
+    fn run_screen_test(rom_path: &str, test_name: &str, max_frames: u32) {
+        let mut emu = init_blargg_emu(rom_path);
+
+        for _ in 0..max_frames {
+            if !emu.run_one_frame() {
+                break;
+            }
+            let status = emu.mem.cpu_read(0x6000);
+            if status != 0x80 && status != 0x00 {
+                break;
+            }
+        }
+
+        let screen_text = read_nametable_text(&emu);
+        assert!(
+            screen_text.contains("Passed"),
+            "{test_name}: expected 'Passed' on screen but got:\n{screen_text}"
+        );
+    }
+
+    fn init_blargg_emu(rom_path: &str) -> emu::Emulator {
+        let mut emu = emu::Emulator::new_headless(loader::load_nes(&String::from(rom_path)));
+        emu.cpu.status = 0x34;
+        emu.cpu.sp = 0xfd;
+        emu.toggle_should_trigger_nmi(true);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu
+    }
+
+    fn read_nametable_text(emu: &emu::Emulator) -> String {
+        let mut text = String::new();
+        for row in 0..30u16 {
+            for col in 0..32u16 {
+                let tile = emu.mem.ppu_read(0x2000 + row * 32 + col);
+                let ch = if tile >= 0x20 && tile < 0x7F {
+                    tile as char
+                } else {
+                    ' '
+                };
+                text.push(ch);
+            }
+            text.push('\n');
+        }
+        text
     }
 
     // --- cpu_interrupts_v2 ---
@@ -804,9 +848,10 @@ mod tests {
     #[test]
     #[ignore]
     fn test_ppu_read_buffer() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("ppu_read_buffer/test_ppu_read_buffer.nes"),
             "test_ppu_read_buffer",
+            600,
         );
     }
 
@@ -936,14 +981,14 @@ mod tests {
         );
     }
 
-    // --- cpu_dummy_reads (hangs — never terminates) ---
+    // --- cpu_dummy_reads ---
 
     #[test]
-    #[ignore]
     fn test_cpu_dummy_reads() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("cpu_dummy_reads/cpu_dummy_reads.nes"),
             "cpu_dummy_reads",
+            600,
         );
     }
 
@@ -967,50 +1012,55 @@ mod tests {
         );
     }
 
-    // --- dmc_dma_during_read4 (hangs — never terminates) ---
+    // --- dmc_dma_during_read4 ---
 
     #[test]
     #[ignore]
     fn test_dmc_dma_2007_read() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("dmc_dma_during_read4/dma_2007_read.nes"),
             "dma_2007_read",
+            600,
         );
     }
 
     #[test]
     #[ignore]
     fn test_dmc_dma_2007_write() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("dmc_dma_during_read4/dma_2007_write.nes"),
             "dma_2007_write",
+            600,
         );
     }
 
     #[test]
     #[ignore]
     fn test_dmc_dma_4016_read() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("dmc_dma_during_read4/dma_4016_read.nes"),
             "dma_4016_read",
+            600,
         );
     }
 
     #[test]
     #[ignore]
     fn test_dmc_dma_double_2007_read() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("dmc_dma_during_read4/double_2007_read.nes"),
             "double_2007_read",
+            600,
         );
     }
 
     #[test]
     #[ignore]
     fn test_dmc_dma_read_write_2007() {
-        run_blargg_test(
+        run_screen_test(
             test_rom!("dmc_dma_during_read4/read_write_2007.nes"),
             "read_write_2007",
+            600,
         );
     }
 

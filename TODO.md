@@ -423,15 +423,15 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 | vbl_nmi_timing | all 7 | ✅ | integration_tests.rs |
 | sprite_hit_tests_2005 | all 11 | ✅ | integration_tests.rs |
 | sprite_overflow_tests | all 5 | ✅ | integration_tests.rs |
-| ppu_read_buffer | 1 | ❌ ignored | integration_tests.rs |
-| cpu_dummy_reads | 1 | ❌ ignored (hangs) | integration_tests.rs |
+| ppu_read_buffer | 1 | ❌ ignored (DMA+PPU bus side-effects) | integration_tests.rs |
+| cpu_dummy_reads | 1 | ✅ | integration_tests.rs |
 | cpu_dummy_writes | all 2 | ❌ ignored | integration_tests.rs |
-| dmc_dma_during_read4 | all 5 | ❌ ignored (hangs) | integration_tests.rs |
+| dmc_dma_during_read4 | all 5 | ❌ ignored | integration_tests.rs |
 | sprdma_and_dmc_dma | all 2 | ❌ ignored | integration_tests.rs |
 
 ### Ignored tests — failure analysis and fix plan
 
-14 tests are wired up but `#[ignore]`d. Grouped by root cause, ordered by recommended attack priority.
+13 tests are wired up but `#[ignore]`d. Grouped by root cause, ordered by recommended attack priority.
 
 | Test | What it tests | Game impact | Root cause | Size |
 |------|--------------|-------------|------------|------|
