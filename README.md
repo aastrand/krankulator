@@ -263,7 +263,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-664 tests passing, 21 ignored (pending accuracy work). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+669 tests passing, 13 ignored (pending accuracy work), 4 slow (APU mixer, release-only CI). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|

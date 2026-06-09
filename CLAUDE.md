@@ -305,7 +305,7 @@ docs/               — Design documents and dev setup guides
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (665 tests, 21 ignored). Desktop has 16 tests including audio backend wiring, binding data model, binding UI state machine, and settings roundtrip.
+All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 tests including audio backend wiring, binding data model, binding UI state machine, and settings roundtrip.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -373,4 +373,4 @@ All emulation tests live in `core/` (665 tests, 21 ignored). Desktop has 16 test
 - Indexed addressing performs dummy reads at uncorrected (pre-page-fix) address
 - RMW instructions always perform the dummy read regardless of page crossing
 
-The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PAL APU (all 10), blargg PPU 2005, DMC status, cpu_exec_space (APU), CPU timing, branch timing, instruction timing, instruction misc (including dummy_reads_apu), CPU interrupt CLI latency, PPU VBL basics/set-time/clear/NMI control/suppression/nmi-off-timing/even-odd frames, OAM read/stress, PPU open bus, sprite hit, sprite overflow, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), nmi_on_timing (1-dot PPU-CPU alignment), DMA cycle stealing, cpu_dummy_writes, and ppu_read_buffer.
+The emulator passes standard NES test ROM suites including Klaus2m5, nestest, blargg CPU (v3+v5), blargg APU/APU 2005/APU reset, blargg PAL APU (all 10), blargg PPU 2005, DMC status, cpu_exec_space (APU + PPU I/O), CPU timing, branch timing, instruction timing, instruction misc (including dummy_reads_apu), CPU interrupt CLI latency, PPU VBL basics/set-time/clear/NMI control/suppression/nmi-off-timing/even-odd frames, OAM read/stress, PPU open bus, sprite hit, sprite overflow, cpu_dummy_reads, cpu_dummy_writes, and MMC3 (both variants). Ignored tests track known gaps: NMI hijacking (nmi_and_brk etc.), nmi_on_timing (1-dot PPU-CPU alignment), DMA cycle stealing, and ppu_read_buffer.

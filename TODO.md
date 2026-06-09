@@ -431,7 +431,7 @@ Test ROMs sourced from `test-roms/` git submodule ([christopherpow/nes-test-roms
 
 ### Ignored tests — failure analysis and fix plan
 
-11 tests are wired up but `#[ignore]`d. Grouped by root cause, ordered by recommended attack priority.
+13 tests are wired up but `#[ignore]`d. Grouped by root cause, ordered by recommended attack priority.
 
 | Test | What it tests | Game impact | Root cause | Size |
 |------|--------------|-------------|------------|------|
