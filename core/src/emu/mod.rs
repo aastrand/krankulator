@@ -1619,11 +1619,14 @@ impl Emulator {
         self.cpu.add_to_a_with_carry(operand);
     }
 
+    // RMW instructions write the original value back before writing the result.
+    // This double-write is observable via PPU/APU register side effects.
     fn asl(&mut self, addr: u16) -> u8 {
         let value: u8 = self.cpu_read(addr);
         self.log_push(value as u16);
         let result: u8 = self.cpu.asl(value);
         self.log_push(result as u16);
+        self.cpu_write(addr, value);
         self.cpu_write(addr, result);
 
         result
@@ -1701,6 +1704,7 @@ impl Emulator {
         let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
+        self.cpu_write(addr, operand);
         self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
@@ -1711,6 +1715,7 @@ impl Emulator {
         let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_sub(1);
+        self.cpu_write(addr, operand);
         self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
@@ -1731,6 +1736,7 @@ impl Emulator {
         let operand: u8 = self.cpu_read(addr);
         self.log_push(operand as u16);
         let value: u8 = operand.wrapping_add(1);
+        self.cpu_write(addr, operand);
         self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
@@ -1742,6 +1748,7 @@ impl Emulator {
         self.log_push(operand as u16);
 
         let value: u8 = operand.wrapping_add(1);
+        self.cpu_write(addr, operand);
         self.cpu_write(addr, value);
 
         self.cpu.check_negative(value);
@@ -1762,6 +1769,7 @@ impl Emulator {
         self.log_push(value as u16);
         let result: u8 = self.cpu.lsr(value);
         self.log_push(result as u16);
+        self.cpu_write(addr, value);
         self.cpu_write(addr, result);
 
         result
@@ -1785,6 +1793,7 @@ impl Emulator {
         self.log_push(value as u16);
         let result: u8 = self.cpu.rol(value);
         self.log_push(result as u16);
+        self.cpu_write(addr, value);
         self.cpu_write(addr, result);
 
         result
@@ -1795,6 +1804,7 @@ impl Emulator {
         self.log_push(value as u16);
         let result: u8 = self.cpu.ror(value);
         self.log_push(result as u16);
+        self.cpu_write(addr, value);
         self.cpu_write(addr, result);
 
         result

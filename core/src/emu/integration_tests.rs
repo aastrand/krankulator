@@ -995,7 +995,6 @@ mod tests {
     // --- cpu_dummy_writes ---
 
     #[test]
-    #[ignore]
     fn test_cpu_dummy_writes_oam() {
         run_blargg_test(
             test_rom!("cpu_dummy_writes/cpu_dummy_writes_oam.nes"),
@@ -1004,7 +1003,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_cpu_dummy_writes_ppumem() {
         run_blargg_test(
             test_rom!("cpu_dummy_writes/cpu_dummy_writes_ppumem.nes"),

@@ -301,7 +301,7 @@ waveform, spectrum, and envelope comparisons.
 | sprite_overflow_tests | All 5 tests | ✅ |
 | ppu_read_buffer | 1 test | ❌ |
 | cpu_dummy_reads | 1 test | ✅ |
-| cpu_dummy_writes | All 2 tests | ❌ |
+| cpu_dummy_writes | All 2 tests | ✅ |
 | dmc_dma_during_read4 | All 5 tests | ❌ |
 | sprdma_and_dmc_dma | All 2 tests | ❌ |
 
