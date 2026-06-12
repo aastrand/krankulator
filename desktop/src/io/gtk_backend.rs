@@ -16,8 +16,9 @@ use krankulator_core::emu::io::{IOHandler, PollResult};
 use krankulator_core::emu::memory;
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
-    populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
+    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, NES_TEX_HEIGHT,
+    NTSC_FRAME_DURATION,
 };
 use crate::bindings::{Action, InputBindings, KeyId};
 use crate::bindings_ui::{BindingUi, UiEvent};
@@ -130,6 +131,10 @@ pub struct GtkPixelsIOHandler {
     rewind_flag: Rc<Cell<bool>>,
     fullscreen_flag: Rc<Cell<bool>>,
     overscan: Rc<Cell<bool>>,
+    correct_aspect_ratio: Rc<Cell<bool>>,
+    window_scale: Cell<u32>,
+    scale_up_flag: Rc<Cell<bool>>,
+    scale_down_flag: Rc<Cell<bool>>,
     overscan_changed: Cell<bool>,
     menu: Menu,
     menu_ids: MenuIds,
@@ -147,9 +152,10 @@ impl GtkPixelsIOHandler {
         gtk::init().expect("Failed to initialize GTK");
 
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
-        let scale = 4;
+        let (win_w, win_h) =
+            window_size_for_scale(settings.window_scale, settings.correct_aspect_ratio);
         window.set_title(&format!("krankulator — {}", rom_name));
-        window.set_default_size(NES_WIDTH * scale, NES_HEIGHT * scale);
+        window.set_default_size(win_w as i32, win_h as i32);
 
         if let Some(icon) = load_gtk_icon() {
             window.set_icon(Some(&icon));
@@ -176,6 +182,7 @@ impl GtkPixelsIOHandler {
         let gl_ctx: Rc<RefCell<Option<GlContext>>> = Rc::new(RefCell::new(None));
         let pixel_perfect = Rc::new(Cell::new(settings.integer_scaling));
         let scanlines = Rc::new(Cell::new(settings.scanlines));
+        let correct_aspect_ratio = Rc::new(Cell::new(settings.correct_aspect_ratio));
 
         {
             let ctx = gl_ctx.clone();
@@ -203,6 +210,7 @@ impl GtkPixelsIOHandler {
             let ctx = gl_ctx.clone();
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
+            let car = correct_aspect_ratio.clone();
             gl_area.connect_render(move |area, _gl_ctx| {
                 let mut ctx_ref = ctx.borrow_mut();
                 let Some(gl_ctx) = ctx_ref.as_mut() else {
@@ -216,6 +224,7 @@ impl GtkPixelsIOHandler {
                     alloc.height() as u32,
                     pp.get(),
                     sl.get(),
+                    car.get(),
                 );
                 glib::Propagation::Stop
             });
@@ -241,6 +250,8 @@ impl GtkPixelsIOHandler {
         let rewind_flag = Rc::new(Cell::new(false));
         let fullscreen_flag = Rc::new(Cell::new(false));
         let overscan = Rc::new(Cell::new(settings.overscan));
+        let scale_up_flag = Rc::new(Cell::new(false));
+        let scale_down_flag = Rc::new(Cell::new(false));
         let bindings = Rc::new(RefCell::new(std::mem::take(&mut settings.bindings)));
         let binding_ui_active = Rc::new(Cell::new(false));
         let captured_keys: Rc<RefCell<Vec<KeyId>>> = Rc::new(RefCell::new(Vec::new()));
@@ -268,6 +279,9 @@ impl GtkPixelsIOHandler {
             let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
+            let car = correct_aspect_ratio.clone();
+            let su = scale_up_flag.clone();
+            let sd = scale_down_flag.clone();
             let bi = bindings.clone();
             let bua = binding_ui_active.clone();
             let ck = captured_keys.clone();
@@ -284,7 +298,7 @@ impl GtkPixelsIOHandler {
                 }
                 handle_key(
                     event, true, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw,
-                    &fs, &ex, &pp, &sl, &bi,
+                    &fs, &ex, &pp, &sl, &car, &su, &sd, &bi,
                 );
                 glib::Propagation::Proceed
             });
@@ -305,6 +319,9 @@ impl GtkPixelsIOHandler {
             let ex = exit_flag.clone();
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
+            let car = correct_aspect_ratio.clone();
+            let su = scale_up_flag.clone();
+            let sd = scale_down_flag.clone();
             let bi = bindings.clone();
             let bua = binding_ui_active.clone();
             window.connect_key_release_event(move |_, event| {
@@ -313,7 +330,7 @@ impl GtkPixelsIOHandler {
                 }
                 handle_key(
                     event, false, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay,
-                    &rw, &fs, &ex, &pp, &sl, &bi,
+                    &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi,
                 );
                 glib::Propagation::Proceed
             });
@@ -322,6 +339,9 @@ impl GtkPixelsIOHandler {
         menu_items.overscan.set_checked(settings.overscan);
         menu_items.scaling.set_checked(settings.integer_scaling);
         menu_items.scanlines.set_checked(settings.scanlines);
+        menu_items
+            .correct_aspect_ratio
+            .set_checked(settings.correct_aspect_ratio);
 
         Self {
             window,
@@ -347,6 +367,10 @@ impl GtkPixelsIOHandler {
             rewind_flag,
             fullscreen_flag,
             overscan,
+            correct_aspect_ratio,
+            window_scale: Cell::new(settings.window_scale),
+            scale_up_flag,
+            scale_down_flag,
             overscan_changed: Cell::new(false),
             menu,
             menu_ids,
@@ -365,6 +389,8 @@ impl GtkPixelsIOHandler {
             integer_scaling: self.pixel_perfect.get(),
             scanlines: self.scanlines.get(),
             overscan: self.overscan.get(),
+            correct_aspect_ratio: self.correct_aspect_ratio.get(),
+            window_scale: self.window_scale.get(),
             bindings: self.bindings.borrow().clone(),
         });
     }
@@ -482,19 +508,19 @@ unsafe fn init_gl(gl: &glow::Context) -> GlState {
 fn compute_viewport(
     win_w: f32,
     win_h: f32,
-    tex_w: f32,
-    tex_h: f32,
+    display_w: f32,
+    display_h: f32,
     integer_scaling: bool,
 ) -> (i32, i32, i32, i32) {
-    let scale_x = win_w / tex_w;
-    let scale_y = win_h / tex_h;
+    let scale_x = win_w / display_w;
+    let scale_y = win_h / display_h;
     let scale = if integer_scaling {
         scale_x.min(scale_y).floor().max(1.0)
     } else {
         scale_x.min(scale_y)
     };
-    let vp_w = tex_w * scale;
-    let vp_h = tex_h * scale;
+    let vp_w = display_w * scale;
+    let vp_h = display_h * scale;
     let vp_x = (win_w - vp_w) * 0.5;
     let vp_y = (win_h - vp_h) * 0.5;
     (vp_x as i32, vp_y as i32, vp_w as i32, vp_h as i32)
@@ -507,6 +533,7 @@ fn render_gl(
     win_h: u32,
     integer_scaling: bool,
     scanlines: bool,
+    correct_aspect_ratio: bool,
 ) {
     let gl = &ctx.gl;
     let state = &ctx.state;
@@ -551,11 +578,12 @@ fn render_gl(
             ctx.texture_initialized = true;
         }
 
+        let disp_w = display_width(correct_aspect_ratio);
         let (vp_x, vp_y, vp_w, vp_h) = compute_viewport(
             win_w as f32,
             win_h as f32,
-            NES_WIDTH as f32,
-            NES_HEIGHT as f32,
+            disp_w,
+            NES_TEX_HEIGHT,
             integer_scaling,
         );
 
@@ -599,6 +627,9 @@ fn handle_key(
     exit: &Rc<Cell<bool>>,
     pixel_perfect: &Rc<Cell<bool>>,
     scanlines: &Rc<Cell<bool>>,
+    correct_aspect_ratio: &Rc<Cell<bool>>,
+    scale_up: &Rc<Cell<bool>>,
+    scale_down: &Rc<Cell<bool>>,
     bindings: &Rc<RefCell<InputBindings>>,
 ) {
     let gdk_key = event.keyval();
@@ -608,6 +639,8 @@ fn handle_key(
         match gdk_key {
             k if k == gdk_key::f || k == gdk_key::F => fullscreen.set(true),
             k if k == gdk_key::q || k == gdk_key::Q => exit.set(true),
+            k if k == gdk_key::plus || k == gdk_key::equal => scale_up.set(true),
+            k if k == gdk_key::minus || k == gdk_key::underscore => scale_down.set(true),
             _ => {}
         }
         return;
@@ -630,7 +663,11 @@ fn handle_key(
             }
             Action::ToggleScaling => {
                 if pressed {
-                    pixel_perfect.set(!pixel_perfect.get());
+                    let new_val = !pixel_perfect.get();
+                    pixel_perfect.set(new_val);
+                    if new_val {
+                        correct_aspect_ratio.set(false);
+                    }
                 }
             }
             Action::Mute => {
@@ -726,6 +763,43 @@ impl IOHandler for GtkPixelsIOHandler {
                 toasts.push("CRT scanlines OFF".into());
             }
         }
+        if self.scale_up_flag.get() {
+            self.scale_up_flag.set(false);
+            let s = self.window_scale.get();
+            if s < 6 {
+                self.window_scale.set(s + 1);
+                let is_fullscreen = self
+                    .window
+                    .window()
+                    .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                    .unwrap_or(false);
+                if !is_fullscreen {
+                    let (w, h) = window_size_for_scale(s + 1, self.correct_aspect_ratio.get());
+                    self.window.resize(w as i32, h as i32);
+                }
+                toasts.push(format!("{}x scale", s + 1));
+                self.save_display_settings();
+            }
+        }
+        if self.scale_down_flag.get() {
+            self.scale_down_flag.set(false);
+            let s = self.window_scale.get();
+            if s > 1 {
+                self.window_scale.set(s - 1);
+                let is_fullscreen = self
+                    .window
+                    .window()
+                    .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                    .unwrap_or(false);
+                if !is_fullscreen {
+                    let (w, h) = window_size_for_scale(s - 1, self.correct_aspect_ratio.get());
+                    self.window.resize(w as i32, h as i32);
+                }
+                toasts.push(format!("{}x scale", s - 1));
+                self.save_display_settings();
+            }
+        }
+
         if self.menu_items.scaling.is_checked() != self.pixel_perfect.get() {
             self.menu_items
                 .scaling
@@ -771,6 +845,8 @@ impl IOHandler for GtkPixelsIOHandler {
                     .scaling
                     .set_checked(self.pixel_perfect.get());
                 if self.pixel_perfect.get() {
+                    self.correct_aspect_ratio.set(false);
+                    self.menu_items.correct_aspect_ratio.set_checked(false);
                     toasts.push("Integer scaling".into());
                 } else {
                     toasts.push("Fill scaling".into());
@@ -796,6 +872,59 @@ impl IOHandler for GtkPixelsIOHandler {
                     toasts.push("Overscan visible".into());
                 }
                 self.save_display_settings();
+            } else if *id == self.menu_ids.correct_aspect_ratio {
+                let val = !self.correct_aspect_ratio.get();
+                self.correct_aspect_ratio.set(val);
+                self.menu_items.correct_aspect_ratio.set_checked(val);
+                if val {
+                    self.pixel_perfect.set(false);
+                    self.menu_items.scaling.set_checked(false);
+                    toasts.push("8:7 aspect ratio".into());
+                } else {
+                    toasts.push("Square pixels".into());
+                }
+                let is_fullscreen = self
+                    .window
+                    .window()
+                    .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                    .unwrap_or(false);
+                if !is_fullscreen {
+                    let (w, h) = window_size_for_scale(self.window_scale.get(), val);
+                    self.window.resize(w as i32, h as i32);
+                }
+                self.save_display_settings();
+            } else if *id == self.menu_ids.scale_up {
+                let s = self.window_scale.get();
+                if s < 6 {
+                    self.window_scale.set(s + 1);
+                    let is_fullscreen = self
+                        .window
+                        .window()
+                        .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                        .unwrap_or(false);
+                    if !is_fullscreen {
+                        let (w, h) = window_size_for_scale(s + 1, self.correct_aspect_ratio.get());
+                        self.window.resize(w as i32, h as i32);
+                    }
+                    toasts.push(format!("{}x scale", s + 1));
+                    self.save_display_settings();
+                }
+            } else if *id == self.menu_ids.scale_down {
+                let s = self.window_scale.get();
+                if s > 1 {
+                    self.window_scale.set(s - 1);
+                    let is_fullscreen = self
+                        .window
+                        .window()
+                        .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                        .unwrap_or(false);
+                    if !is_fullscreen {
+                        let (w, h) = window_size_for_scale(s - 1, self.correct_aspect_ratio.get());
+                        self.window.resize(w as i32, h as i32);
+                    }
+                    toasts.push(format!("{}x scale", s - 1));
+                    self.save_display_settings();
+                }
             } else if let Some(path) = self
                 .menu_items
                 .recent_items

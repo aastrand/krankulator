@@ -23,6 +23,25 @@ use crate::gamepad::Gamepads;
 
 pub(crate) const NTSC_FRAME_DURATION: Duration = Duration::from_nanos(16_639_267);
 
+pub(crate) const NES_TEX_WIDTH: f32 = 256.0;
+pub(crate) const NES_TEX_HEIGHT: f32 = 240.0;
+// 8:7 pixel aspect ratio — the NES outputs square pixels but CRTs stretch them to 4:3
+pub(crate) const PAR: f32 = 8.0 / 7.0;
+
+pub(crate) fn display_width(correct_ar: bool) -> f32 {
+    if correct_ar {
+        NES_TEX_WIDTH * PAR
+    } else {
+        NES_TEX_WIDTH
+    }
+}
+
+pub(crate) fn window_size_for_scale(scale: u32, correct_ar: bool) -> (u32, u32) {
+    let w = (display_width(correct_ar) * scale as f32).ceil() as u32;
+    let h = NES_TEX_HEIGHT as u32 * scale;
+    (w, h)
+}
+
 pub(crate) static ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
 
 const MAX_RECENT_ROMS: usize = 10;
@@ -40,6 +59,9 @@ pub(crate) struct MenuIds {
     pub scaling: muda::MenuId,
     pub scanlines: muda::MenuId,
     pub overscan: muda::MenuId,
+    pub correct_aspect_ratio: muda::MenuId,
+    pub scale_up: muda::MenuId,
+    pub scale_down: muda::MenuId,
 }
 
 #[allow(dead_code)]
@@ -48,6 +70,7 @@ pub(crate) struct MenuItems {
     pub scaling: CheckMenuItem,
     pub scanlines: CheckMenuItem,
     pub overscan: CheckMenuItem,
+    pub correct_aspect_ratio: CheckMenuItem,
     pub recent_submenu: Submenu,
     pub recent_items: Vec<(muda::MenuId, String)>,
 }
@@ -189,10 +212,25 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
     let scanlines_id = scanlines.id().clone();
     let overscan = CheckMenuItem::new("Hide Overscan", true, true, None::<Accelerator>);
     let overscan_id = overscan.id().clone();
+    let correct_aspect_ratio = CheckMenuItem::new(
+        "Correct Aspect Ratio (8:7)",
+        true,
+        true,
+        None::<Accelerator>,
+    );
+    let correct_aspect_ratio_id = correct_aspect_ratio.id().clone();
+    let scale_up = MenuItem::new("Increase Window Size\tCtrl++", true, None::<Accelerator>);
+    let scale_up_id = scale_up.id().clone();
+    let scale_down = MenuItem::new("Decrease Window Size\tCtrl+-", true, None::<Accelerator>);
+    let scale_down_id = scale_down.id().clone();
     view_menu.append(&fullscreen).unwrap();
     view_menu.append(&scaling).unwrap();
     view_menu.append(&scanlines).unwrap();
     view_menu.append(&overscan).unwrap();
+    view_menu.append(&correct_aspect_ratio).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    view_menu.append(&scale_up).unwrap();
+    view_menu.append(&scale_down).unwrap();
 
     let help_menu = Submenu::new("Help", true);
     help_menu
@@ -230,12 +268,16 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         scaling: scaling_id,
         scanlines: scanlines_id,
         overscan: overscan_id,
+        correct_aspect_ratio: correct_aspect_ratio_id,
+        scale_up: scale_up_id,
+        scale_down: scale_down_id,
     };
     let items = MenuItems {
         fullscreen,
         scaling,
         scanlines,
         overscan,
+        correct_aspect_ratio,
         recent_submenu,
         recent_items,
     };

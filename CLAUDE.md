@@ -183,8 +183,8 @@ cargo clippy --workspace
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
 - `bindings.rs` — Configurable input bindings data model: `Action` enum (27 variants for P1/P2 NES buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs.
 - `bindings_ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
-- `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
-- `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`), `apply_gamepad()` merges keyboard + gamepad state into controllers
+- `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, `correct_aspect_ratio`, `window_scale`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
+- `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`), `apply_gamepad()` merges keyboard + gamepad state into controllers, `display_width()`/`window_size_for_scale()` helpers for 8:7 PAR viewport calculation
 - `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust). Keyboard input routed through `InputBindings` lookup. Binding UI integration via captured key buffer (PollHandler borrows bindings immutably, captured keys processed after handler is dropped).
 - `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + GLArea (OpenGL 3.3 via glow + eglGetProcAddress), muda menu via `init_for_gtk_window()`, native Wayland support. CRT-Lottes-Fast shader (GLSL 3.30, adapted from web ES 3.0 sources). Menu bar hidden in fullscreen. Screensaver/suspend inhibited via D-Bus `org.freedesktop.ScreenSaver.Inhibit`. Keyboard input routed through `InputBindings` lookup. Binding UI state shared via `Rc<Cell<>>` pattern.
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
@@ -273,9 +273,9 @@ desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
   src/bindings.rs   — Input bindings data model (Action, KeyId, GamepadButtonId, InputBindings)
   src/bindings_ui.rs — Press-to-bind overlay UI (state machine, framebuffer drawing)
-  src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, input bindings)
+  src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, correct_aspect_ratio, window_scale, input bindings)
   src/gamepad.rs    — Platform-abstracted gamepad input (GCController/gilrs), binding-based mapping
-  src/io/mod.rs     — Shared menu, recent ROMs, platform re-export, gamepad merging
+  src/io/mod.rs     — Shared menu, recent ROMs, platform re-export, gamepad merging, PAR/viewport helpers
   src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels + CRT shader)
   src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + GLArea + glow)
   src/audio.rs      — rodio AudioBackend

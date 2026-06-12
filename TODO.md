@@ -296,7 +296,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 - [x] Native menu bar via muda crate (cross-platform: macOS/Windows/Linux) [M]
   - File: Open ROM (Cmd+O), Quit
   - Emulation: Reset (Cmd+R), Save State (Cmd+S), Load State (Cmd+L), Cycle Save Slot (Cmd+Q)
-  - Display: Fullscreen (Cmd+F), Integer Scaling — checkmarks synced with keyboard shortcuts
+  - Display: Fullscreen (Cmd+F), Integer Scaling, CRT Scanlines, Hide Overscan, Correct Aspect Ratio (8:7), Increase/Decrease Window Size (Ctrl++/Ctrl+-) — checkmarks synced with keyboard shortcuts
   - Help: About (with app icon, version, website)
   - Open ROM triggers rfd file dialog and hot-swaps the mapper mid-emulation
   - Linux requires GTK3 (`libgtk-3-dev`) — available on virtually all desktop distros
@@ -327,13 +327,13 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## Video / Rendering
 
-Currently: pixels crate (wgpu) on macOS/Windows, GTK3 GLArea (OpenGL 3.3 via glow) on Linux. Integer scaling (default) or fill scaling (I key), fullscreen (F11).
+Currently: pixels crate (wgpu) on macOS/Windows, GTK3 GLArea (OpenGL 3.3 via glow) on Linux. Integer scaling or fill scaling (I key), 8:7 aspect ratio correction (menu toggle, mutually exclusive with integer scaling), configurable window scale 1x-6x (Ctrl++/Ctrl+-), fullscreen (F11).
 
 - [x] CRT scanline filter (CRT-Lottes-Fast shader, F9 toggle, persisted in settings) [L]
   - WGSL for wgpu (macOS/Windows), GLSL ES 3.0 for WebGL2 (web), GLSL 3.30 for Linux GLArea
 - [ ] NTSC composite video simulation (blargg's nes_ntsc or similar) [L]
-- [ ] Configurable window scale (1x-6x) [S]
-- [ ] Aspect ratio correction (8:7 pixel aspect ratio for accurate NES output) [S]
+- [x] Configurable window scale (1x-6x, Ctrl++/Ctrl+-, menu items) [S]
+- [x] Aspect ratio correction (8:7 PAR for accurate 4:3 output, mutually exclusive with integer scaling) [S]
 - [x] Overscan cropping option (hide top/bottom 8 scanlines, toggled via menu, persisted) [S]
 
 ---
@@ -509,7 +509,7 @@ Visual demos, interactive tests, or unsupported hardware — cannot use $6000 pr
 
 ## Misc / Maybe
 
-- [x] Persistent settings (~/.config/krankulator/settings.txt) for integer scaling and CRT scanlines [M]
+- [x] Persistent settings (~/.config/krankulator/settings.txt) for integer scaling, CRT scanlines, overscan, aspect ratio correction, window scale, input bindings [M]
 - [ ] Netplay (rollback-based) [XXL]
 - [ ] Input recording/playback (TAS support) [L]
 - [ ] ROM database (hash-based game identification, auto-select mapper) [M]

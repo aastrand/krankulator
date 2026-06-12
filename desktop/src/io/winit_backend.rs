@@ -21,8 +21,9 @@ use krankulator_core::emu::memory;
 use krankulator_core::util;
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, frame_pace, open_rom_dialog,
-    populate_recent_submenu, MenuIds, MenuItems, NTSC_FRAME_DURATION,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
+    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, NES_TEX_HEIGHT,
+    NES_TEX_WIDTH, NTSC_FRAME_DURATION,
 };
 use crate::bindings::{Action, InputBindings, KeyId};
 use crate::bindings_ui::{BindingUi, UiEvent};
@@ -61,6 +62,8 @@ pub struct WinitPixelsIOHandler {
     rewind_held: bool,
     scanlines: bool,
     overscan: bool,
+    correct_aspect_ratio: bool,
+    window_scale: u32,
     crt: Option<CrtPipeline>,
     frame_duration: Duration,
     _menu: Menu,
@@ -77,16 +80,15 @@ struct InitHandler {
     width: u32,
     height: u32,
     title: String,
+    window_width: u32,
+    window_height: u32,
 }
 
 impl ApplicationHandler for InitHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let scale = 4.0;
-        let window_width = (self.width as f32 * scale) as u32;
-        let window_height = (self.height as f32 * scale) as u32;
         let attrs = WindowAttributes::default()
             .with_title(&self.title)
-            .with_inner_size(LogicalSize::new(window_width, window_height))
+            .with_inner_size(LogicalSize::new(self.window_width, self.window_height))
             .with_window_icon(load_window_icon());
         let window = event_loop.create_window(attrs).unwrap();
         let window: &'static Window = Box::leak(Box::new(window));
@@ -110,12 +112,16 @@ impl WinitPixelsIOHandler {
     pub fn new(width: u32, height: u32, rom_name: &str, settings: &mut Settings) -> Self {
         let mut event_loop = EventLoop::new().unwrap();
 
+        let (win_w, win_h) =
+            window_size_for_scale(settings.window_scale, settings.correct_aspect_ratio);
         let mut init = InitHandler {
             window: None,
             pixels: None,
             width,
             height,
             title: format!("krankulator — {rom_name}"),
+            window_width: win_w,
+            window_height: win_h,
         };
 
         loop {
@@ -146,6 +152,9 @@ impl WinitPixelsIOHandler {
         menu_items.scaling.set_checked(settings.integer_scaling);
         menu_items.scanlines.set_checked(settings.scanlines);
         menu_items.overscan.set_checked(settings.overscan);
+        menu_items
+            .correct_aspect_ratio
+            .set_checked(settings.correct_aspect_ratio);
 
         #[cfg(target_os = "macos")]
         {
@@ -177,6 +186,8 @@ impl WinitPixelsIOHandler {
             rewind_held: false,
             scanlines: settings.scanlines,
             overscan: settings.overscan,
+            correct_aspect_ratio: settings.correct_aspect_ratio,
+            window_scale: settings.window_scale,
             crt,
             frame_duration: NTSC_FRAME_DURATION,
             _menu: menu,
@@ -192,19 +203,19 @@ impl WinitPixelsIOHandler {
 fn compute_viewport(
     win_w: f32,
     win_h: f32,
-    tex_w: f32,
-    tex_h: f32,
+    display_w: f32,
+    display_h: f32,
     integer_scaling: bool,
 ) -> (f32, f32, f32, f32) {
-    let scale_x = win_w / tex_w;
-    let scale_y = win_h / tex_h;
+    let scale_x = win_w / display_w;
+    let scale_y = win_h / display_h;
     let scale = if integer_scaling {
         scale_x.min(scale_y).floor().max(1.0)
     } else {
         scale_x.min(scale_y)
     };
-    let vp_w = tex_w * scale;
-    let vp_h = tex_h * scale;
+    let vp_w = display_w * scale;
+    let vp_h = display_h * scale;
     let vp_x = (win_w - vp_w) * 0.5;
     let vp_y = (win_h - vp_h) * 0.5;
     (vp_x, vp_y, vp_w, vp_h)
@@ -358,6 +369,8 @@ struct PollHandler<'a> {
     pixel_perfect: &'a mut bool,
     scanlines: &'a mut bool,
     overscan: &'a mut bool,
+    correct_aspect_ratio: &'a mut bool,
+    window_scale: &'a mut u32,
     overscan_changed: bool,
     kb_state: &'a mut u8,
     p2_kb_state: &'a mut u8,
@@ -378,6 +391,9 @@ struct PollHandler<'a> {
     needs_save: bool,
     binding_ui_active: bool,
     captured_keys: Vec<(KeyId, bool)>,
+    scale_up: bool,
+    scale_down: bool,
+    ctrl_held: bool,
 }
 
 fn toggle_fullscreen(window: &Window, menu_item: &muda::CheckMenuItem, toasts: &mut Vec<String>) {
@@ -408,6 +424,9 @@ impl ApplicationHandler for PollHandler<'_> {
             WindowEvent::CloseRequested => {
                 self.exit = true;
                 event_loop.exit();
+            }
+            WindowEvent::ModifiersChanged(mods) => {
+                self.ctrl_held = mods.state().control_key();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(key) = event.physical_key {
@@ -440,14 +459,16 @@ impl ApplicationHandler for PollHandler<'_> {
                             Action::ToggleScaling => {
                                 if pressed {
                                     *self.pixel_perfect = !*self.pixel_perfect;
-                                    self.menu_items.scaling.set_checked(*self.pixel_perfect);
                                     if *self.pixel_perfect {
+                                        *self.correct_aspect_ratio = false;
+                                        self.menu_items.correct_aspect_ratio.set_checked(false);
                                         self.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
                                         self.toasts.push("Integer scaling".into());
                                     } else {
                                         self.pixels.set_scaling_mode(ScalingMode::Fill);
                                         self.toasts.push("Fill scaling".into());
                                     }
+                                    self.menu_items.scaling.set_checked(*self.pixel_perfect);
                                     self.window.request_redraw();
                                     self.needs_save = true;
                                 }
@@ -532,6 +553,16 @@ impl ApplicationHandler for PollHandler<'_> {
                             _ => {}
                         }
                     }
+
+                    if pressed && self.ctrl_held {
+                        if let winit::keyboard::Key::Character(ch) = &event.logical_key {
+                            match ch.as_str() {
+                                "+" | "=" => self.scale_up = true,
+                                "-" | "_" => self.scale_down = true,
+                                _ => {}
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
@@ -551,6 +582,8 @@ impl WinitPixelsIOHandler {
             integer_scaling: self.pixel_perfect,
             scanlines: self.scanlines,
             overscan: self.overscan,
+            correct_aspect_ratio: self.correct_aspect_ratio,
+            window_scale: self.window_scale,
             bindings: self.bindings.clone(),
         });
     }
@@ -578,6 +611,8 @@ impl IOHandler for WinitPixelsIOHandler {
             pixel_perfect: &mut self.pixel_perfect,
             scanlines: &mut self.scanlines,
             overscan: &mut self.overscan,
+            correct_aspect_ratio: &mut self.correct_aspect_ratio,
+            window_scale: &mut self.window_scale,
             overscan_changed: false,
             kb_state: &mut self.kb_state,
             p2_kb_state: &mut self.p2_kb_state,
@@ -598,6 +633,9 @@ impl IOHandler for WinitPixelsIOHandler {
             needs_save: false,
             binding_ui_active: self.binding_ui.is_active(),
             captured_keys: Vec::new(),
+            scale_up: false,
+            scale_down: false,
+            ctrl_held: false,
         };
 
         event_loop.pump_app_events(Some(Duration::ZERO), &mut handler);
@@ -628,6 +666,8 @@ impl IOHandler for WinitPixelsIOHandler {
                 *handler.pixel_perfect = !*handler.pixel_perfect;
                 self.menu_items.scaling.set_checked(*handler.pixel_perfect);
                 if *handler.pixel_perfect {
+                    *handler.correct_aspect_ratio = false;
+                    self.menu_items.correct_aspect_ratio.set_checked(false);
                     handler.pixels.set_scaling_mode(ScalingMode::PixelPerfect);
                     handler.toasts.push("Integer scaling".into());
                 } else {
@@ -655,6 +695,52 @@ impl IOHandler for WinitPixelsIOHandler {
                     handler.toasts.push("Overscan visible".into());
                 }
                 handler.needs_save = true;
+            } else if *id == handler.menu_ids.correct_aspect_ratio {
+                *handler.correct_aspect_ratio = !*handler.correct_aspect_ratio;
+                self.menu_items
+                    .correct_aspect_ratio
+                    .set_checked(*handler.correct_aspect_ratio);
+                if *handler.correct_aspect_ratio {
+                    *handler.pixel_perfect = false;
+                    self.menu_items.scaling.set_checked(false);
+                    handler.pixels.set_scaling_mode(ScalingMode::Fill);
+                    handler.toasts.push("8:7 aspect ratio".into());
+                } else {
+                    handler.toasts.push("Square pixels".into());
+                }
+                let (w, h) =
+                    window_size_for_scale(*handler.window_scale, *handler.correct_aspect_ratio);
+                if handler.window.fullscreen().is_none() {
+                    let _ = handler.window.request_inner_size(LogicalSize::new(w, h));
+                }
+                handler.window.request_redraw();
+                handler.needs_save = true;
+            } else if *id == handler.menu_ids.scale_up {
+                if *handler.window_scale < 6 {
+                    *handler.window_scale += 1;
+                    let (w, h) =
+                        window_size_for_scale(*handler.window_scale, *handler.correct_aspect_ratio);
+                    if handler.window.fullscreen().is_none() {
+                        let _ = handler.window.request_inner_size(LogicalSize::new(w, h));
+                    }
+                    handler
+                        .toasts
+                        .push(format!("{}x scale", *handler.window_scale));
+                    handler.needs_save = true;
+                }
+            } else if *id == handler.menu_ids.scale_down {
+                if *handler.window_scale > 1 {
+                    *handler.window_scale -= 1;
+                    let (w, h) =
+                        window_size_for_scale(*handler.window_scale, *handler.correct_aspect_ratio);
+                    if handler.window.fullscreen().is_none() {
+                        let _ = handler.window.request_inner_size(LogicalSize::new(w, h));
+                    }
+                    handler
+                        .toasts
+                        .push(format!("{}x scale", *handler.window_scale));
+                    handler.needs_save = true;
+                }
             } else if let Some(path) = self
                 .menu_items
                 .recent_items
@@ -664,6 +750,31 @@ impl IOHandler for WinitPixelsIOHandler {
             {
                 handler.recent_rom_path = Some(path);
             }
+        }
+
+        if handler.scale_up && *handler.window_scale < 6 {
+            *handler.window_scale += 1;
+            let (w, h) =
+                window_size_for_scale(*handler.window_scale, *handler.correct_aspect_ratio);
+            if handler.window.fullscreen().is_none() {
+                let _ = handler.window.request_inner_size(LogicalSize::new(w, h));
+            }
+            handler
+                .toasts
+                .push(format!("{}x scale", *handler.window_scale));
+            handler.needs_save = true;
+        }
+        if handler.scale_down && *handler.window_scale > 1 {
+            *handler.window_scale -= 1;
+            let (w, h) =
+                window_size_for_scale(*handler.window_scale, *handler.correct_aspect_ratio);
+            if handler.window.fullscreen().is_none() {
+                let _ = handler.window.request_inner_size(LogicalSize::new(w, h));
+            }
+            handler
+                .toasts
+                .push(format!("{}x scale", *handler.window_scale));
+            handler.needs_save = true;
         }
 
         let open_rom = if handler.open_rom {
@@ -792,76 +903,73 @@ impl IOHandler for WinitPixelsIOHandler {
             }
         }
 
-        if self.scanlines {
-            if let Some(crt) = &self.crt {
-                let (vp_x, vp_y, vp_w, vp_h) = compute_viewport(
-                    size.width as f32,
-                    size.height as f32,
-                    256.0,
-                    240.0,
-                    self.pixel_perfect,
-                );
-                let uniforms = CrtUniforms {
-                    output_size: [vp_w, vp_h],
-                    texture_size: [256.0, 240.0],
-                    input_size: [256.0, 240.0],
-                    enabled: 1.0,
-                    _pad: 0.0,
-                };
-                pixels
-                    .queue()
-                    .write_buffer(&crt.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+        if let Some(crt) = &self.crt {
+            let disp_w = display_width(self.correct_aspect_ratio);
+            let (vp_x, vp_y, vp_w, vp_h) = compute_viewport(
+                size.width as f32,
+                size.height as f32,
+                disp_w,
+                NES_TEX_HEIGHT,
+                self.pixel_perfect,
+            );
+            let uniforms = CrtUniforms {
+                output_size: [vp_w, vp_h],
+                texture_size: [NES_TEX_WIDTH, NES_TEX_HEIGHT],
+                input_size: [NES_TEX_WIDTH, NES_TEX_HEIGHT],
+                enabled: if self.scanlines { 1.0 } else { 0.0 },
+                _pad: 0.0,
+            };
+            pixels
+                .queue()
+                .write_buffer(&crt.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
 
-                let texture_view = pixels
-                    .texture()
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-                let bind_group = pixels
-                    .device()
-                    .create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("crt_bind_group"),
-                        layout: &crt.bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: crt.uniform_buf.as_entire_binding(),
+            let texture_view = pixels
+                .texture()
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let bind_group = pixels
+                .device()
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("crt_bind_group"),
+                    layout: &crt.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: crt.uniform_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&crt.sampler),
+                        },
+                    ],
+                });
+
+            let pipeline = &crt.pipeline;
+            pixels
+                .render_with(|encoder, render_target, _context| {
+                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("crt_render_pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: render_target,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                store: wgpu::StoreOp::Store,
                             },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::TextureView(&texture_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::Sampler(&crt.sampler),
-                            },
-                        ],
+                            depth_slice: None,
+                        })],
+                        ..Default::default()
                     });
-
-                let pipeline = &crt.pipeline;
-                pixels
-                    .render_with(|encoder, render_target, _context| {
-                        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("crt_render_pass"),
-                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view: render_target,
-                                resolve_target: None,
-                                ops: wgpu::Operations {
-                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                    store: wgpu::StoreOp::Store,
-                                },
-                                depth_slice: None,
-                            })],
-                            ..Default::default()
-                        });
-                        rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
-                        rpass.set_pipeline(pipeline);
-                        rpass.set_bind_group(0, Some(&bind_group), &[]);
-                        rpass.draw(0..4, 0..1);
-                        Ok(())
-                    })
-                    .unwrap();
-            } else {
-                pixels.render().unwrap();
-            }
+                    rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
+                    rpass.set_pipeline(pipeline);
+                    rpass.set_bind_group(0, Some(&bind_group), &[]);
+                    rpass.draw(0..4, 0..1);
+                    Ok(())
+                })
+                .unwrap();
         } else {
             pixels.render().unwrap();
         }

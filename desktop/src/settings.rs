@@ -6,6 +6,8 @@ pub struct Settings {
     pub integer_scaling: bool,
     pub scanlines: bool,
     pub overscan: bool,
+    pub correct_aspect_ratio: bool,
+    pub window_scale: u32,
     pub bindings: InputBindings,
 }
 
@@ -15,6 +17,8 @@ impl Default for Settings {
             integer_scaling: true,
             scanlines: false,
             overscan: true,
+            correct_aspect_ratio: true,
+            window_scale: 4,
             bindings: InputBindings::default(),
         }
     }
@@ -43,6 +47,12 @@ pub fn load_settings() -> Settings {
             "integer_scaling" => settings.integer_scaling = value == "true",
             "scanlines" => settings.scanlines = value == "true",
             "overscan" => settings.overscan = value == "true",
+            "correct_aspect_ratio" => settings.correct_aspect_ratio = value == "true",
+            "window_scale" => {
+                if let Ok(s) = value.parse::<u32>() {
+                    settings.window_scale = s.clamp(1, 6);
+                }
+            }
             _ => {
                 if let Some(rest) = key.strip_prefix("bind_kb_") {
                     if let Some(action) = Action::from_settings_key(rest) {
@@ -80,9 +90,11 @@ pub fn save_settings(settings: &Settings) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let mut content = format!(
-        "integer_scaling={}\nscanlines={}\noverscan={}\n",
-        settings.integer_scaling, settings.scanlines, settings.overscan
+    let mut content =
+        format!(
+        "integer_scaling={}\nscanlines={}\noverscan={}\ncorrect_aspect_ratio={}\nwindow_scale={}\n",
+        settings.integer_scaling, settings.scanlines, settings.overscan,
+        settings.correct_aspect_ratio, settings.window_scale
     );
     for (key, action) in &settings.bindings.keyboard {
         content.push_str(&format!("bind_kb_{}={}\n", action.to_settings_key(), key.0));
