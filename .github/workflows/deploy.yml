@@ -25,7 +25,7 @@ jobs:
       with:
         targets: wasm32-unknown-unknown
     - name: Install trunk
-      run: cargo install trunk
+      run: cargo install trunk --locked
     - name: Build
       run: cd web && trunk build --release
     - name: Upload Pages artifact
