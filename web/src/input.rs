@@ -74,6 +74,10 @@ pub fn setup_touch_controls(keys: Rc<RefCell<HashSet<String>>>) {
             setup_action_button(el, key_code, keys.clone());
         }
     }
+
+    if let Some(canvas) = get_el("nes-canvas-touch") {
+        setup_canvas_rewind(canvas, keys);
+    }
 }
 
 pub fn setup_canvas_double_tap(keys: Rc<RefCell<HashSet<String>>>) {
@@ -119,19 +123,78 @@ fn setup_dpad(
     keys: Rc<RefCell<HashSet<String>>>,
 ) {
     let active_touch: Rc<Cell<Option<i32>>> = Rc::new(Cell::new(None));
+    let origin_offset: Rc<Cell<(f64, f64)>> = Rc::new(Cell::new((0.0, 0.0)));
 
     let update_directions = |zone: &web_sys::HtmlElement,
                              stick: &web_sys::HtmlElement,
                              keys: &Rc<RefCell<HashSet<String>>>,
+                             origin_offset: &Rc<Cell<(f64, f64)>>,
                              touch: &web_sys::Touch| {
         let rect = zone.get_bounding_client_rect();
         let radius = rect.width() / 2.0;
-        let cx = rect.left() + radius;
-        let cy = rect.top() + rect.height() / 2.0;
+        let (ox, oy) = origin_offset.get();
+        let cx = rect.left() + radius + ox;
+        let cy = rect.top() + rect.height() / 2.0 + oy;
         let dx = touch.client_x() as f64 - cx;
         let dy = touch.client_y() as f64 - cy;
 
         let dist = (dx * dx + dy * dy).sqrt();
+
+        // When finger exceeds radius, shift the virtual origin to follow it
+        if dist > radius {
+            let excess = dist - radius;
+            let nx = dx / dist;
+            let ny = dy / dist;
+            origin_offset.set((ox + nx * excess, oy + ny * excess));
+            // Recalculate with new origin — finger is now at radius distance
+            let new_cx = rect.left() + radius + ox + nx * excess;
+            let new_cy = rect.top() + rect.height() / 2.0 + oy + ny * excess;
+            let dx = touch.client_x() as f64 - new_cx;
+            let dy = touch.client_y() as f64 - new_cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            let dead_zone = radius * 0.15;
+            let (up, down, left, right) = if dist < dead_zone {
+                (false, false, false, false)
+            } else {
+                let angle = dy.atan2(dx);
+                let threshold = std::f64::consts::PI / 2.8;
+                (
+                    (angle + std::f64::consts::FRAC_PI_2).abs() < threshold,
+                    (angle - std::f64::consts::FRAC_PI_2).abs() < threshold,
+                    (angle.abs() - std::f64::consts::PI).abs() < threshold,
+                    angle.abs() < threshold,
+                )
+            };
+
+            let clamp_dist = dist.min(radius);
+            let (sx, sy) = if dist > 0.0 {
+                (dx / dist * clamp_dist, dy / dist * clamp_dist)
+            } else {
+                (0.0, 0.0)
+            };
+            let _ = stick.style().set_property(
+                "transform",
+                &format!("translate(calc(-50% + {sx:.0}px), calc(-50% + {sy:.0}px))"),
+            );
+
+            let mut k = keys.borrow_mut();
+            let dirs: &[(&str, bool)] = &[
+                ("ArrowUp", up),
+                ("ArrowDown", down),
+                ("ArrowLeft", left),
+                ("ArrowRight", right),
+            ];
+            for &(code, active) in dirs {
+                if active {
+                    k.insert(code.to_string());
+                } else {
+                    k.remove(code);
+                }
+            }
+            return;
+        }
+
         let dead_zone = radius * 0.15;
 
         let (up, down, left, right) = if dist < dead_zone {
@@ -174,10 +237,13 @@ fn setup_dpad(
         }
     };
 
-    let clear_directions = |stick: &web_sys::HtmlElement, keys: &Rc<RefCell<HashSet<String>>>| {
+    let clear_directions = |stick: &web_sys::HtmlElement,
+                            keys: &Rc<RefCell<HashSet<String>>>,
+                            origin_offset: &Rc<Cell<(f64, f64)>>| {
         let _ = stick
             .style()
             .set_property("transform", "translate(-50%, -50%)");
+        origin_offset.set((0.0, 0.0));
         let mut k = keys.borrow_mut();
         for code in &["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] {
             k.remove(*code);
@@ -189,6 +255,7 @@ fn setup_dpad(
         let stick2 = stick.clone();
         let keys2 = keys.clone();
         let at = active_touch.clone();
+        let oo = origin_offset.clone();
         let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
             e.prevent_default();
             if at.get().is_some() {
@@ -197,7 +264,8 @@ fn setup_dpad(
             let touches = e.changed_touches();
             if let Some(touch) = touches.get(0) {
                 at.set(Some(touch.identifier()));
-                update_directions(&zone2, &stick2, &keys2, &touch);
+                oo.set((0.0, 0.0));
+                update_directions(&zone2, &stick2, &keys2, &oo, &touch);
             }
         }) as Box<dyn FnMut(_)>);
         zone.add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
@@ -210,6 +278,7 @@ fn setup_dpad(
         let stick2 = stick.clone();
         let keys2 = keys.clone();
         let at = active_touch.clone();
+        let oo = origin_offset.clone();
         let mov = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
             e.prevent_default();
             let Some(tid) = at.get() else { return };
@@ -217,7 +286,7 @@ fn setup_dpad(
             for i in 0..touches.length() {
                 if let Some(touch) = touches.get(i) {
                     if touch.identifier() == tid {
-                        update_directions(&zone2, &stick2, &keys2, &touch);
+                        update_directions(&zone2, &stick2, &keys2, &oo, &touch);
                         return;
                     }
                 }
@@ -232,6 +301,7 @@ fn setup_dpad(
         let stick2 = stick;
         let keys2 = keys;
         let at = active_touch;
+        let oo = origin_offset;
         let end = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
             e.prevent_default();
             let Some(tid) = at.get() else { return };
@@ -240,7 +310,7 @@ fn setup_dpad(
                 if let Some(touch) = touches.get(i) {
                     if touch.identifier() == tid {
                         at.set(None);
-                        clear_directions(&stick2, &keys2);
+                        clear_directions(&stick2, &keys2, &oo);
                         return;
                     }
                 }
@@ -319,6 +389,35 @@ pub fn poll_gamepad() -> Option<GamepadPollResult> {
         });
     }
     None
+}
+
+fn setup_canvas_rewind(canvas: web_sys::HtmlElement, keys: Rc<RefCell<HashSet<String>>>) {
+    {
+        let keys2 = keys.clone();
+        let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            keys2.borrow_mut().insert("KeyW".to_string());
+        }) as Box<dyn FnMut(_)>);
+        canvas
+            .add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
+            .unwrap();
+        start.forget();
+    }
+
+    {
+        let keys2 = keys;
+        let end = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            keys2.borrow_mut().remove("KeyW");
+        }) as Box<dyn FnMut(_)>);
+        canvas
+            .add_event_listener_with_callback("touchend", end.as_ref().unchecked_ref())
+            .unwrap();
+        canvas
+            .add_event_listener_with_callback("touchcancel", end.as_ref().unchecked_ref())
+            .unwrap();
+        end.forget();
+    }
 }
 
 fn setup_action_button(
