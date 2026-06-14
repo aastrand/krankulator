@@ -56,6 +56,10 @@ fn save_controllers(w: &mut SavestateWriter, controllers: &[Controller; 2]) {
     w.write_u64(controllers[0].save_polls());
     w.write_u8(controllers[1].save_status());
     w.write_u64(controllers[1].save_polls());
+    w.write_u8(controllers[0].save_shift());
+    w.write_bool(controllers[0].save_strobe());
+    w.write_u8(controllers[1].save_shift());
+    w.write_bool(controllers[1].save_strobe());
 }
 
 fn load_controllers(
@@ -66,6 +70,12 @@ fn load_controllers(
     controllers[0].load_polls(r.read_u64()?);
     controllers[1].load_status(r.read_u8()?);
     controllers[1].load_polls(r.read_u64()?);
+    if r.version() >= 9 {
+        controllers[0].load_shift(r.read_u8()?);
+        controllers[0].load_strobe(r.read_bool()?);
+        controllers[1].load_shift(r.read_u8()?);
+        controllers[1].load_strobe(r.read_bool()?);
+    }
     Ok(())
 }
 

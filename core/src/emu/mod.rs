@@ -535,16 +535,16 @@ impl Emulator {
 
     pub fn run_one_frame(&mut self) -> bool {
         if self.rewinding {
-            return match self.rewind_step() {
-                RewindStepResult::Continue => true,
+            match self.rewind_step() {
+                RewindStepResult::Continue => return true,
                 RewindStepResult::Done => {
                     self.rewinding = false;
                     self.overlay.set_rewind_status(None);
                     self.audio.clear();
-                    true
+                    // Fall through to run a normal frame immediately (matches desktop run() behavior)
                 }
-                RewindStepResult::Exit => false,
-            };
+                RewindStepResult::Exit => return false,
+            }
         }
         let target_frame = self.ppu.frames + 1;
         while self.ppu.frames < target_frame {

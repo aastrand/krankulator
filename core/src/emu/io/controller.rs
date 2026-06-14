@@ -61,11 +61,23 @@ impl Controller {
     pub fn save_polls(&self) -> u64 {
         self.polls
     }
+    pub fn save_shift(&self) -> u8 {
+        self.shift
+    }
+    pub fn save_strobe(&self) -> bool {
+        self.strobe
+    }
     pub fn load_status(&mut self, s: u8) {
         self.status = s;
     }
     pub fn load_polls(&mut self, p: u64) {
         self.polls = p;
+    }
+    pub fn load_shift(&mut self, s: u8) {
+        self.shift = s;
+    }
+    pub fn load_strobe(&mut self, s: bool) {
+        self.strobe = s;
     }
 
     #[allow(dead_code)] // only used in tests
