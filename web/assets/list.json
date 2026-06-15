@@ -1,153 +1,171 @@
 [
   {
-    "name": "Super Mario Bros. 3",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%203%20Rev%20PRG0%20%281990-02%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%203%20Rev%20PRG0%20%281990-02%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/super-mario-bros-3/super-mario-bros-3.nes"
+    "name": "The Legend of Zelda",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Legend%20of%20Zelda%2C%20The%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Legend%20of%20Zelda%2C%20The%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Legend%20of%20Zelda%2C%20The%20%28USA%29.zip"
   },
   {
-    "name": "The Legend of Zelda",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=504",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=504&size=1",
-    "rom": null
+    "name": "Super Mario Bros. 3",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%203%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%203%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Super%20Mario%20Bros.%203%20%28USA%29.zip"
   },
   {
     "name": "Super Mario Bros.",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%20%28World%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%20%28World%29.png",
-    "rom": "https://file.classicjoy.games/games/super-mario-bros/super-mario-bros.nes"
-  },
-  {
-    "name": "Mike Tyson's Punch-Out!!",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76696",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76696&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%20%2B%20Duck%20Hunt%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%20%2B%20Duck%20Hunt%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Super%20Mario%20Bros.%20%2B%20Duck%20Hunt%20%28USA%29.zip"
   },
   {
     "name": "Mega Man 2",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%202%20%281989-06%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%202%20%281989-06%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/meta-man/mega-man-2.nes"
-  },
-  {
-    "name": "Contra",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Contra%20%281988-02%29%28Konami%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Contra%20%281988-02%29%28Konami%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/contra/contra.nes"
-  },
-  {
-    "name": "Final Fantasy",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Final%20Fantasy%20%281990-05%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Final%20Fantasy%20%281990-05%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/final-fantasy/final-fantasy.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%202%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%202%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%202%20%28USA%29.zip"
   },
   {
     "name": "Metroid",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76670",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76670&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Metroid%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Metroid%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Metroid%20%28USA%29.zip"
+  },
+  {
+    "name": "Contra",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Contra%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Contra%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Contra%20%28USA%29.zip"
+  },
+  {
+    "name": "Final Fantasy",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Final%20Fantasy%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Final%20Fantasy%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Final%20Fantasy%20%28USA%29.zip"
   },
   {
     "name": "Super Mario Bros. 2",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%202%20Rev%20PRG0%20%281988-10%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%202%20Rev%20PRG0%20%281988-10%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/super-mario-bros-2/super-mario-bros-2.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Mario%20Bros.%202%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Mario%20Bros.%202%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Super%20Mario%20Bros.%202%20%28USA%29.zip"
   },
   {
-    "name": "Tecmo Super Bowl",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=866",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=866&size=1",
-    "rom": null
-  },
-  {
-    "name": "River City Ransom",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=709",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=709&size=1",
-    "rom": null
+    "name": "Mike Tyson's Punch-Out!!",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mike%20Tyson%27s%20Punch-Out%21%21%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mike%20Tyson%27s%20Punch-Out%21%21%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mike%20Tyson%27s%20Punch-Out%21%21%20%28Japan%2C%20USA%29%20%28En%29.zip"
   },
   {
     "name": "Mega Man 3",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%203%20%281990-11%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%203%20%281990-11%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/meta-man/mega-man-3.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%203%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%203%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%203%20%28USA%29.zip"
   },
   {
-    "name": "Zelda II: The Adventure of Link",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77751",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77751&size=1",
-    "rom": null
+    "name": "Castlevania III - Dracula's Curse",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Castlevania%20III%20-%20Dracula%27s%20Curse%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Castlevania%20III%20-%20Dracula%27s%20Curse%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Castlevania%20III%20-%20Dracula%27s%20Curse%20%28USA%29.zip"
   },
   {
     "name": "Kirby's Adventure",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Kirby%27s%20Adventure%20Rev%20PRG0%20%281993-05%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Kirby%27s%20Adventure%20Rev%20PRG0%20%281993-05%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/kirbys-adventure/kirbys-adventure.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Kirby%27s%20Adventure%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Kirby%27s%20Adventure%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Kirby%27s%20Adventure%20%28USA%29.zip"
+  },
+  {
+    "name": "Zelda II - The Adventure of Link",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Zelda%20II%20-%20The%20Adventure%20of%20Link%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Zelda%20II%20-%20The%20Adventure%20of%20Link%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Zelda%20II%20-%20The%20Adventure%20of%20Link%20%28USA%29.zip"
   },
   {
     "name": "Tetris",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Tetris%20%281989-11%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Tetris%20%281989-11%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/tetris/tetris.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Tetris%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Tetris%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Tetris%20%28USA%29.zip"
   },
   {
     "name": "Ninja Gaiden",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ninja%20Gaiden%20%281989-03%29%28Tecmo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ninja%20Gaiden%20%281989-03%29%28Tecmo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/ninja-gaiden/ninja-gaiden.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ninja%20Gaiden%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ninja%20Gaiden%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Ninja%20Gaiden%20%28USA%29.zip"
   },
   {
     "name": "Castlevania",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Castlevania%20Rev%20PRG0%20%281987-05%29%28Konami%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Castlevania%20Rev%20PRG0%20%281987-05%29%28Konami%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/castlevania/castlevania.nes"
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Castlevania%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Castlevania%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Castlevania%20%28USA%29.zip"
   },
   {
-    "name": "Castlevania III: Dracula's Curse",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75631",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75631&size=1",
-    "rom": null
+    "name": "Mega Man",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%20%28USA%29.zip"
   },
   {
-    "name": "Crystalis",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=214",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=214&size=1",
-    "rom": null
+    "name": "Metal Gear",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Metal%20Gear%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Metal%20Gear%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Metal%20Gear%20%28USA%29.zip"
   },
   {
-    "name": "TMNT II: The Arcade Game",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=869",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=869&size=1",
-    "rom": null
+    "name": "Battletoads",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Battletoads%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Battletoads%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Battletoads%20%28USA%29.zip"
   },
   {
-    "name": "Bubble Bobble",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75578",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75578&size=1",
-    "rom": null
+    "name": "River City Ransom",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/River%20City%20Ransom%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/River%20City%20Ransom%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/River%20City%20Ransom%20%28USA%29.zip"
+  },
+  {
+    "name": "Contra Force",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Contra%20Force%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Contra%20Force%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Contra%20Force%20%28USA%29.zip"
   },
   {
     "name": "Dragon Warrior",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=279",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=279&size=1",
-    "rom": null
-  },
-  {
-    "name": "Castlevania II: Simon's Quest",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75624",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75624&size=1",
-    "rom": null
-  },
-  {
-    "name": "Dragon Warrior IV",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=282",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=282&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Dragon%20Warrior%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Dragon%20Warrior%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Dragon%20Warrior%20%28USA%29.zip"
   },
   {
     "name": "Bionic Commando",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75534",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75534&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Bionic%20Commando%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Bionic%20Commando%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Bionic%20Commando%20%28USA%29.zip"
+  },
+  {
+    "name": "Dr. Mario",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Dr.%20Mario%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Dr.%20Mario%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Dr.%20Mario%20%28Japan%2C%20USA%29%20%28En%29.zip"
+  },
+  {
+    "name": "DuckTales",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/DuckTales%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/DuckTales%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/DuckTales%20%28USA%29.zip"
+  },
+  {
+    "name": "Excitebike",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Excitebike%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Excitebike%20%28Japan%2C%20USA%29%20%28En%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Excitebike%20%28Japan%2C%20USA%29%20%28En%29.zip"
+  },
+  {
+    "name": "Double Dragon II - The Revenge",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Double%20Dragon%20II%20-%20The%20Revenge%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Double%20Dragon%20II%20-%20The%20Revenge%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Double%20Dragon%20II%20-%20The%20Revenge%20%28USA%29.zip"
+  },
+  {
+    "name": "Blaster Master",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Blaster%20Master%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Blaster%20Master%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Blaster%20Master%20%28USA%29.zip"
   },
   {
     "name": "Duck Hunt",
@@ -157,446 +175,428 @@
   },
   {
     "name": "StarTropics",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77339",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77339&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/StarTropics%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/StarTropics%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/StarTropics%20%28USA%29.zip"
   },
   {
-    "name": "Baseball Stars",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=130",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=130&size=1",
-    "rom": null
+    "name": "Teenage Mutant Ninja Turtles II - The Arcade Game",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Teenage%20Mutant%20Ninja%20Turtles%20II%20-%20The%20Arcade%20Game%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Teenage%20Mutant%20Ninja%20Turtles%20II%20-%20The%20Arcade%20Game%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Teenage%20Mutant%20Ninja%20Turtles%20II%20-%20The%20Arcade%20Game%20%28USA%29.zip"
   },
   {
-    "name": "Excitebike",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75921",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75921&size=1",
-    "rom": null
+    "name": "Castlevania II - Simon's Quest",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Castlevania%20II%20-%20Simon%27s%20Quest%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Castlevania%20II%20-%20Simon%27s%20Quest%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Castlevania%20II%20-%20Simon%27s%20Quest%20%28USA%29.zip"
   },
   {
-    "name": "Blaster Master",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75545",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75545&size=1",
-    "rom": null
-  },
-  {
-    "name": "Dragon Warrior III",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=281",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=281&size=1",
-    "rom": null
-  },
-  {
-    "name": "Metal Gear",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Metal%20Gear%20%281988-06%29%28Ultra%20Soft%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Metal%20Gear%20%281988-06%29%28Ultra%20Soft%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/metal-gear/metal-gear-nes.nes"
-  },
-  {
-    "name": "Super Dodge Ball",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=832",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=832&size=1",
-    "rom": null
-  },
-  {
-    "name": "Kid Icarus",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=467",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=467&size=1",
-    "rom": null
-  },
-  {
-    "name": "Ninja Gaiden II: The Dark Sword of Chaos",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=613",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=613&size=1",
-    "rom": null
-  },
-  {
-    "name": "Mega Man",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76620",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76620&size=1",
-    "rom": null
-  },
-  {
-    "name": "Maniac Mansion",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76582",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76582&size=1",
-    "rom": null
-  },
-  {
-    "name": "Battletoads",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Battletoads%20%281991-06%29%28Tradewest%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Battletoads%20%281991-06%29%28Tradewest%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/battletoads/battletoads.nes"
-  },
-  {
-    "name": "Dr. Mario",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Dr.%20Mario%20Rev%20PRG0%20%281990-07-27%29%28Nintendo%29%28JP-US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Dr.%20Mario%20Rev%20PRG0%20%281990-07-27%29%28Nintendo%29%28JP-US%29.png",
-    "rom": "https://file.classicjoy.games/games/dr-mario/dr-mario.nes"
-  },
-  {
-    "name": "Super C",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=827",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=827&size=1",
-    "rom": null
-  },
-  {
-    "name": "The Guardian Legend",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76179",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76179&size=1",
-    "rom": null
-  },
-  {
-    "name": "Double Dragon II",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75827",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75827&size=1",
-    "rom": null
-  },
-  {
-    "name": "DuckTales",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Duck%20Tales%20%281989-09%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Duck%20Tales%20%281989-09%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/ducktales/ducktales.nes"
-  },
-  {
-    "name": "Teenage Mutant Ninja Turtles",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Teenage%20Mutant%20Ninja%20Turtles%20%281989-06%29%28Ultra%20Soft%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Teenage%20Mutant%20Ninja%20Turtles%20%281989-06%29%28Ultra%20Soft%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/teenage-mutant-ninja-turtles-nes/teenage-mutant_ninja_turtles.nes"
-  },
-  {
-    "name": "Ice Hockey",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76278",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76278&size=1",
-    "rom": null
-  },
-  {
-    "name": "Faxanadu",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76002",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76002&size=1",
-    "rom": null
-  },
-  {
-    "name": "Tecmo Bowl",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=859",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=859&size=1",
-    "rom": null
-  },
-  {
-    "name": "TMNT III: The Manhattan Project",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=870",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=870&size=1",
-    "rom": null
-  },
-  {
-    "name": "Double Dragon",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75824",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75824&size=1",
-    "rom": null
-  },
-  {
-    "name": "Mega Man 4",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%204%20Rev%20PRG0%20%281992-01%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%204%20Rev%20PRG0%20%281992-01%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/meta-man/mega-man-4.nes"
-  },
-  {
-    "name": "Life Force",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76490",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76490&size=1",
-    "rom": null
-  },
-  {
-    "name": "Dragon Warrior II",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=280",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=280&size=1",
-    "rom": null
-  },
-  {
-    "name": "Blades of Steel",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75544",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75544&size=1",
-    "rom": null
-  },
-  {
-    "name": "Mega Man 5",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%205%20%281992-12%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%205%20%281992-12%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/meta-man/mega-man-5.nes"
-  },
-  {
-    "name": "Adventures of Lolo",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75318",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75318&size=1",
-    "rom": null
-  },
-  {
-    "name": "R.C. Pro-Am",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77048",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77048&size=1",
-    "rom": null
-  },
-  {
-    "name": "Marble Madness",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76596",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76596&size=1",
-    "rom": null
-  },
-  {
-    "name": "Mega Man 6",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%206%20%281994-03%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%206%20%281994-03%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/meta-man/mega-man-6.nes"
-  },
-  {
-    "name": "Metal Storm",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=557",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=557&size=1",
-    "rom": null
-  },
-  {
-    "name": "M.C. Kids",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=543",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=543&size=1",
-    "rom": null
-  },
-  {
-    "name": "Chip 'n Dale: Rescue Rangers",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Chip%20%27n%20Dale%20Rescue%20Rangers%20%281990-06%29%28Capcom%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Chip%20%27n%20Dale%20Rescue%20Rangers%20%281990-06%29%28Capcom%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/chip-n-dale/chip-n-dale-rescue-rangers-2-nes.nes"
-  },
-  {
-    "name": "Ghosts 'n Goblins",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76115",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76115&size=1",
-    "rom": null
-  },
-  {
-    "name": "R.B.I. Baseball",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=698",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=698&size=1",
-    "rom": null
-  },
-  {
-    "name": "Jackal",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76323",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76323&size=1",
-    "rom": null
-  },
-  {
-    "name": "Nintendo World Cup",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76861",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76861&size=1",
-    "rom": null
-  },
-  {
-    "name": "Micro Machines",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=563",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=563&size=1",
-    "rom": null
-  },
-  {
-    "name": "The Battle of Olympus",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75499",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75499&size=1",
-    "rom": null
-  },
-  {
-    "name": "Goonies II",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76151",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76151&size=1",
-    "rom": null
-  },
-  {
-    "name": "Willow",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77690",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77690&size=1",
-    "rom": null
-  },
-  {
-    "name": "Baseball Simulator 1.000",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=129",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=129&size=1",
-    "rom": null
-  },
-  {
-    "name": "Kickle Cubicle",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76401",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76401&size=1",
-    "rom": null
-  },
-  {
-    "name": "Snake Rattle n Roll",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77268",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77268&size=1",
-    "rom": null
-  },
-  {
-    "name": "Little Samson",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76505",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76505&size=1",
-    "rom": null
-  },
-  {
-    "name": "Little Nemo: The Dream Master",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76501",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76501&size=1",
-    "rom": null
-  },
-  {
-    "name": "Shadowgate",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77204",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77204&size=1",
-    "rom": null
-  },
-  {
-    "name": "Paperboy",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76928",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76928&size=1",
-    "rom": null
-  },
-  {
-    "name": "Wizards & Warriors",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77700",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77700&size=1",
-    "rom": null
-  },
-  {
-    "name": "Donkey Kong",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=257",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=257&size=1",
-    "rom": null
-  },
-  {
-    "name": "1943: The Battle of Midway",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=5",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=5&size=1",
-    "rom": null
-  },
-  {
-    "name": "Super Spike V'Ball",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77421",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77421&size=1",
-    "rom": null
-  },
-  {
-    "name": "Bucky O'Hare",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75582",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75582&size=1",
-    "rom": null
-  },
-  {
-    "name": "Balloon Fight",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75454",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75454&size=1",
-    "rom": null
-  },
-  {
-    "name": "Punch-Out!!",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77026",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77026&size=1",
-    "rom": null
+    "name": "Ninja Gaiden II - The Dark Sword of Chaos",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ninja%20Gaiden%20II%20-%20The%20Dark%20Sword%20of%20Chaos%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ninja%20Gaiden%20II%20-%20The%20Dark%20Sword%20of%20Chaos%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Ninja%20Gaiden%20II%20-%20The%20Dark%20Sword%20of%20Chaos%20%28USA%29.zip"
   },
   {
     "name": "Batman",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75486",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75486&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Batman%20-%20The%20Video%20Game%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Batman%20-%20The%20Video%20Game%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Batman%20-%20The%20Video%20Game%20%28USA%29.zip"
   },
   {
-    "name": "Mario Bros.",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=535",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=535&size=1",
-    "rom": null
+    "name": "Tecmo Super Bowl",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Tecmo%20Super%20Bowl%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Tecmo%20Super%20Bowl%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Tecmo%20Super%20Bowl%20%28USA%29.zip"
   },
   {
-    "name": "Rygar",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77137",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77137&size=1",
-    "rom": null
+    "name": "Bubble Bobble",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Bubble%20Bobble%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Bubble%20Bobble%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Bubble%20Bobble%20%28USA%29.zip"
   },
   {
-    "name": "Legacy of the Wizard",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76472",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76472&size=1",
-    "rom": null
-  },
-  {
-    "name": "Pirates!",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76960",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76960&size=1",
-    "rom": null
-  },
-  {
-    "name": "Dusty Diamond's All-Star Softball",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=293",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=293&size=1",
-    "rom": null
-  },
-  {
-    "name": "Ice Climber",
-    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ice%20Climber%20%281985-10%29%28Nintendo%29%28US%29.png",
-    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ice%20Climber%20%281985-10%29%28Nintendo%29%28US%29.png",
-    "rom": "https://file.classicjoy.games/games/ice-climber/ice-climber.nes"
-  },
-  {
-    "name": "Deja Vu",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=75771",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=75771&size=1",
-    "rom": null
-  },
-  {
-    "name": "Clash at Demonhead",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=184",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=184&size=1",
-    "rom": null
-  },
-  {
-    "name": "North & South",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76878",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76878&size=1",
-    "rom": null
-  },
-  {
-    "name": "Guerrilla War",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=389",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=389&size=1",
-    "rom": null
-  },
-  {
-    "name": "NES Open Tournament Golf",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76803",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76803&size=1",
-    "rom": null
+    "name": "Ghosts'n Goblins",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ghosts%27n%20Goblins%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ghosts%27n%20Goblins%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Ghosts%27n%20Goblins%20%28USA%29.zip"
   },
   {
     "name": "Gradius",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=76158",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=76158&size=1",
-    "rom": null
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Gradius%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Gradius%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Gradius%20%28USA%29.zip"
   },
   {
-    "name": "Destiny of an Emperor",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=241",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=241&size=1",
-    "rom": null
+    "name": "Ice Climber",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ice%20Climber%20%28USA%2C%20Europe%2C%20Korea%29%20%28En%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ice%20Climber%20%28USA%2C%20Europe%2C%20Korea%29%20%28En%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Ice%20Climber%20%28USA%2C%20Europe%2C%20Korea%29%20%28En%29.zip"
   },
   {
-    "name": "Adventure Island II",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=30",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=30&size=1",
-    "rom": null
+    "name": "Life Force",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Life%20Force%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Life%20Force%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Life%20Force%20%28USA%29.zip"
   },
   {
-    "name": "Monster Party",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=583",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=583&size=1",
-    "rom": null
+    "name": "Teenage Mutant Ninja Turtles",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Teenage%20Mutant%20Ninja%20Turtles%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Teenage%20Mutant%20Ninja%20Turtles%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Teenage%20Mutant%20Ninja%20Turtles%20%28USA%29.zip"
+  },
+  {
+    "name": "Pac-Man",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Pac-Man%20%28USA%29%20%28Namco%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Pac-Man%20%28USA%29%20%28Namco%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Pac-Man%20%28USA%29%20%28Namco%29.zip"
+  },
+  {
+    "name": "Kid Icarus",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Kid%20Icarus%20%28USA%2C%20Europe%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Kid%20Icarus%20%28USA%2C%20Europe%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Kid%20Icarus%20%28USA%2C%20Europe%29.zip"
+  },
+  {
+    "name": "Mega Man 4",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%204%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%204%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%204%20%28USA%29.zip"
+  },
+  {
+    "name": "Adventure Island",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Adventure%20Island%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Adventure%20Island%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Adventure%20Island%20%28USA%29.zip"
+  },
+  {
+    "name": "Mega Man 5",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%205%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%205%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%205%20%28USA%29.zip"
+  },
+  {
+    "name": "R.C. Pro-Am",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/R.C.%20Pro-Am%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/R.C.%20Pro-Am%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/R.C.%20Pro-Am%20%28USA%29.zip"
+  },
+  {
+    "name": "Mega Man 6",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Mega%20Man%206%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Mega%20Man%206%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mega%20Man%206%20%28USA%29.zip"
+  },
+  {
+    "name": "Chip 'n Dale - Rescue Rangers",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Chip%20%27n%20Dale%20-%20Rescue%20Rangers%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Chip%20%27n%20Dale%20-%20Rescue%20Rangers%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Chip%20%27n%20Dale%20-%20Rescue%20Rangers%20%28USA%29.zip"
+  },
+  {
+    "name": "Super Dodge Ball",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Super%20Dodge%20Ball%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Super%20Dodge%20Ball%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Super%20Dodge%20Ball%20%28USA%29.zip"
+  },
+  {
+    "name": "Rad Racer",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Rad%20Racer%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Rad%20Racer%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Rad%20Racer%20%28USA%29.zip"
+  },
+  {
+    "name": "Faxanadu",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Faxanadu%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Faxanadu%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Faxanadu%20%28USA%29.zip"
+  },
+  {
+    "name": "Crystalis",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Crystalis%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Crystalis%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Crystalis%20%28USA%29.zip"
+  },
+  {
+    "name": "Jackal",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Jackal%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Jackal%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Jackal%20%28USA%29.zip"
+  },
+  {
+    "name": "Maniac Mansion",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Maniac%20Mansion%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Maniac%20Mansion%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Maniac%20Mansion%20%28USA%29.zip"
+  },
+  {
+    "name": "Shadowgate",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Shadowgate%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Shadowgate%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Shadowgate%20%28USA%29.zip"
+  },
+  {
+    "name": "Marble Madness",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Marble%20Madness%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Marble%20Madness%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Marble%20Madness%20%28USA%29.zip"
+  },
+  {
+    "name": "Little Nemo - The Dream Master",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Little%20Nemo%20-%20The%20Dream%20Master%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Little%20Nemo%20-%20The%20Dream%20Master%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Little%20Nemo%20-%20The%20Dream%20Master%20%28USA%29.zip"
+  },
+  {
+    "name": "Gargoyle's Quest II",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Gargoyle%27s%20Quest%20II%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Gargoyle%27s%20Quest%20II%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Gargoyle%27s%20Quest%20II%20%28USA%29.zip"
+  },
+  {
+    "name": "Paperboy",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Paperboy%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Paperboy%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Paperboy%20%28USA%29.zip"
+  },
+  {
+    "name": "The Guardian Legend",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Guardian%20Legend%2C%20The%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Guardian%20Legend%2C%20The%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Guardian%20Legend%2C%20The%20%28USA%29.zip"
+  },
+  {
+    "name": "Base Wars",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Cyber%20Stadium%20Series%20-%20Base%20Wars%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Cyber%20Stadium%20Series%20-%20Base%20Wars%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Cyber%20Stadium%20Series%20-%20Base%20Wars%20%28USA%29.zip"
+  },
+  {
+    "name": "Conquest of the Crystal Palace",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Conquest%20of%20the%20Crystal%20Palace%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Conquest%20of%20the%20Crystal%20Palace%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Conquest%20of%20the%20Crystal%20Palace%20%28USA%29.zip"
+  },
+  {
+    "name": "Lode Runner",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Lode%20Runner%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Lode%20Runner%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Lode%20Runner%20%28USA%29.zip"
+  },
+  {
+    "name": "Wizards & Warriors",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Wizards%20%26%20Warriors%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Wizards%20%26%20Warriors%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Wizards%20%26%20Warriors%20%28USA%29.zip"
   },
   {
     "name": "Solstice",
-    "box_art": "https://dl.vimm.net/image.php?type=box&id=77287",
-    "cartridge": "https://dl.vimm.net/image.php?type=cart&id=77287&size=1",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Solstice%20-%20The%20Quest%20for%20the%20Staff%20of%20Demnos%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Solstice%20-%20The%20Quest%20for%20the%20Staff%20of%20Demnos%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Solstice%20-%20The%20Quest%20for%20the%20Staff%20of%20Demnos%20%28USA%29.zip"
+  },
+  {
+    "name": "Snake Rattle 'n' Roll",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Snake%20Rattle%20%27n%27%20Roll%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Snake%20Rattle%20%27n%27%20Roll%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Snake%20Rattle%20n%20Roll%20%28USA%29.zip"
+  },
+  {
+    "name": "Spy Hunter",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Spy%20Hunter%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Spy%20Hunter%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Spy%20Hunter%20%28USA%29.zip"
+  },
+  {
+    "name": "Power Blade",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Power%20Blade%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Power%20Blade%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Power%20Blade%20%28USA%29.zip"
+  },
+  {
+    "name": "Shatterhand",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Shatterhand%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Shatterhand%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Shatterhand%20%28USA%29.zip"
+  },
+  {
+    "name": "Vice - Project Doom",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Vice%20-%20Project%20Doom%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Vice%20-%20Project%20Doom%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Vice%20-%20Project%20Doom%20%28USA%29.zip"
+  },
+  {
+    "name": "Bucky O'Hare",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Bucky%20O%27Hare%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Bucky%20O%27Hare%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Bucky%20O%27Hare%20%28USA%29.zip"
+  },
+  {
+    "name": "S.C.A.T. - Special Cybernetic Attack Team",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/S.C.A.T.%20-%20Special%20Cybernetic%20Attack%20Team%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/S.C.A.T.%20-%20Special%20Cybernetic%20Attack%20Team%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/S.C.A.T.%20-%20Special%20Cybernetic%20Attack%20Team%20%28USA%29.zip"
+  },
+  {
+    "name": "Metal Storm",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Metal%20Storm%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Metal%20Storm%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Metal%20Storm%20%28USA%29.zip"
+  },
+  {
+    "name": "Darkwing Duck",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Darkwing%20Duck%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Darkwing%20Duck%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Darkwing%20Duck%20%28USA%29.zip"
+  },
+  {
+    "name": "Rockin' Kats",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Rockin%27%20Kats%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Rockin%27%20Kats%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Rockin%27%20Kats%20%28USA%29.zip"
+  },
+  {
+    "name": "Little Samson",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Little%20Samson%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Little%20Samson%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Little%20Samson%20%28USA%29.zip"
+  },
+  {
+    "name": "Gimmick!",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Gimmick%21%20%28Japan%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Gimmick%21%20%28Japan%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Mr.%20Gimmick%20%28USA%29%20%28Proto%29.zip"
+  },
+  {
+    "name": "Battletoads & Double Dragon",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Battletoads-Double%20Dragon%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Battletoads-Double%20Dragon%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Battletoads-Double%20Dragon%20%28USA%29.zip"
+  },
+  {
+    "name": "Ninja Gaiden III - The Ancient Ship of Doom",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Ninja%20Gaiden%20III%20-%20The%20Ancient%20Ship%20of%20Doom%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Ninja%20Gaiden%20III%20-%20The%20Ancient%20Ship%20of%20Doom%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Ninja%20Gaiden%20III%20-%20The%20Ancient%20Ship%20of%20Doom%20%28USA%29.zip"
+  },
+  {
+    "name": "Fire Emblem Gaiden",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Fire%20Emblem%20Gaiden%20%28Japan%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Fire%20Emblem%20Gaiden%20%28Japan%29.png",
+    "rom": null
+  },
+  {
+    "name": "Joy Mech Fight",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Joy%20Mech%20Fight%20%28Japan%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Joy%20Mech%20Fight%20%28Japan%29.png",
+    "rom": null
+  },
+  {
+    "name": "Kabuki Quantum Fighter",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Kabuki%20-%20Quantum%20Fighter%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Kabuki%20-%20Quantum%20Fighter%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Kabuki%20-%20Quantum%20Fighter%20%28USA%29.zip"
+  },
+  {
+    "name": "Kickle Cubicle",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Kickle%20Cubicle%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Kickle%20Cubicle%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Kickle%20Cubicle%20%28USA%29.zip"
+  },
+  {
+    "name": "Felix the Cat",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Felix%20the%20Cat%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Felix%20the%20Cat%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Felix%20the%20Cat%20%28USA%29.zip"
+  },
+  {
+    "name": "Micro Machines",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Micro%20Machines%20%28USA%29%20%28Unl%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Micro%20Machines%20%28USA%29%20%28Unl%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Micro%20Machines%20%28USA%29%20%28Unl%29.zip"
+  },
+  {
+    "name": "The Immortal",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Immortal%2C%20The%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Immortal%2C%20The%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Immortal%2C%20The%20%28USA%29.zip"
+  },
+  {
+    "name": "Astyanax",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Astyanax%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Astyanax%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Astyanax%20%28USA%29.zip"
+  },
+  {
+    "name": "Rygar",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Rygar%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Rygar%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Rygar%20%28USA%29.zip"
+  },
+  {
+    "name": "Trojan",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Trojan%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Trojan%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Trojan%20%28USA%29.zip"
+  },
+  {
+    "name": "Golgo 13 - Top Secret Episode",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Golgo%2013%20-%20Top%20Secret%20Episode%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Golgo%2013%20-%20Top%20Secret%20Episode%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Golgo%2013%20-%20Top%20Secret%20Episode%20%28USA%29.zip"
+  },
+  {
+    "name": "Xexyz",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Xexyz%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Xexyz%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Xexyz%20%28USA%29.zip"
+  },
+  {
+    "name": "Rollergames",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Rollergames%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Rollergames%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Rollergames%20%28USA%29.zip"
+  },
+  {
+    "name": "Adventures of Lolo",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Adventures%20of%20Lolo%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Adventures%20of%20Lolo%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Adventures%20of%20Lolo%20%28USA%29.zip"
+  },
+  {
+    "name": "Zanac",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Zanac%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Zanac%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Zanac%20%28USA%29.zip"
+  },
+  {
+    "name": "Section Z",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Section-Z%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Section-Z%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Section-Z%20%28USA%29.zip"
+  },
+  {
+    "name": "Abadox",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Abadox%20-%20The%20Deadly%20Inner%20War%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Abadox%20-%20The%20Deadly%20Inner%20War%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Abadox%20-%20The%20Deadly%20Inner%20War%20%28USA%29.zip"
+  },
+  {
+    "name": "Isolated Warrior",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Isolated%20Warrior%20%28USA%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Isolated%20Warrior%20%28USA%29.png",
+    "rom": "https://krankulator-cors.anders-415.workers.dev/?url=https://archive.org/download/roms_nes/Isolated%20Warrior%20%28USA%29.zip"
+  },
+  {
+    "name": "Over Horizon",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Over%20Horizon%20%28Japan%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Over%20Horizon%20%28Japan%29.png",
+    "rom": null
+  },
+  {
+    "name": "Crisis Force",
+    "box_art": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Boxarts/Crisis%20Force%20%28Japan%29.png",
+    "cartridge": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_Entertainment_System/master/Named_Snaps/Crisis%20Force%20%28Japan%29.png",
     "rom": null
   }
 ]

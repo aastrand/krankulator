@@ -501,7 +501,64 @@ async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
     let uint8 = js_sys::Uint8Array::new(&buf);
     let mut data = vec![0u8; uint8.length() as usize];
     uint8.copy_to(&mut data);
-    Ok(data)
+
+    if url.ends_with(".zip") || (data.len() > 4 && &data[0..4] == b"PK\x03\x04") {
+        extract_nes_from_zip(&data)
+    } else {
+        Ok(data)
+    }
+}
+
+fn extract_nes_from_zip(zip: &[u8]) -> Result<Vec<u8>, String> {
+    let mut offset = 0;
+    while offset + 30 <= zip.len() {
+        if &zip[offset..offset + 4] != b"PK\x03\x04" {
+            break;
+        }
+        let compression = u16::from_le_bytes([zip[offset + 8], zip[offset + 9]]);
+        let compressed_size = u32::from_le_bytes([
+            zip[offset + 18],
+            zip[offset + 19],
+            zip[offset + 20],
+            zip[offset + 21],
+        ]) as usize;
+        let uncompressed_size = u32::from_le_bytes([
+            zip[offset + 22],
+            zip[offset + 23],
+            zip[offset + 24],
+            zip[offset + 25],
+        ]) as usize;
+        let name_len = u16::from_le_bytes([zip[offset + 26], zip[offset + 27]]) as usize;
+        let extra_len = u16::from_le_bytes([zip[offset + 28], zip[offset + 29]]) as usize;
+        let name_start = offset + 30;
+        let name_end = name_start + name_len;
+        let data_start = name_end + extra_len;
+
+        if name_end > zip.len() || data_start > zip.len() {
+            return Err("Corrupt zip".into());
+        }
+
+        let name = String::from_utf8_lossy(&zip[name_start..name_end]);
+        if name.to_lowercase().ends_with(".nes") {
+            let data_end = data_start + compressed_size;
+            if data_end > zip.len() {
+                return Err("Corrupt zip".into());
+            }
+            return match compression {
+                0 => Ok(zip[data_start..data_end].to_vec()),
+                8 => inflate_raw(&zip[data_start..data_end], uncompressed_size),
+                _ => Err(format!("Unsupported zip compression method {compression}")),
+            };
+        }
+
+        offset = data_start + compressed_size;
+    }
+    Err("No .nes file found in zip".into())
+}
+
+fn inflate_raw(compressed: &[u8], _expected_size: usize) -> Result<Vec<u8>, String> {
+    miniz_oxide::inflate::decompress_to_vec(compressed)
+        .map_err(|e| format!("Inflate error: {:?}", e))
 }
 
 fn start_emulator(rom_data: Vec<u8>, filename: Option<String>) {
