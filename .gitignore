@@ -4,4 +4,4 @@ Cargo.lock
 .vscode/**
 .trunk
 */.venv
-*.pem
+*.pemworker/.wrangler/
