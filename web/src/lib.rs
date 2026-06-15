@@ -55,6 +55,7 @@ pub fn main() {
     setup_touch_load_button();
     setup_touch_lucky_button();
     setup_fullscreen_toggle();
+    setup_game_drawer();
     audio::setup_audio_resume_on_interaction();
     audio::setup_visibility_pause();
 }
@@ -104,13 +105,8 @@ fn setup_lucky_button() {
     let btn = document().get_element_by_id("lucky-btn").unwrap();
 
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
-        set_status("Fetching ROM...");
-        wasm_bindgen_futures::spawn_local(async {
-            match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
-                Ok(data) => start_emulator(data, None),
-                Err(e) => set_status(&format!("Failed to fetch: {e}")),
-            }
-        });
+        set_status("Picking a random game...");
+        wasm_bindgen_futures::spawn_local(fetch_random_rom());
     }) as Box<dyn FnMut(_)>);
 
     btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
@@ -160,16 +156,331 @@ fn setup_touch_lucky_button() {
     };
 
     let closure = Closure::wrap(Box::new(move |_: web_sys::Event| {
-        wasm_bindgen_futures::spawn_local(async {
-            match fetch_rom("https://file.classicjoy.games/games/meta-man/mega-man-2.nes").await {
-                Ok(data) => start_emulator(data, None),
-                Err(e) => set_status(&format!("Failed to fetch: {e}")),
-            }
-        });
+        wasm_bindgen_futures::spawn_local(fetch_random_rom());
     }) as Box<dyn FnMut(_)>);
     btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
         .unwrap();
     closure.forget();
+}
+
+fn setup_game_drawer() {
+    let Some(drawer) = document().get_element_by_id("game-drawer") else {
+        return;
+    };
+    let edge_el = document().get_element_by_id("game-drawer-edge");
+
+    let drawer_el: web_sys::HtmlElement = drawer.dyn_into().unwrap();
+
+    // Desktop: show drawer when ?list is in the URL
+    let href = document().url().unwrap_or_default();
+    if href.contains("?list") || href.contains("&list") {
+        let _ = drawer_el.class_list().add_1("desktop-visible");
+        let _ = drawer_el.class_list().add_1("open");
+    }
+
+    let is_open = Rc::new(Cell::new(false));
+    let touch_start_x: Rc<Cell<Option<f64>>> = Rc::new(Cell::new(None));
+    let touch_start_y: Rc<Cell<Option<f64>>> = Rc::new(Cell::new(None));
+    let drag_committed: Rc<Cell<bool>> = Rc::new(Cell::new(false));
+    let drag_offset: Rc<Cell<Option<f64>>> = Rc::new(Cell::new(None));
+    // Populate the drawer from list.json (only games with ROMs)
+    {
+        let drawer_el = drawer_el.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let list_url =
+                web_sys::Url::new_with_base("list.json", &document().base_uri().unwrap().unwrap())
+                    .unwrap()
+                    .href();
+            let Ok(list) = fetch_json(&list_url).await else {
+                return;
+            };
+            let arr: js_sys::Array = list.into();
+            let container = document().get_element_by_id("game-drawer-list").unwrap();
+            for i in 0..arr.length() {
+                let entry = arr.get(i);
+                let rom_url = match js_sys::Reflect::get(&entry, &"rom".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+                {
+                    Some(u) => u,
+                    None => continue,
+                };
+                let name = js_sys::Reflect::get(&entry, &"name".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default();
+                let box_art = js_sys::Reflect::get(&entry, &"box_art".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default();
+                let cartridge = js_sys::Reflect::get(&entry, &"cartridge".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default();
+
+                let card = document().create_element("div").unwrap();
+                let _ = card.set_attribute("class", "game-card");
+
+                let bg_img = document().create_element("img").unwrap();
+                let _ = bg_img.set_attribute("class", "game-card-bg");
+                let _ = bg_img.set_attribute("src", &box_art);
+                let _ = bg_img.set_attribute("loading", "lazy");
+                let _ = bg_img.set_attribute("alt", "");
+                card.append_child(&bg_img).unwrap();
+
+                let img = document().create_element("img").unwrap();
+                let _ = img.set_attribute("class", "game-card-cart");
+                let _ = img.set_attribute("src", &cartridge);
+                let _ = img.set_attribute("loading", "lazy");
+                let _ = img.set_attribute("alt", "");
+                card.append_child(&img).unwrap();
+
+                let label = document().create_element("div").unwrap();
+                let _ = label.set_attribute("class", "game-card-name");
+                label.set_text_content(Some(&name));
+                card.append_child(&label).unwrap();
+
+                let name = name.clone();
+                let drawer_el = drawer_el.clone();
+                let onclick = Closure::wrap(Box::new(move |_: web_sys::Event| {
+                    let _ = drawer_el.class_list().remove_1("open");
+                    let _ = drawer_el.style().remove_property("transform");
+                    let name = name.clone();
+                    let rom_url = rom_url.clone();
+                    set_status(&format!("Fetching {name}..."));
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match fetch_rom(&rom_url).await {
+                            Ok(data) => start_emulator(data, Some(format!("{name}.nes"))),
+                            Err(e) => set_status(&format!("Failed to fetch {name}: {e}")),
+                        }
+                    });
+                }) as Box<dyn FnMut(_)>);
+                card.add_event_listener_with_callback("click", onclick.as_ref().unchecked_ref())
+                    .unwrap();
+                onclick.forget();
+
+                container.append_child(&card).unwrap();
+            }
+        });
+    }
+
+    // Touchstart on edge zone (high z-index, above game controls)
+    if let Some(edge) = edge_el {
+        {
+            let touch_start_x = touch_start_x.clone();
+            let touch_start_y = touch_start_y.clone();
+            let drag_committed = drag_committed.clone();
+            let drag_offset = drag_offset.clone();
+            let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+                e.prevent_default();
+                e.stop_propagation();
+                let Some(touch) = e.touches().get(0) else {
+                    return;
+                };
+                touch_start_x.set(Some(touch.client_x() as f64));
+                touch_start_y.set(Some(touch.client_y() as f64));
+                drag_committed.set(false);
+                drag_offset.set(Some(0.0));
+            }) as Box<dyn FnMut(_)>);
+            edge.add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
+                .unwrap();
+            start.forget();
+        }
+
+        // Drawer itself: close gesture
+        {
+            let touch_start_x = touch_start_x.clone();
+            let touch_start_y = touch_start_y.clone();
+            let drag_committed = drag_committed.clone();
+            let drag_offset = drag_offset.clone();
+            let is_open = is_open.clone();
+            let start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+                if !is_open.get() {
+                    return;
+                }
+                let Some(touch) = e.touches().get(0) else {
+                    return;
+                };
+                touch_start_x.set(Some(touch.client_x() as f64));
+                touch_start_y.set(Some(touch.client_y() as f64));
+                drag_committed.set(false);
+                drag_offset.set(Some(0.0));
+            }) as Box<dyn FnMut(_)>);
+            drawer_el
+                .add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref())
+                .unwrap();
+            start.forget();
+        }
+    }
+
+    // Touchmove: track horizontal drag
+    {
+        let drawer_el = drawer_el.clone();
+        let touch_start_x = touch_start_x.clone();
+        let touch_start_y = touch_start_y.clone();
+        let drag_offset = drag_offset.clone();
+        let drag_committed = drag_committed.clone();
+        let is_open = is_open.clone();
+        let mov = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            let Some(start_x) = touch_start_x.get() else {
+                return;
+            };
+            let Some(touch) = e.touches().get(0) else {
+                return;
+            };
+            let dx = touch.client_x() as f64 - start_x;
+            let dy = touch.client_y() as f64 - touch_start_y.get().unwrap_or(0.0);
+
+            if !drag_committed.get() {
+                let adx = dx.abs();
+                let ady = dy.abs();
+                if adx < 10.0 && ady < 10.0 {
+                    return;
+                }
+                if ady > adx {
+                    touch_start_x.set(None);
+                    return;
+                }
+                drag_committed.set(true);
+            }
+
+            let drawer_width = drawer_el.offset_width() as f64;
+
+            if is_open.get() {
+                let offset = dx.max(0.0).min(drawer_width);
+                drag_offset.set(Some(offset));
+                let _ = drawer_el
+                    .style()
+                    .set_property("transform", &format!("translateX({offset}px)"));
+                let _ = drawer_el.style().set_property("transition", "none");
+            } else {
+                let offset = (drawer_width + dx).max(0.0).min(drawer_width);
+                drag_offset.set(Some(offset));
+                let _ = drawer_el
+                    .style()
+                    .set_property("transform", &format!("translateX({offset}px)"));
+                let _ = drawer_el.style().set_property("transition", "none");
+            }
+        }) as Box<dyn FnMut(_)>);
+        document()
+            .add_event_listener_with_callback("touchmove", mov.as_ref().unchecked_ref())
+            .unwrap();
+        mov.forget();
+    }
+
+    // Touchend: snap open or closed
+    {
+        let drawer_el = drawer_el.clone();
+        let touch_start_x = touch_start_x.clone();
+        let drag_offset = drag_offset.clone();
+        let is_open = is_open.clone();
+        let end = Closure::wrap(Box::new(move |_: web_sys::TouchEvent| {
+            if touch_start_x.get().is_none() {
+                return;
+            }
+            touch_start_x.set(None);
+            let _ = drawer_el.style().remove_property("transition");
+
+            let drawer_width = drawer_el.offset_width() as f64;
+            let offset = drag_offset.get().unwrap_or(drawer_width);
+            drag_offset.set(None);
+
+            let threshold = drawer_width * 0.3;
+            if is_open.get() {
+                if offset > threshold {
+                    let _ = drawer_el.class_list().remove_1("open");
+                    let _ = drawer_el.style().remove_property("transform");
+                    is_open.set(false);
+                } else {
+                    let _ = drawer_el.class_list().add_1("open");
+                    let _ = drawer_el.style().remove_property("transform");
+                }
+            } else {
+                if offset < drawer_width - threshold {
+                    let _ = drawer_el.class_list().add_1("open");
+                    let _ = drawer_el.style().remove_property("transform");
+                    is_open.set(true);
+                } else {
+                    let _ = drawer_el.class_list().remove_1("open");
+                    let _ = drawer_el.style().remove_property("transform");
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        document()
+            .add_event_listener_with_callback("touchend", end.as_ref().unchecked_ref())
+            .unwrap();
+        document()
+            .add_event_listener_with_callback("touchcancel", end.as_ref().unchecked_ref())
+            .unwrap();
+        end.forget();
+    }
+}
+
+async fn fetch_random_rom() {
+    let list_url =
+        web_sys::Url::new_with_base("list.json", &document().base_uri().unwrap().unwrap())
+            .unwrap()
+            .href();
+    let list = match fetch_json(&list_url).await {
+        Ok(v) => v,
+        Err(e) => {
+            set_status(&format!("Failed to load game list: {e}"));
+            return;
+        }
+    };
+    let arr = match js_sys::Array::try_from(list) {
+        Ok(a) => a,
+        Err(_) => {
+            set_status("Game list is not an array");
+            return;
+        }
+    };
+    let playable: Vec<JsValue> = (0..arr.length())
+        .map(|i| arr.get(i))
+        .filter(|e| {
+            js_sys::Reflect::get(e, &"rom".into())
+                .ok()
+                .map_or(false, |v| v.is_string())
+        })
+        .collect();
+    if playable.is_empty() {
+        set_status("No playable games in list");
+        return;
+    }
+    let idx = (js_sys::Math::random() * playable.len() as f64) as usize;
+    let entry = &playable[idx];
+    let name = js_sys::Reflect::get(&entry, &"name".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_default();
+    let rom_url = match js_sys::Reflect::get(&entry, &"rom".into())
+        .ok()
+        .and_then(|v| v.as_string())
+    {
+        Some(u) => u,
+        None => {
+            set_status(&format!("No ROM URL for {name}"));
+            return;
+        }
+    };
+    set_status(&format!("Fetching {name}..."));
+    match fetch_rom(&rom_url).await {
+        Ok(data) => start_emulator(data, Some(format!("{name}.nes"))),
+        Err(e) => set_status(&format!("Failed to fetch {name}: {e}")),
+    }
+}
+
+async fn fetch_json(url: &str) -> Result<JsValue, String> {
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window().fetch_with_str(url))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: web_sys::Response = resp_value.dyn_into().map_err(|_| "not a Response")?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|_| "no json")?)
+        .await
+        .map_err(|e| format!("{e:?}"))
 }
 
 async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
@@ -250,7 +561,12 @@ fn start_emulator(rom_data: Vec<u8>, filename: Option<String>) {
     }
     AUDIO_CTX.with(|ac| *ac.borrow_mut() = audio_ctx.clone());
 
-    set_status("Running");
+    if let Some(ref name) = filename {
+        let label = name.trim_end_matches(".nes");
+        set_status(&format!("Playing {label}"));
+    } else {
+        set_status("Running");
+    }
 
     let gen = GENERATION.with(|g| g.get());
     let rom_hash_clone = rom_hash.clone();

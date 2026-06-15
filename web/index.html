@@ -269,6 +269,95 @@
             50% { transform: rotate(0deg) scale(1.35); }
         }
 
+        /* Game drawer (swipe from right) */
+        .game-drawer {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 55vw;
+            height: 100dvh;
+            z-index: 80;
+            background: rgba(8, 8, 16, 0.95);
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            border-left: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        .game-drawer.open {
+            transform: translateX(0);
+        }
+        .game-drawer-list {
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+        }
+        .game-card {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            min-height: 120px;
+            overflow: hidden;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .game-card:active {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .game-card-bg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.15;
+            pointer-events: none;
+            filter: blur(1px);
+        }
+        .game-card-cart {
+            position: relative;
+            width: 72px;
+            height: 100px;
+            object-fit: contain;
+            image-rendering: auto;
+            flex-shrink: 0;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+        .game-card-name {
+            position: relative;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 11px;
+            color: #ccc;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+
+        #game-drawer-edge {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 40px;
+            height: 35dvh;
+            z-index: 90;
+            touch-action: none;
+        }
+        @media (pointer: coarse) and (orientation: landscape) {
+            .game-drawer { display: block; }
+            #game-drawer-edge { display: block; }
+        }
+        /* Desktop: show drawer when ?list is in URL */
+        .game-drawer.desktop-visible {
+            display: block;
+            width: 350px;
+            height: 100vh;
+        }
+
         .github-corner:hover .octo-arm {
             animation: octocat-wave 560ms ease-in-out;
         }
@@ -310,6 +399,7 @@
     <link data-trunk rel="copy-file" href="assets/CNAME" />
     <link data-trunk rel="copy-file" href="assets/PressStart2P.woff2" />
     <link data-trunk rel="copy-file" href="assets/mario-walking.png" />
+    <link data-trunk rel="copy-file" href="assets/list.json" />
 </head>
 <body>
     <a href="https://github.com/aastrand/krankulator" class="github-corner" aria-label="View source on GitHub"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:#151513; color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
@@ -356,6 +446,11 @@
             <div id="lucky-nudge" class="nudge-arrow" aria-hidden="true"></div>
         </div>
     </div>
+    <div id="game-drawer-edge"></div>
+    <div id="game-drawer" class="game-drawer">
+        <div id="game-drawer-list" class="game-drawer-list"></div>
+    </div>
+
     <div id="rotate-prompt">
         <div>Rotate your device to landscape mode</div>
         <div class="rotate-icon"></div>
