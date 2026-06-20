@@ -11,8 +11,8 @@ pub use winit_backend::WinitPixelsIOHandler as PlatformIOHandler;
 use std::time::{Duration, Instant};
 
 use muda::{
-    accelerator::Accelerator, AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem,
-    Submenu,
+    accelerator::{Accelerator, Key, KeyAccelerator, CMD_OR_CTRL},
+    AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
 };
 
 use krankulator_core::emu::io::PollResult;
@@ -219,9 +219,21 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         None::<Accelerator>,
     );
     let correct_aspect_ratio_id = correct_aspect_ratio.id().clone();
-    let scale_up = MenuItem::new("Increase Window Size\tCtrl++", true, None::<Accelerator>);
+    let scale_up = MenuItem::new("Increase Window Size", true, None::<Accelerator>);
+    scale_up
+        .set_key_accelerator(Some(KeyAccelerator::new(
+            Some(CMD_OR_CTRL),
+            Key::Character("+".into()),
+        )))
+        .unwrap();
     let scale_up_id = scale_up.id().clone();
-    let scale_down = MenuItem::new("Decrease Window Size\tCtrl+-", true, None::<Accelerator>);
+    let scale_down = MenuItem::new("Decrease Window Size", true, None::<Accelerator>);
+    scale_down
+        .set_key_accelerator(Some(KeyAccelerator::new(
+            Some(CMD_OR_CTRL),
+            Key::Character("-".into()),
+        )))
+        .unwrap();
     let scale_down_id = scale_down.id().clone();
     view_menu.append(&fullscreen).unwrap();
     view_menu.append(&scaling).unwrap();

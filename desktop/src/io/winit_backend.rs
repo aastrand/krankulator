@@ -426,7 +426,11 @@ impl ApplicationHandler for PollHandler<'_> {
                 event_loop.exit();
             }
             WindowEvent::ModifiersChanged(mods) => {
-                self.ctrl_held = mods.state().control_key();
+                self.ctrl_held = if cfg!(target_os = "macos") {
+                    mods.state().super_key()
+                } else {
+                    mods.state().control_key()
+                };
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(key) = event.physical_key {
