@@ -77,6 +77,11 @@ impl MemoryMapper for Vrc3Mapper {
         unsafe { *self.addr_space_ptr.offset(addr as isize) }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = mirror_addr(addr);
+        unsafe { *self.addr_space_ptr.offset(addr as isize) }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = mirror_addr(addr);
         match (addr >> 12) & 0x0F {

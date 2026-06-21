@@ -124,6 +124,13 @@ cargo clippy --workspace
 **CPU (`emu/cpu/mod.rs`)**
 - MOS 6502 CPU implementation with all official opcodes
 - Handles instruction decoding, execution, and flag management
+- `cpu/disasm.rs` — disassembler using `cpu_peek()` for side-effect-free reads; produces `DisasmLine` structs with address, bytes, mnemonic text
+
+**Debug (`emu/debug.rs`)**
+- `DebugSnapshot` — per-frame capture of CPU, PPU, APU state, disassembly, sprites, and 4 nametable images
+- `render_sprites()` — reads OAM + CHR + palette, filters out hidden sprites (Y >= 0xF0)
+- `render_all_nametables()` — renders all 4 nametables ($2000/$2400/$2800/$2C00) using CHR snapshot captured at scanline 240 to avoid VBlank bank-switch artifacts
+- `cpu_peek(&self, addr)` on MemoryMapper — side-effect-free read required by all mappers
 
 **PPU (`emu/ppu/mod.rs`)**
 - Picture Processing Unit for graphics rendering
@@ -181,6 +188,7 @@ cargo clippy --workspace
 ### Desktop Frontend (`desktop/src/`)
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
+- `debug_ui.rs` — egui 0.34 debug panels (F12 toggle, P to pause). Left panel: scrolling disassembly (10+10 lines around PC) and 4 nametables in 2x2 grid with scroll viewport overlay. Right panel: CPU registers, PPU state, APU oscilloscope waveforms, and sprite tile grid. Window widens by 2×PANEL_WIDTH when active. macOS/Windows only (wgpu/egui); not available on Linux GTK backend.
 - `bindings.rs` — Configurable input bindings data model: `Action` enum (27 variants for P1/P2 NES buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs.
 - `bindings_ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, `correct_aspect_ratio`, `window_scale`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
@@ -266,11 +274,14 @@ Two macros in `core/src/lib.rs`:
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
   src/lib.rs        — Crate root, exports test_input! and test_rom! macros
-  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind, region)
+  src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind, region, debug)
+  src/emu/debug.rs  — Debug snapshot structs and nametable/sprite rendering
+  src/emu/cpu/disasm.rs — 6502 disassembler (side-effect-free via cpu_peek)
   src/emu/gfx/shaders/ — CRT-Lottes-Fast shader sources (crt_lottes.wgsl, crt_lottes_web.vert/.frag)
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
+  src/debug_ui.rs   — egui debug panels (F12 toggle, disasm + nametables + CPU/PPU/APU + sprites)
   src/bindings.rs   — Input bindings data model (Action, KeyId, GamepadButtonId, InputBindings)
   src/bindings_ui.rs — Press-to-bind overlay UI (state machine, framebuffer drawing)
   src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, correct_aspect_ratio, window_scale, input bindings)

@@ -312,6 +312,9 @@ mod tests {
         fn cpu_read(&mut self, _addr: u16) -> u8 {
             0xAA
         }
+        fn cpu_peek(&self, _addr: u16) -> u8 {
+            0
+        }
         fn cpu_write(&mut self, _addr: u16, _value: u8) {}
         fn ppu_read(&self, _addr: u16) -> u8 {
             0
@@ -670,6 +673,9 @@ mod tests {
                 } else {
                     0x00
                 }
+            }
+            fn cpu_peek(&self, _addr: u16) -> u8 {
+                0
             }
             fn cpu_write(&mut self, _addr: u16, _value: u8) {}
             fn ppu_read(&self, _addr: u16) -> u8 {

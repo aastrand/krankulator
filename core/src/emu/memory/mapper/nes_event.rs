@@ -201,6 +201,15 @@ impl MemoryMapper for NesEventMapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
+            0x6000..=0x7FFF if self.wram_enabled => self.wram[(addr - 0x6000) as usize],
+            0x8000..=0xFFFF => self.map_prg_read(addr),
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,

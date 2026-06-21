@@ -707,6 +707,18 @@ impl PPU {
         self.w
     }
 
+    pub fn oam_data(&self) -> &[u8; OAM_DATA_SIZE] {
+        &self.oam_ram
+    }
+
+    pub fn ppu_status(&self) -> u8 {
+        self.ppu_status
+    }
+
+    pub fn fine_x(&self) -> u8 {
+        self.x
+    }
+
     #[cfg(test)]
     pub fn step_dot(&mut self) -> StepResult {
         self.step_dot_inner(None)

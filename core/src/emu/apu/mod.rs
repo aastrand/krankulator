@@ -130,6 +130,64 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 use channels::{DmcChannel, NoiseChannel, PulseChannel, TriangleChannel};
 use frame_counter::FrameCounter;
 
+const WAVEFORM_SIZE: usize = 512;
+const WAVEFORM_DECIMATION: u32 = 56;
+
+pub struct ChannelDebugState {
+    pub name: &'static str,
+    pub enabled: bool,
+    pub length_counter: u8,
+    pub waveform: Vec<f32>,
+}
+
+pub struct ApuDebugState {
+    pub channels: [ChannelDebugState; 5],
+    pub mixed_waveform: Vec<f32>,
+}
+
+struct WaveformCapture {
+    buffers: [Vec<f32>; 6], // P1, P2, Tri, Noise, DMC, Mixed
+    write_pos: usize,
+    decimation_counter: u32,
+}
+
+impl WaveformCapture {
+    fn new() -> Self {
+        Self {
+            buffers: [
+                vec![0.0; WAVEFORM_SIZE],
+                vec![0.0; WAVEFORM_SIZE],
+                vec![0.0; WAVEFORM_SIZE],
+                vec![0.0; WAVEFORM_SIZE],
+                vec![0.0; WAVEFORM_SIZE],
+                vec![0.0; WAVEFORM_SIZE],
+            ],
+            write_pos: 0,
+            decimation_counter: 0,
+        }
+    }
+
+    fn push(&mut self, samples: [f32; 6]) {
+        self.decimation_counter += 1;
+        if self.decimation_counter < WAVEFORM_DECIMATION {
+            return;
+        }
+        self.decimation_counter = 0;
+        for (i, &s) in samples.iter().enumerate() {
+            self.buffers[i][self.write_pos] = s;
+        }
+        self.write_pos = (self.write_pos + 1) % WAVEFORM_SIZE;
+    }
+
+    fn read_buffer(&self, channel: usize) -> Vec<f32> {
+        let buf = &self.buffers[channel];
+        let mut out = Vec::with_capacity(WAVEFORM_SIZE);
+        out.extend_from_slice(&buf[self.write_pos..]);
+        out.extend_from_slice(&buf[..self.write_pos]);
+        out
+    }
+}
+
 pub struct APU {
     pulse1: PulseChannel,
     pulse2: PulseChannel,
@@ -159,6 +217,8 @@ pub struct APU {
     // Pulse and noise timers tick every 2 CPU cycles (half-rate)
     half_clock: bool,
     expansion_audio: f32,
+
+    debug_capture: Option<WaveformCapture>,
 }
 
 impl Default for APU {
@@ -198,6 +258,7 @@ impl APU {
             region: region.region,
             half_clock: false,
             expansion_audio: 0.0,
+            debug_capture: None,
         };
         apu.hard_reset();
         apu
@@ -266,6 +327,59 @@ impl APU {
             old_mask,
             self.mute_mask
         );
+    }
+
+    pub fn set_debug_capture(&mut self, on: bool) {
+        if on && self.debug_capture.is_none() {
+            self.debug_capture = Some(WaveformCapture::new());
+        } else if !on {
+            self.debug_capture = None;
+        }
+    }
+
+    pub fn debug_state(&self) -> ApuDebugState {
+        let empty = vec![0.0; WAVEFORM_SIZE];
+        let read_buf = |ch: usize| -> Vec<f32> {
+            self.debug_capture
+                .as_ref()
+                .map(|c| c.read_buffer(ch))
+                .unwrap_or_else(|| empty.clone())
+        };
+        ApuDebugState {
+            channels: [
+                ChannelDebugState {
+                    name: "P1",
+                    enabled: self.enabled_channels & STATUS_PULSE1 != 0,
+                    length_counter: self.pulse1.get_length_counter(),
+                    waveform: read_buf(0),
+                },
+                ChannelDebugState {
+                    name: "P2",
+                    enabled: self.enabled_channels & STATUS_PULSE2 != 0,
+                    length_counter: self.pulse2.get_length_counter(),
+                    waveform: read_buf(1),
+                },
+                ChannelDebugState {
+                    name: "Tri",
+                    enabled: self.enabled_channels & STATUS_TRIANGLE != 0,
+                    length_counter: self.triangle.get_length_counter(),
+                    waveform: read_buf(2),
+                },
+                ChannelDebugState {
+                    name: "Noi",
+                    enabled: self.enabled_channels & STATUS_NOISE != 0,
+                    length_counter: self.noise.get_length_counter(),
+                    waveform: read_buf(3),
+                },
+                ChannelDebugState {
+                    name: "DMC",
+                    enabled: self.enabled_channels & STATUS_DMC != 0,
+                    length_counter: 0,
+                    waveform: read_buf(4),
+                },
+            ],
+            mixed_waveform: read_buf(5),
+        }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -396,8 +510,20 @@ impl APU {
         self.pulse1.end_cycle();
         self.pulse2.end_cycle();
 
-        self.sample_accumulator += self.mix_current(self.expansion_audio) as f64;
+        let mixed = self.mix_current(self.expansion_audio);
+        self.sample_accumulator += mixed as f64;
         self.sample_accumulator_count += 1;
+
+        if let Some(ref mut capture) = self.debug_capture {
+            capture.push([
+                self.pulse1.get_sample(),
+                self.pulse2.get_sample(),
+                self.triangle.get_sample(),
+                self.noise.get_sample(),
+                self.dmc.get_sample(),
+                mixed,
+            ]);
+        }
 
         self.cycles_since_sample += 1.0;
         if self.cycles_since_sample >= self.cycles_per_sample {
@@ -580,6 +706,9 @@ mod tests {
     impl MemoryMapper for DummyMemory {
         fn cpu_read(&mut self, _addr: u16) -> u8 {
             0xAA
+        }
+        fn cpu_peek(&self, _addr: u16) -> u8 {
+            0
         }
         fn cpu_write(&mut self, _addr: u16, _value: u8) {}
         fn ppu_read(&self, _addr: u16) -> u8 {

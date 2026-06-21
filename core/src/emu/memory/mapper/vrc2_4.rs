@@ -327,6 +327,54 @@ impl MemoryMapper for Vrc2_4Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
+            0x6000..=0x7FFF => {
+                if self.variant.is_vrc2() {
+                    self.vrc2_latch & 0x01
+                } else if self.wram_enable {
+                    self.prg_ram[(addr - 0x6000) as usize]
+                } else {
+                    0
+                }
+            }
+            0x8000..=0x9FFF => {
+                let bank = if self.prg_swap_mode {
+                    self.prg_rom.len().saturating_sub(2)
+                } else {
+                    self.prg_index(self.prg_bank_0)
+                };
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0x8000) as usize])
+            }
+            0xA000..=0xBFFF => {
+                let bank = self.prg_index(self.prg_bank_1);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xA000) as usize])
+            }
+            0xC000..=0xDFFF => {
+                let bank = if self.prg_swap_mode {
+                    self.prg_index(self.prg_bank_0)
+                } else {
+                    self.prg_rom.len().saturating_sub(2)
+                };
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xC000) as usize])
+            }
+            0xE000..=0xFFFF => {
+                let bank = self.prg_rom.len().saturating_sub(1);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xE000) as usize])
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,

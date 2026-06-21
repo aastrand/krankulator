@@ -24,6 +24,9 @@ ringbuf = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 shrust = "0.0.7"
 muda = "0.19.2"
+egui = "0.34"
+egui-wgpu = "0.34"
+egui-winit = "0.34"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-game-controller = { version = "0.3", features = ["GCController", "GCExtendedGamepad", "GCControllerButtonInput", "GCControllerDirectionPad", "GCControllerAxisInput", "GCControllerElement", "GCExtendedGamepadSnapshot"] }

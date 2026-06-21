@@ -313,6 +313,43 @@ impl MemoryMapper for Namco163Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize],
+            0x4800..=0x4FFF => self.sound_ram[(self.sound_addr & 0x7F) as usize],
+            0x5000..=0x57FF => self.irq_counter as u8,
+            0x5800..=0x5FFF => {
+                ((self.irq_counter >> 8) as u8) | if self.irq_enabled { 0x80 } else { 0 }
+            }
+            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
+            0x8000..=0x9FFF => {
+                let bank = self.prg_bank_index(self.prg_banks[0]);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0x8000) as usize])
+            }
+            0xA000..=0xBFFF => {
+                let bank = self.prg_bank_index(self.prg_banks[1]);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xA000) as usize])
+            }
+            0xC000..=0xDFFF => {
+                let bank = self.prg_bank_index(self.prg_banks[2]);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xC000) as usize])
+            }
+            0xE000..=0xFFFF => {
+                let bank = self.prg_rom.len().saturating_sub(1);
+                self.prg_rom
+                    .get(bank)
+                    .map_or(0, |b| b[(addr - 0xE000) as usize])
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,

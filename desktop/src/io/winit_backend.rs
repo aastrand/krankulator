@@ -15,10 +15,13 @@ use winit::{
 
 use krankulator_core::emu::apu;
 use krankulator_core::emu::dbg;
+use krankulator_core::emu::debug::DebugSnapshot;
 use krankulator_core::emu::gfx;
 use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
 use krankulator_core::util;
+
+use crate::debug_ui::DebugUi;
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
@@ -72,6 +75,8 @@ pub struct WinitPixelsIOHandler {
     bindings: InputBindings,
     binding_ui: BindingUi,
     ui_buf: gfx::buf::Buffer,
+    debug_ui: Option<DebugUi>,
+    debug_snapshot: Option<DebugSnapshot>,
 }
 
 struct InitHandler {
@@ -196,6 +201,8 @@ impl WinitPixelsIOHandler {
             bindings: std::mem::take(&mut settings.bindings),
             binding_ui: BindingUi::new(),
             ui_buf: gfx::buf::Buffer::new(),
+            debug_ui: None,
+            debug_snapshot: None,
         }
     }
 }
@@ -381,6 +388,8 @@ struct PollHandler<'a> {
     cycle_slot: bool,
     reset: bool,
     toggle_overlay: bool,
+    toggle_debug: bool,
+    toggle_pause: bool,
     rewind: &'a mut bool,
     toasts: Vec<String>,
     open_rom: bool,
@@ -519,6 +528,16 @@ impl ApplicationHandler for PollHandler<'_> {
                                     self.needs_save = true;
                                 }
                             }
+                            Action::ToggleDebug => {
+                                if pressed {
+                                    self.toggle_debug = true;
+                                }
+                            }
+                            Action::Pause => {
+                                if pressed {
+                                    self.toggle_pause = true;
+                                }
+                            }
                             Action::Rewind => {
                                 *self.rewind = pressed;
                             }
@@ -627,6 +646,8 @@ impl IOHandler for WinitPixelsIOHandler {
             cycle_slot: false,
             reset: false,
             toggle_overlay: false,
+            toggle_debug: false,
+            toggle_pause: false,
             rewind: &mut self.rewind_held,
             toasts: Vec::new(),
             open_rom: false,
@@ -660,6 +681,10 @@ impl IOHandler for WinitPixelsIOHandler {
                 handler.cycle_slot = true;
             } else if *id == handler.menu_ids.input_settings {
                 handler.binding_ui_active = true;
+            } else if *id == handler.menu_ids.debug_view {
+                handler.toggle_debug = true;
+            } else if *id == handler.menu_ids.pause {
+                handler.toggle_pause = true;
             } else if *id == handler.menu_ids.fullscreen {
                 toggle_fullscreen(
                     handler.window,
@@ -808,7 +833,37 @@ impl IOHandler for WinitPixelsIOHandler {
             } else {
                 None
             },
+            toggle_debug: handler.toggle_debug,
+            toggle_pause: handler.toggle_pause,
         };
+
+        if handler.toggle_debug {
+            let window = self.window.unwrap();
+            let ws = *handler.window_scale;
+            let car = *handler.correct_aspect_ratio;
+            if self.debug_ui.is_some() {
+                self.debug_ui = None;
+                self.debug_snapshot = None;
+                self.menu_items.debug_view.set_checked(false);
+                if window.fullscreen().is_none() {
+                    let (w, h) = window_size_for_scale(ws, car);
+                    let _ = window.request_inner_size(LogicalSize::new(w, h));
+                }
+            } else {
+                self.debug_ui = Some(DebugUi::new(window, handler.pixels));
+                self.menu_items.debug_view.set_checked(true);
+                if window.fullscreen().is_none() {
+                    let (w, h) = window_size_for_scale(ws, car);
+                    let panel_extra = (crate::debug_ui::PANEL_WIDTH * 2.0) as u32;
+                    let _ = window.request_inner_size(LogicalSize::new(w + panel_extra, h));
+                }
+            }
+        }
+
+        if handler.toggle_pause {
+            let is_checked = self.menu_items.pause.is_checked();
+            self.menu_items.pause.set_checked(!is_checked);
+        }
 
         if open_binding_ui {
             self.binding_ui.open();
@@ -875,6 +930,10 @@ impl IOHandler for WinitPixelsIOHandler {
         }
     }
 
+    fn set_debug_snapshot(&mut self, snapshot: DebugSnapshot) {
+        self.debug_snapshot = Some(snapshot);
+    }
+
     fn render(&mut self, buf: &gfx::buf::Buffer) {
         self.last_frame_ms = frame_pace(
             &mut self.last_frame_time,
@@ -906,6 +965,9 @@ impl IOHandler for WinitPixelsIOHandler {
                 frame[j + 3] = 255;
             }
         }
+
+        let mut debug_ui = self.debug_ui.take();
+        let debug_snapshot = self.debug_snapshot.take();
 
         if let Some(crt) = &self.crt {
             let disp_w = display_width(self.correct_aspect_ratio);
@@ -971,12 +1033,42 @@ impl IOHandler for WinitPixelsIOHandler {
                     rpass.set_pipeline(pipeline);
                     rpass.set_bind_group(0, Some(&bind_group), &[]);
                     rpass.draw(0..4, 0..1);
+                    drop(rpass);
+                    if let (Some(dui), Some(snap)) = (&mut debug_ui, &debug_snapshot) {
+                        dui.prepare_and_render(
+                            window,
+                            snap,
+                            encoder,
+                            render_target,
+                            &_context.device,
+                            &_context.queue,
+                        );
+                    }
                     Ok(())
                 })
                 .unwrap();
         } else {
-            pixels.render().unwrap();
+            if let (Some(dui), Some(snap)) = (&mut debug_ui, &debug_snapshot) {
+                pixels
+                    .render_with(|encoder, render_target, context| {
+                        context.scaling_renderer.render(encoder, render_target);
+                        dui.prepare_and_render(
+                            window,
+                            snap,
+                            encoder,
+                            render_target,
+                            &context.device,
+                            &context.queue,
+                        );
+                        Ok(())
+                    })
+                    .unwrap();
+            } else {
+                pixels.render().unwrap();
+            }
         }
+
+        self.debug_ui = debug_ui;
 
         window.request_redraw();
     }

@@ -716,6 +716,71 @@ impl MemoryMapper for MMC5Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x1FFF => self.internal_ram[(addr & 0x07FF) as usize],
+            0x5010 => 0,
+            0x5015 => {
+                let mut val = 0u8;
+                if self.pulse1.length_counter > 0 {
+                    val |= 0x01;
+                }
+                if self.pulse2.length_counter > 0 {
+                    val |= 0x02;
+                }
+                val
+            }
+            0x5100..=0x5104 => 0,
+            0x5105 => self.nt_mapping,
+            0x5204 => {
+                let mut val = 0u8;
+                if self.irq_pending {
+                    val |= 0x80;
+                }
+                if self.in_frame {
+                    val |= 0x40;
+                }
+                val
+            }
+            0x5205 => {
+                let product = (self.multiplicand as u16) * (self.multiplier as u16);
+                product as u8
+            }
+            0x5206 => {
+                let product = (self.multiplicand as u16) * (self.multiplier as u16);
+                (product >> 8) as u8
+            }
+            0x5C00..=0x5FFF => {
+                let offset = (addr - 0x5C00) as usize;
+                if self.exram_mode >= 2 {
+                    self.exram[offset]
+                } else {
+                    0
+                }
+            }
+            0x6000..=0x7FFF => {
+                let ram_bank = (self.prg_bank_regs[0] & 0x07) as usize;
+                let offset = (addr - 0x6000) as usize;
+                let ram_addr = (ram_bank * 8192 + offset) % PRG_RAM_SIZE;
+                self.prg_ram[ram_addr]
+            }
+            0x8000..=0xFFFF => match self.resolve_prg_addr(addr) {
+                PrgSource::Rom(bank, offset) => {
+                    if bank < self.prg_rom.len() {
+                        self.prg_rom[bank][offset]
+                    } else {
+                        0
+                    }
+                }
+                PrgSource::Ram(offset) => {
+                    let ram_addr = offset % PRG_RAM_SIZE;
+                    self.prg_ram[ram_addr]
+                }
+            },
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => {

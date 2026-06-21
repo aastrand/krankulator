@@ -2,6 +2,7 @@ pub mod apu;
 pub mod audio;
 pub mod cpu;
 pub mod dbg;
+pub mod debug;
 pub mod gfx;
 pub mod io;
 pub mod memory;
@@ -106,6 +107,11 @@ pub struct Emulator {
     overscan: bool,
     static_noise: bool,
     noise_state: u32,
+    debug_active: bool,
+    paused: bool,
+    debug_chr_snapshot: Vec<u8>,
+    debug_chr_captured_this_frame: bool,
+    paused_frame: Vec<u8>,
 }
 
 impl Emulator {
@@ -216,11 +222,77 @@ impl Emulator {
             overscan: false,
             static_noise: false,
             noise_state: 0x1234,
+            debug_active: false,
+            paused: false,
+            debug_chr_snapshot: Vec::new(),
+            debug_chr_captured_this_frame: false,
+            paused_frame: Vec::new(),
         }
     }
 
     pub fn set_static_noise(&mut self, enabled: bool) {
         self.static_noise = enabled;
+    }
+
+    pub fn toggle_debug(&mut self) {
+        self.debug_active = !self.debug_active;
+        self.apu.set_debug_capture(self.debug_active);
+    }
+
+    pub fn is_debug_active(&self) -> bool {
+        self.debug_active
+    }
+
+    pub fn debug_snapshot(&self) -> debug::DebugSnapshot {
+        let (disasm, pc_idx) =
+            cpu::disasm::disassemble_around(self.cpu.pc, 10, 10, &*self.mem, &self.lookup);
+        debug::DebugSnapshot {
+            cpu: debug::CpuSnapshot {
+                pc: self.cpu.pc,
+                a: self.cpu.a,
+                x: self.cpu.x,
+                y: self.cpu.y,
+                sp: self.cpu.sp,
+                status: self.cpu.status,
+                cycle: self.cpu.cycle,
+            },
+            ppu: {
+                let v = self.ppu.get_current_vram_addr();
+                let coarse_x = v & 0x1F;
+                let coarse_y = (v >> 5) & 0x1F;
+                let fine_y = (v >> 12) & 0x07;
+                let nt_select = ((v >> 10) & 0x03) as u8;
+                let fine_x = self.ppu.fine_x();
+                debug::PpuSnapshot {
+                    ctrl: self.ppu.ppu_ctrl,
+                    mask: self.ppu.ppu_mask,
+                    status: self.ppu.ppu_status(),
+                    v,
+                    t: self.ppu.get_temp_vram_addr(),
+                    fine_x,
+                    scanline: self.ppu.scanline,
+                    dot: self.ppu.cycle,
+                    frame: self.ppu.frames,
+                    scroll_x: coarse_x * 8 + fine_x as u16,
+                    scroll_y: coarse_y * 8 + fine_y,
+                    nametable_select: nt_select,
+                }
+            },
+            apu: self.apu.debug_state(),
+            disasm,
+            disasm_pc_index: pc_idx,
+            oam: *self.ppu.oam_data(),
+            sprites: debug::render_sprites(self.ppu.oam_data(), &self.ppu, &*self.mem),
+            nametables: debug::render_all_nametables(
+                &self.ppu,
+                &*self.mem,
+                if self.debug_chr_snapshot.is_empty() {
+                    None
+                } else {
+                    Some(&self.debug_chr_snapshot)
+                },
+            ),
+        }
     }
 
     pub fn set_overscan(&mut self, enabled: bool) {
@@ -491,6 +563,12 @@ impl Emulator {
         }
 
         loop {
+            if self.paused {
+                if self.paused_step() == CycleState::Exiting {
+                    break;
+                }
+                continue;
+            }
             if self.rewinding {
                 match self.rewind_step() {
                     RewindStepResult::Continue => continue,
@@ -509,6 +587,41 @@ impl Emulator {
         }
 
         self.exit();
+    }
+
+    fn paused_step(&mut self) -> CycleState {
+        if let Some(ms) = self.iohandler.frame_time_ms() {
+            self.overlay.set_frame_time(ms);
+        }
+        if !self.paused_frame.is_empty() {
+            self.buf.data.copy_from_slice(&self.paused_frame);
+        }
+        self.overlay.tick();
+        self.overlay.draw(&mut self.buf);
+        if self.overscan && self.region.region != region::Region::Pal {
+            self.buf.mask_overscan();
+        }
+        if self.debug_active {
+            let snapshot = self.debug_snapshot();
+            self.iohandler.set_debug_snapshot(snapshot);
+        }
+        self.iohandler.render(&self.buf);
+        let result = self.iohandler.poll(&mut *self.mem, &mut self.apu);
+        if result.exit {
+            return CycleState::Exiting;
+        }
+        if result.toggle_pause {
+            self.paused = false;
+            self.overlay.toast("RESUMED".into());
+        }
+        if result.toggle_debug {
+            self.toggle_debug();
+        }
+        if result.open_rom.is_some() {
+            self.pending_open_rom = result.open_rom;
+            return CycleState::Exiting;
+        }
+        CycleState::CpuAhead
     }
 
     fn rewind_step(&mut self) -> RewindStepResult {
@@ -635,6 +748,19 @@ impl Emulator {
         self.sync_ppu_to_dot(target_dot);
         self.master_clock = target_dot;
 
+        if self.debug_active {
+            if self.ppu.scanline >= 240 && !self.debug_chr_captured_this_frame {
+                self.debug_chr_snapshot.resize(0x2000, 0);
+                for (i, byte) in self.debug_chr_snapshot.iter_mut().enumerate() {
+                    *byte = self.mem.ppu_read(i as u16);
+                }
+                self.debug_chr_captured_this_frame = true;
+            }
+            if self.ppu.scanline == 0 && self.debug_chr_captured_this_frame {
+                self.debug_chr_captured_this_frame = false;
+            }
+        }
+
         // Cycle the APU and mapper
         self.apu.cycle(self.master_clock, &mut *self.mem);
         self.mem.cpu_cycle(self.ppu.last_synced_dot);
@@ -689,6 +815,10 @@ impl Emulator {
             if self.overscan && self.region.region != region::Region::Pal {
                 self.buf.mask_overscan();
             }
+            if self.debug_active {
+                let snapshot = self.debug_snapshot();
+                self.iohandler.set_debug_snapshot(snapshot);
+            }
             self.iohandler.render(&self.buf);
         }
         // ~1000 Hz input polling (1,789,773 CPU Hz / 1790 ≈ 1 ms)
@@ -719,6 +849,15 @@ impl Emulator {
             self.overlay.set_fast_forward(result.fast_forward);
             if result.toggle_overlay {
                 self.overlay.toggle();
+            }
+            if result.toggle_debug {
+                self.toggle_debug();
+            }
+            if result.toggle_pause {
+                self.paused = true;
+                self.paused_frame = self.buf.data.clone();
+                self.audio.clear();
+                self.overlay.toast("PAUSED".into());
             }
             if let Some(overscan) = result.set_overscan {
                 self.overscan = overscan;

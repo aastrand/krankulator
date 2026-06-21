@@ -23,6 +23,7 @@ pub fn addr_to_page(addr: u16) -> u16 {
 
 pub trait MemoryMapper {
     fn cpu_read(&mut self, addr: u16) -> u8;
+    fn cpu_peek(&self, addr: u16) -> u8;
     fn cpu_write(&mut self, addr: u16, value: u8);
     fn ppu_read(&self, addr: u16) -> u8;
     fn ppu_fetch(&mut self, addr: u16, dot: u64) -> u8 {
@@ -206,6 +207,10 @@ impl IdentityMapper {
 impl MemoryMapper for IdentityMapper {
     #[inline]
     fn cpu_read(&mut self, addr: u16) -> u8 {
+        unsafe { *self.ram_ptr.offset(addr as _) }
+    }
+
+    fn cpu_peek(&self, addr: u16) -> u8 {
         unsafe { *self.ram_ptr.offset(addr as _) }
     }
 
