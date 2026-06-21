@@ -961,6 +961,8 @@ impl IOHandler for GtkPixelsIOHandler {
             } else {
                 None
             },
+            toggle_debug: false,
+            toggle_pause: false,
         };
 
         if self.binding_ui_active.get() && !self.binding_ui.is_active() {
