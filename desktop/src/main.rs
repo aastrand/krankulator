@@ -1,6 +1,5 @@
 mod audio;
 pub(crate) mod bindings;
-mod bindings_ui;
 mod debug;
 mod gamepad;
 mod io;

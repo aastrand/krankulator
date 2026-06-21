@@ -1,6 +1,6 @@
 use krankulator_core::emu::gfx::{buf::Buffer, font::draw_string};
 
-use crate::bindings::{Action, GamepadButtonId, InputBindings, KeyId};
+use super::{Action, GamepadButtonId, InputBindings, KeyId};
 
 const WHITE: (u8, u8, u8) = (255, 255, 255);
 const BLACK: (u8, u8, u8) = (0, 0, 0);

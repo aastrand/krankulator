@@ -24,8 +24,8 @@ use super::{
     populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, NES_TEX_HEIGHT,
     NTSC_FRAME_DURATION,
 };
+use crate::bindings::ui::{BindingUi, UiEvent};
 use crate::bindings::{Action, InputBindings, KeyId};
-use crate::bindings_ui::{BindingUi, UiEvent};
 use crate::gamepad::Gamepads;
 use crate::settings;
 use crate::settings::Settings;
