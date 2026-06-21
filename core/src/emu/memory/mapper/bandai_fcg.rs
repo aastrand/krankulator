@@ -349,6 +349,41 @@ impl MemoryMapper for BandaiFcgMapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
+        let page = addr_to_page(addr);
+        match page {
+            0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
+            0x20 | 0x40 => 0,
+            0x60 | 0x70 if self.submapper == Submapper::Lz93d50 => {
+                if let Some(ref eeprom) = self.eeprom {
+                    let bit = eeprom.read_bit();
+                    if bit {
+                        0x10
+                    } else {
+                        0x00
+                    }
+                } else {
+                    0
+                }
+            }
+            0x80 | 0x90 | 0xA0 | 0xB0 => {
+                if self.prg_rom.is_empty() {
+                    return 0;
+                }
+                self.prg_rom[self.prg_bank_idx][(addr - 0x8000) as usize]
+            }
+            0xC0 | 0xD0 | 0xE0 | 0xF0 => {
+                if self.prg_rom.is_empty() {
+                    return 0;
+                }
+                let fixed = self.prg_rom.len() - 1;
+                self.prg_rom[fixed][(addr - 0xC000) as usize]
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
         let page = addr_to_page(addr);

@@ -397,6 +397,25 @@ impl MemoryMapper for MMC3Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
+        match addr {
+            0x0000..=0x1FFF => {
+                let ram_addr = addr & 0x07FF;
+                unsafe { *self.cpu_ram.as_ptr().offset(ram_addr as isize) }
+            }
+            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
+            0x8000..=0xFFFF => {
+                if let Some(bank) = self.map_prg(addr) {
+                    bank[(addr as usize) % PRG_BANK_SIZE]
+                } else {
+                    0
+                }
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
         match addr {

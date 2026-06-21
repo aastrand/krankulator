@@ -351,6 +351,30 @@ impl MemoryMapper for MMC1Mapper {
         self._read_bus(addr)
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
+        let page = addr_to_page(addr);
+        match page {
+            0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
+            0x20 | 0x40 => 0,
+            0x50 => 0,
+            0x60 | 0x70 => {
+                if self.mmc_ram_enabled {
+                    unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) }
+                } else {
+                    0
+                }
+            }
+            0x80 | 0x90 | 0xa0 | 0xb0 => {
+                self.banks[self.low_bank_idx][(addr % LOW_BANK_ADDR) as usize]
+            }
+            0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                self.banks[self.high_bank_idx][(addr % HIGH_BANK_ADDR) as usize]
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         self._write_bus(addr, value);
     }

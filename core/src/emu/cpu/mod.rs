@@ -1,6 +1,7 @@
 use super::memory;
 use super::savestate::{SavestateReader, SavestateWriter};
 
+pub mod disasm;
 pub mod opcodes;
 
 pub const NEGATIVE_BIT: u8 = 0b10000000;

@@ -82,6 +82,23 @@ pub fn load_settings() -> Settings {
             }
         }
     }
+    if has_bindings {
+        let defaults = InputBindings::default();
+        let loaded_kb_actions: std::collections::HashSet<_> =
+            settings.bindings.keyboard.iter().map(|(_, a)| *a).collect();
+        for (key, action) in &defaults.keyboard {
+            if !loaded_kb_actions.contains(action) {
+                settings.bindings.keyboard.push((key.clone(), *action));
+            }
+        }
+        let loaded_gp_actions: std::collections::HashSet<_> =
+            settings.bindings.gamepad.iter().map(|(_, a)| *a).collect();
+        for (btn, action) in &defaults.gamepad {
+            if !loaded_gp_actions.contains(action) {
+                settings.bindings.gamepad.push((btn.clone(), *action));
+            }
+        }
+    }
     settings
 }
 

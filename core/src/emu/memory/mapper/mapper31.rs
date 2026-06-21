@@ -74,6 +74,11 @@ impl MemoryMapper for Mapper31 {
         unsafe { *self.addr_space_ptr.offset(addr as isize) }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = mirror_addr(addr);
+        unsafe { *self.addr_space_ptr.offset(addr as isize) }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
         let page = addr_to_page(addr);

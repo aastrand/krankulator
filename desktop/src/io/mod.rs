@@ -55,6 +55,8 @@ pub(crate) struct MenuIds {
     pub load_state: muda::MenuId,
     pub cycle_slot: muda::MenuId,
     pub input_settings: muda::MenuId,
+    pub debug_view: muda::MenuId,
+    pub pause: muda::MenuId,
     pub fullscreen: muda::MenuId,
     pub scaling: muda::MenuId,
     pub scanlines: muda::MenuId,
@@ -66,6 +68,8 @@ pub(crate) struct MenuIds {
 
 #[allow(dead_code)]
 pub(crate) struct MenuItems {
+    pub debug_view: CheckMenuItem,
+    pub pause: CheckMenuItem,
     pub fullscreen: CheckMenuItem,
     pub scaling: CheckMenuItem,
     pub scanlines: CheckMenuItem,
@@ -168,35 +172,34 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
     file_menu.append(&quit).unwrap();
 
     let emu_menu = Submenu::new("Emulation", true);
-    let reset = MenuItem::new(
-        "Reset",
-        true,
-        Some("CmdOrCtrl+R".parse::<Accelerator>().unwrap()),
-    );
+    let reset = MenuItem::new("Reset", true, None::<Accelerator>);
     let reset_id = reset.id().clone();
-    let save_state = MenuItem::new(
-        "Save State",
-        true,
-        Some("CmdOrCtrl+S".parse::<Accelerator>().unwrap()),
-    );
+    let save_state = MenuItem::new("Save State", true, None::<Accelerator>);
     let save_state_id = save_state.id().clone();
-    let load_state = MenuItem::new(
-        "Load State",
-        true,
-        Some("CmdOrCtrl+L".parse::<Accelerator>().unwrap()),
-    );
+    let load_state = MenuItem::new("Load State", true, None::<Accelerator>);
     let load_state_id = load_state.id().clone();
     let cycle_slot = MenuItem::new("Cycle Save Slot", true, None::<Accelerator>);
     let cycle_slot_id = cycle_slot.id().clone();
     let input_settings = MenuItem::new("Input Settings...", true, None::<Accelerator>);
     let input_settings_id = input_settings.id().clone();
+    let debug_view = CheckMenuItem::new(
+        "Debug View",
+        true,
+        false,
+        Some("F12".parse::<Accelerator>().unwrap()),
+    );
+    let debug_view_id = debug_view.id().clone();
+    let pause = CheckMenuItem::new("Pause", true, false, None::<Accelerator>);
+    let pause_id = pause.id().clone();
     emu_menu.append(&reset).unwrap();
     emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
     emu_menu.append(&save_state).unwrap();
     emu_menu.append(&load_state).unwrap();
     emu_menu.append(&cycle_slot).unwrap();
     emu_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    emu_menu.append(&pause).unwrap();
     emu_menu.append(&input_settings).unwrap();
+    emu_menu.append(&debug_view).unwrap();
 
     let view_menu = Submenu::new("Display", true);
     let fullscreen = CheckMenuItem::new(
@@ -276,6 +279,8 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         load_state: load_state_id,
         cycle_slot: cycle_slot_id,
         input_settings: input_settings_id,
+        debug_view: debug_view_id,
+        pause: pause_id,
         fullscreen: fullscreen_id,
         scaling: scaling_id,
         scanlines: scanlines_id,
@@ -285,6 +290,8 @@ pub(crate) fn build_menu_contents() -> (Menu, MenuIds, MenuItems) {
         scale_down: scale_down_id,
     };
     let items = MenuItems {
+        debug_view,
+        pause,
         fullscreen,
         scaling,
         scanlines,

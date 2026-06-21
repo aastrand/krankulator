@@ -5,6 +5,7 @@ pub mod log;
 use super::apu;
 use super::cpu;
 use super::cpu::opcodes;
+use super::debug;
 use super::gfx;
 use super::memory;
 
@@ -23,6 +24,8 @@ pub struct PollResult {
     pub toasts: Vec<String>,
     pub open_rom: Option<String>,
     pub set_overscan: Option<bool>,
+    pub toggle_debug: bool,
+    pub toggle_pause: bool,
 }
 
 pub struct DebugContext<'a> {
@@ -46,6 +49,7 @@ pub trait IOHandler {
     }
     fn set_frame_duration_nanos(&mut self, _nanos: u64) {}
     fn set_overscan_available(&mut self, _available: bool) {}
+    fn set_debug_snapshot(&mut self, _snapshot: debug::DebugSnapshot) {}
     fn on_debug(&mut self, ctx: &mut DebugContext) {
         *ctx.stepping = false;
     }

@@ -28,6 +28,8 @@ pub enum Action {
     ToggleOverlay,
     ToggleScaling,
     ToggleScanlines,
+    ToggleDebug,
+    Pause,
     Fullscreen,
 }
 
@@ -60,6 +62,8 @@ impl Action {
             Action::ToggleOverlay => "toggle_overlay",
             Action::ToggleScaling => "toggle_scaling",
             Action::ToggleScanlines => "toggle_scanlines",
+            Action::ToggleDebug => "toggle_debug",
+            Action::Pause => "pause",
             Action::Fullscreen => "fullscreen",
         }
     }
@@ -92,6 +96,8 @@ impl Action {
             "toggle_overlay" => Some(Action::ToggleOverlay),
             "toggle_scaling" => Some(Action::ToggleScaling),
             "toggle_scanlines" => Some(Action::ToggleScanlines),
+            "toggle_debug" => Some(Action::ToggleDebug),
+            "pause" => Some(Action::Pause),
             "fullscreen" => Some(Action::Fullscreen),
             _ => None,
         }
@@ -125,6 +131,8 @@ impl Action {
             Action::ToggleOverlay => "Overlay",
             Action::ToggleScaling => "Scaling",
             Action::ToggleScanlines => "CRT Scanlines",
+            Action::ToggleDebug => "Debug View",
+            Action::Pause => "Pause",
             Action::Fullscreen => "Fullscreen",
         }
     }
@@ -178,6 +186,8 @@ impl Action {
         Action::ToggleOverlay,
         Action::ToggleScaling,
         Action::ToggleScanlines,
+        Action::ToggleDebug,
+        Action::Pause,
         Action::Fullscreen,
     ];
 }
@@ -329,6 +339,8 @@ impl Default for InputBindings {
                 (KeyId("Tab".into()), Action::ToggleOverlay),
                 (KeyId("KeyI".into()), Action::ToggleScaling),
                 (KeyId("F9".into()), Action::ToggleScanlines),
+                (KeyId("F12".into()), Action::ToggleDebug),
+                (KeyId("KeyP".into()), Action::Pause),
                 (KeyId("F11".into()), Action::Fullscreen),
             ],
             gamepad: vec![

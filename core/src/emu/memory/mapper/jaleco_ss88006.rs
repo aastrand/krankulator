@@ -215,6 +215,33 @@ impl MemoryMapper for JalecoSS88006Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
+        let page = addr_to_page(addr);
+        match page {
+            0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
+            0x20 | 0x40 => 0,
+            0x60 | 0x70 if self.prg_ram_enabled => self.prg_ram[(addr - 0x6000) as usize],
+            0x80 | 0x90 => {
+                let bank = self.prg_bank(0);
+                self.prg_rom[bank][(addr - 0x8000) as usize]
+            }
+            0xA0 | 0xB0 => {
+                let bank = self.prg_bank(1);
+                self.prg_rom[bank][(addr - 0xA000) as usize]
+            }
+            0xC0 | 0xD0 => {
+                let bank = self.prg_bank(2);
+                self.prg_rom[bank][(addr - 0xC000) as usize]
+            }
+            0xE0 | 0xF0 => {
+                let fixed = self.prg_rom.len() - 1;
+                self.prg_rom[fixed][(addr - 0xE000) as usize]
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
         let page = addr_to_page(addr);

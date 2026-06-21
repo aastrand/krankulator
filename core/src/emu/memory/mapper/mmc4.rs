@@ -115,6 +115,24 @@ impl MemoryMapper for MMC4Mapper {
         }
     }
 
+    fn cpu_peek(&self, addr: u16) -> u8 {
+        let addr = super::mirror_addr(addr);
+        let page = addr_to_page(addr);
+        match page {
+            0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
+            0x20 | 0x40 => 0,
+            0x60 | 0x70 => self.prg_ram[(addr - 0x6000) as usize],
+            0x80 | 0x90 | 0xA0 | 0xB0 => {
+                self.prg_banks[self.prg_bank_idx][(addr - 0x8000) as usize]
+            }
+            0xC0 | 0xD0 | 0xE0 | 0xF0 => {
+                let fixed = self.prg_banks.len() - 1;
+                self.prg_banks[fixed][(addr - 0xC000) as usize]
+            }
+            _ => 0,
+        }
+    }
+
     fn cpu_write(&mut self, addr: u16, value: u8) {
         let addr = super::mirror_addr(addr);
         let page = addr_to_page(addr);
