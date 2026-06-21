@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::process::Command;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gdk::keys::constants as gdk_key;
@@ -11,9 +12,12 @@ use gtk::prelude::*;
 use muda::{Menu, MenuEvent};
 
 use krankulator_core::emu::apu;
+use krankulator_core::emu::debug::DebugSnapshot;
 use krankulator_core::emu::gfx;
 use krankulator_core::emu::io::{IOHandler, PollResult};
 use krankulator_core::emu::memory;
+
+use crate::debug::{DebugUi, PANEL_WIDTH};
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
@@ -101,7 +105,7 @@ struct GlState {
 }
 
 struct GlContext {
-    gl: glow::Context,
+    gl: Arc<glow::Context>,
     state: GlState,
     texture_initialized: bool,
 }
@@ -145,6 +149,10 @@ pub struct GtkPixelsIOHandler {
     ui_buf: gfx::buf::Buffer,
     binding_ui_active: Rc<Cell<bool>>,
     captured_keys: Rc<RefCell<Vec<KeyId>>>,
+    toggle_debug_flag: Rc<Cell<bool>>,
+    toggle_pause_flag: Rc<Cell<bool>>,
+    debug_active: Rc<Cell<bool>>,
+    debug_snapshot: Rc<RefCell<Option<DebugSnapshot>>>,
 }
 
 impl GtkPixelsIOHandler {
@@ -183,6 +191,8 @@ impl GtkPixelsIOHandler {
         let pixel_perfect = Rc::new(Cell::new(settings.integer_scaling));
         let scanlines = Rc::new(Cell::new(settings.scanlines));
         let correct_aspect_ratio = Rc::new(Cell::new(settings.correct_aspect_ratio));
+        let debug_active: Rc<Cell<bool>> = Rc::new(Cell::new(false));
+        let debug_snapshot: Rc<RefCell<Option<DebugSnapshot>>> = Rc::new(RefCell::new(None));
 
         {
             let ctx = gl_ctx.clone();
@@ -191,11 +201,11 @@ impl GtkPixelsIOHandler {
                 if area.error().is_some() {
                     return;
                 }
-                let gl = unsafe {
+                let gl = Arc::new(unsafe {
                     glow::Context::from_loader_function_cstr(|name: &CStr| {
                         eglGetProcAddress(name.as_ptr())
                     })
-                };
+                });
                 let state = unsafe { init_gl(&gl) };
                 *ctx.borrow_mut() = Some(GlContext {
                     gl,
@@ -211,6 +221,9 @@ impl GtkPixelsIOHandler {
             let pp = pixel_perfect.clone();
             let sl = scanlines.clone();
             let car = correct_aspect_ratio.clone();
+            let da = debug_active.clone();
+            let dsnap = debug_snapshot.clone();
+            let dui: RefCell<Option<DebugUi>> = RefCell::new(None);
             gl_area.connect_render(move |area, _gl_ctx| {
                 let mut ctx_ref = ctx.borrow_mut();
                 let Some(gl_ctx) = ctx_ref.as_mut() else {
@@ -226,6 +239,24 @@ impl GtkPixelsIOHandler {
                     sl.get(),
                     car.get(),
                 );
+                if da.get() {
+                    let mut dui_ref = dui.borrow_mut();
+                    let debug_ui = dui_ref.get_or_insert_with(|| DebugUi::new(&gl_ctx.gl));
+                    let dsnap_ref = dsnap.borrow();
+                    if let Some(snapshot) = dsnap_ref.as_ref() {
+                        debug_ui.render(
+                            &gl_ctx.gl,
+                            snapshot,
+                            alloc.width() as u32,
+                            alloc.height() as u32,
+                        );
+                    }
+                } else {
+                    let mut dui_ref = dui.borrow_mut();
+                    if let Some(mut old) = dui_ref.take() {
+                        old.destroy();
+                    }
+                }
                 glib::Propagation::Stop
             });
         }
@@ -255,6 +286,8 @@ impl GtkPixelsIOHandler {
         let bindings = Rc::new(RefCell::new(std::mem::take(&mut settings.bindings)));
         let binding_ui_active = Rc::new(Cell::new(false));
         let captured_keys: Rc<RefCell<Vec<KeyId>>> = Rc::new(RefCell::new(Vec::new()));
+        let toggle_debug_flag = Rc::new(Cell::new(false));
+        let toggle_pause_flag = Rc::new(Cell::new(false));
 
         {
             let flag = exit_flag.clone();
@@ -285,6 +318,8 @@ impl GtkPixelsIOHandler {
             let bi = bindings.clone();
             let bua = binding_ui_active.clone();
             let ck = captured_keys.clone();
+            let td = toggle_debug_flag.clone();
+            let tp = toggle_pause_flag.clone();
             window.connect_key_press_event(move |_, event| {
                 if bua.get() {
                     if let Some(key_id) = KeyId::from_gdk(event.keyval()) {
@@ -298,7 +333,7 @@ impl GtkPixelsIOHandler {
                 }
                 handle_key(
                     event, true, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw,
-                    &fs, &ex, &pp, &sl, &car, &su, &sd, &bi,
+                    &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
                 );
                 glib::Propagation::Proceed
             });
@@ -324,13 +359,15 @@ impl GtkPixelsIOHandler {
             let sd = scale_down_flag.clone();
             let bi = bindings.clone();
             let bua = binding_ui_active.clone();
+            let td = toggle_debug_flag.clone();
+            let tp = toggle_pause_flag.clone();
             window.connect_key_release_event(move |_, event| {
                 if bua.get() {
                     return glib::Propagation::Proceed;
                 }
                 handle_key(
                     event, false, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay,
-                    &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi,
+                    &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
                 );
                 glib::Propagation::Proceed
             });
@@ -381,6 +418,10 @@ impl GtkPixelsIOHandler {
             ui_buf: gfx::buf::Buffer::new(),
             binding_ui_active,
             captured_keys,
+            toggle_debug_flag,
+            toggle_pause_flag,
+            debug_active,
+            debug_snapshot,
         }
     }
 
@@ -631,6 +672,8 @@ fn handle_key(
     scale_up: &Rc<Cell<bool>>,
     scale_down: &Rc<Cell<bool>>,
     bindings: &Rc<RefCell<InputBindings>>,
+    toggle_debug: &Rc<Cell<bool>>,
+    toggle_pause: &Rc<Cell<bool>>,
 ) {
     let gdk_key = event.keyval();
     let ctrl = event.state().contains(gdk::ModifierType::CONTROL_MASK);
@@ -703,6 +746,16 @@ fn handle_key(
             Action::ToggleScanlines => {
                 if pressed {
                     scanlines.set(!scanlines.get());
+                }
+            }
+            Action::ToggleDebug => {
+                if pressed {
+                    toggle_debug.set(true);
+                }
+            }
+            Action::Pause => {
+                if pressed {
+                    toggle_pause.set(true);
                 }
             }
             Action::Rewind => {
@@ -837,6 +890,10 @@ impl IOHandler for GtkPixelsIOHandler {
                 cycle_slot = true;
             } else if *id == self.menu_ids.input_settings {
                 self.binding_ui_active.set(true);
+            } else if *id == self.menu_ids.debug_view {
+                self.toggle_debug_flag.set(true);
+            } else if *id == self.menu_ids.pause {
+                self.toggle_pause_flag.set(true);
             } else if *id == self.menu_ids.fullscreen {
                 self.toggle_fullscreen(&mut toasts);
             } else if *id == self.menu_ids.scaling {
@@ -938,6 +995,52 @@ impl IOHandler for GtkPixelsIOHandler {
 
         let _ = apu;
 
+        let toggle_debug = self.toggle_debug_flag.get();
+        let toggle_pause = self.toggle_pause_flag.get();
+        self.toggle_debug_flag.set(false);
+        self.toggle_pause_flag.set(false);
+
+        if toggle_debug {
+            let now_active = !self.debug_active.get();
+            self.debug_active.set(now_active);
+            if now_active {
+                self.menu_items.debug_view.set_checked(true);
+                let is_fullscreen = self
+                    .window
+                    .window()
+                    .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                    .unwrap_or(false);
+                if !is_fullscreen {
+                    let (w, h) = window_size_for_scale(
+                        self.window_scale.get(),
+                        self.correct_aspect_ratio.get(),
+                    );
+                    let panel_extra = (PANEL_WIDTH * 2.0) as i32;
+                    self.window.resize(w as i32 + panel_extra, h as i32);
+                }
+            } else {
+                *self.debug_snapshot.borrow_mut() = None;
+                self.menu_items.debug_view.set_checked(false);
+                let is_fullscreen = self
+                    .window
+                    .window()
+                    .map(|gw| gw.state().contains(gdk::WindowState::FULLSCREEN))
+                    .unwrap_or(false);
+                if !is_fullscreen {
+                    let (w, h) = window_size_for_scale(
+                        self.window_scale.get(),
+                        self.correct_aspect_ratio.get(),
+                    );
+                    self.window.resize(w as i32, h as i32);
+                }
+            }
+        }
+
+        if toggle_pause {
+            let is_checked = self.menu_items.pause.is_checked();
+            self.menu_items.pause.set_checked(!is_checked);
+        }
+
         let open_rom_path = if open_rom {
             open_rom_dialog()
         } else {
@@ -961,8 +1064,8 @@ impl IOHandler for GtkPixelsIOHandler {
             } else {
                 None
             },
-            toggle_debug: false,
-            toggle_pause: false,
+            toggle_debug,
+            toggle_pause,
         };
 
         if self.binding_ui_active.get() && !self.binding_ui.is_active() {
@@ -1036,6 +1139,10 @@ impl IOHandler for GtkPixelsIOHandler {
         if !available {
             self.overscan.set(false);
         }
+    }
+
+    fn set_debug_snapshot(&mut self, snapshot: DebugSnapshot) {
+        *self.debug_snapshot.borrow_mut() = Some(snapshot);
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {

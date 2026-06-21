@@ -21,7 +21,7 @@ use krankulator_core::emu::io::{DebugContext, IOHandler, PollResult};
 use krankulator_core::emu::memory;
 use krankulator_core::util;
 
-use crate::debug_ui::DebugUi;
+use crate::debug::DebugUi;
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
@@ -854,7 +854,7 @@ impl IOHandler for WinitPixelsIOHandler {
                 self.menu_items.debug_view.set_checked(true);
                 if window.fullscreen().is_none() {
                     let (w, h) = window_size_for_scale(ws, car);
-                    let panel_extra = (crate::debug_ui::PANEL_WIDTH * 2.0) as u32;
+                    let panel_extra = (crate::debug::PANEL_WIDTH * 2.0) as u32;
                     let _ = window.request_inner_size(LogicalSize::new(w + panel_extra, h));
                 }
             }

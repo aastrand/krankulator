@@ -1,8 +1,7 @@
 mod audio;
 pub(crate) mod bindings;
 mod bindings_ui;
-#[cfg(not(target_os = "linux"))]
-mod debug_ui;
+mod debug;
 mod gamepad;
 mod io;
 pub(crate) mod settings;
