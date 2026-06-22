@@ -52,6 +52,7 @@ pub struct DebugSnapshot {
     pub apu: ApuDebugState,
     pub disasm: Vec<DisasmLine>,
     pub disasm_pc_index: usize,
+    pub palette: [u8; 32],
     pub oam: [u8; ppu::OAM_DATA_SIZE],
     pub sprites: Vec<SpriteInfo>,
     pub nametables: Vec<NametableImage>,

@@ -245,7 +245,11 @@ impl Emulator {
 
     pub fn debug_snapshot(&self) -> debug::DebugSnapshot {
         let (disasm, pc_idx) =
-            cpu::disasm::disassemble_around(self.cpu.pc, 10, 10, &*self.mem, &self.lookup);
+            cpu::disasm::disassemble_around(self.cpu.pc, 8, 8, &*self.mem, &self.lookup);
+        let mut palette_data = [0u8; 32];
+        for i in 0..32u16 {
+            palette_data[i as usize] = self.mem.ppu_read(0x3F00 + i);
+        }
         debug::DebugSnapshot {
             cpu: debug::CpuSnapshot {
                 pc: self.cpu.pc,
@@ -281,6 +285,7 @@ impl Emulator {
             apu: self.apu.debug_state(),
             disasm,
             disasm_pc_index: pc_idx,
+            palette: palette_data,
             oam: *self.ppu.oam_data(),
             sprites: debug::render_sprites(self.ppu.oam_data(), &self.ppu, &*self.mem),
             nametables: debug::render_all_nametables(

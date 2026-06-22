@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use egui::epaint::PathStroke;
 use krankulator_core::emu::debug::DebugSnapshot;
+use krankulator_core::emu::gfx::palette;
 
 pub const PANEL_WIDTH: f32 = 280.0;
 
@@ -74,6 +75,8 @@ fn draw_left_panel(
                 }
             }
 
+            ui.add_space(8.0);
+            draw_palette(ui, &snapshot.palette);
             ui.add_space(8.0);
             draw_nametables(ui, nt_textures, &snapshot.ppu);
         });
@@ -151,6 +154,60 @@ fn draw_ppu_state(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
         "Scroll: ({},{})  Frame: {}",
         ppu.scroll_x, ppu.scroll_y, ppu.frame
     ));
+}
+
+fn draw_palette(ui: &mut egui::Ui, palette_ram: &[u8; 32]) {
+    ui.heading("Palette");
+    ui.separator();
+
+    let avail_w = ui.available_width();
+    let gap = 6.0;
+    let cell_spacing = 1.0;
+    let label_w = 20.0;
+    let cells_w = avail_w - label_w - gap * 3.0 - cell_spacing * 12.0;
+    let cell_size = (cells_w / 16.0).floor().max(4.0);
+
+    let sections = [("BG", 0usize), ("SP", 16usize)];
+    for (label, base) in &sections {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label(
+                egui::RichText::new(*label)
+                    .monospace()
+                    .size(9.0)
+                    .color(egui::Color32::GRAY),
+            );
+            ui.add_space(4.0);
+            for pal in 0..4 {
+                if pal > 0 {
+                    ui.add_space(gap);
+                }
+                for col in 0..4 {
+                    let nes_idx = if col == 0 {
+                        palette_ram[0] as usize % palette::PALETTE_SIZE
+                    } else {
+                        palette_ram[base + pal * 4 + col] as usize % palette::PALETTE_SIZE
+                    };
+                    let (r, g, b) = palette::PALETTE[nes_idx];
+                    let color = egui::Color32::from_rgb(r, g, b);
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(cell_size, cell_size),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().rect_filled(rect, 0.0, color);
+                    ui.painter().rect_stroke(
+                        rect,
+                        0.0,
+                        egui::Stroke::new(0.5, egui::Color32::from_rgb(60, 60, 60)),
+                        egui::StrokeKind::Outside,
+                    );
+                    if col < 3 {
+                        ui.add_space(cell_spacing);
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn draw_nametables(
