@@ -6,6 +6,7 @@ pub struct DisasmLine {
     pub bytes: [u8; 3],
     pub byte_count: u8,
     pub text: String,
+    pub operand_detail: Option<String>,
 }
 
 fn format_operand(mode: usize, lo: u8, hi: u8) -> String {
@@ -55,7 +56,83 @@ fn is_relative(opcode: u8) -> bool {
     is_branch(opcode)
 }
 
-pub fn disassemble_one(addr: u16, mem: &dyn MemoryMapper, lookup: &Lookup) -> DisasmLine {
+fn is_store(opcode: u8) -> bool {
+    matches!(
+        opcode,
+        0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 // STA
+        | 0x86 | 0x96 | 0x8E // STX
+        | 0x84 | 0x94 | 0x8C // STY
+    )
+}
+
+pub struct CpuRegs {
+    pub x: u8,
+    pub y: u8,
+}
+
+fn resolve_operand(
+    mode: usize,
+    lo: u8,
+    hi: u8,
+    opcode: u8,
+    regs: Option<&CpuRegs>,
+    mem: &dyn MemoryMapper,
+) -> Option<String> {
+    let regs = regs?;
+    let (eff_addr, show_addr) = match mode {
+        opcodes::ADDR_MODE_ZP => (lo as u16, true),
+        opcodes::ADDR_MODE_ZPX => (lo.wrapping_add(regs.x) as u16, true),
+        opcodes::ADDR_MODE_ZPY => (lo.wrapping_add(regs.y) as u16, true),
+        opcodes::ADDR_MODE_ABS => {
+            let a = (hi as u16) << 8 | lo as u16;
+            (a, false)
+        }
+        opcodes::ADDR_MODE_ABX => {
+            let a = ((hi as u16) << 8 | lo as u16).wrapping_add(regs.x as u16);
+            (a, true)
+        }
+        opcodes::ADDR_MODE_ABY => {
+            let a = ((hi as u16) << 8 | lo as u16).wrapping_add(regs.y as u16);
+            (a, true)
+        }
+        opcodes::ADDR_MODE_INX => {
+            let ptr = lo.wrapping_add(regs.x);
+            let lo_byte = mem.cpu_peek(ptr as u16);
+            let hi_byte = mem.cpu_peek(ptr.wrapping_add(1) as u16);
+            let a = (hi_byte as u16) << 8 | lo_byte as u16;
+            (a, true)
+        }
+        opcodes::ADDR_MODE_INY => {
+            let lo_byte = mem.cpu_peek(lo as u16);
+            let hi_byte = mem.cpu_peek(lo.wrapping_add(1) as u16);
+            let a = ((hi_byte as u16) << 8 | lo_byte as u16).wrapping_add(regs.y as u16);
+            (a, true)
+        }
+        _ => return None,
+    };
+
+    if is_store(opcode) {
+        if show_addr {
+            Some(format!("@ {:04X}", eff_addr))
+        } else {
+            None
+        }
+    } else {
+        let val = mem.cpu_peek(eff_addr);
+        if show_addr {
+            Some(format!("@ {:04X} = {:02X}", eff_addr, val))
+        } else {
+            Some(format!("= {:02X}", val))
+        }
+    }
+}
+
+pub fn disassemble_one(
+    addr: u16,
+    mem: &dyn MemoryMapper,
+    lookup: &Lookup,
+    regs: Option<&CpuRegs>,
+) -> DisasmLine {
     let opcode = mem.cpu_peek(addr);
     let size = lookup.size(opcode) as u8;
     let mode = lookup.mode(opcode);
@@ -87,11 +164,14 @@ pub fn disassemble_one(addr: u16, mem: &dyn MemoryMapper, lookup: &Lookup) -> Di
         format!("{base} {operand}")
     };
 
+    let operand_detail = resolve_operand(mode, lo, hi, opcode, regs, mem);
+
     DisasmLine {
         addr,
         bytes: [opcode, lo, hi],
         byte_count: size,
         text,
+        operand_detail,
     }
 }
 
@@ -101,6 +181,7 @@ pub fn disassemble_around(
     lines_after: usize,
     mem: &dyn MemoryMapper,
     lookup: &Lookup,
+    regs: Option<&CpuRegs>,
 ) -> (Vec<DisasmLine>, usize) {
     let mut before = Vec::new();
     if lines_before > 0 {
@@ -116,7 +197,7 @@ pub fn disassemble_around(
         if scan_addr == pc {
             let skip = candidates.len().saturating_sub(lines_before);
             for &addr in &candidates[skip..] {
-                before.push(disassemble_one(addr, mem, lookup));
+                before.push(disassemble_one(addr, mem, lookup, None));
             }
         } else {
             let mut addr = pc.wrapping_sub(lines_before as u16);
@@ -124,7 +205,7 @@ pub fn disassemble_around(
                 if addr >= pc {
                     break;
                 }
-                before.push(disassemble_one(addr, mem, lookup));
+                before.push(disassemble_one(addr, mem, lookup, None));
                 let size = lookup.size(mem.cpu_peek(addr));
                 addr = addr.wrapping_add(size.max(1));
             }
@@ -133,11 +214,11 @@ pub fn disassemble_around(
 
     let pc_idx = before.len();
     let mut result = before;
-    result.push(disassemble_one(pc, mem, lookup));
+    result.push(disassemble_one(pc, mem, lookup, regs));
 
     let mut addr = pc.wrapping_add(lookup.size(mem.cpu_peek(pc)).max(1));
     for _ in 0..lines_after {
-        result.push(disassemble_one(addr, mem, lookup));
+        result.push(disassemble_one(addr, mem, lookup, None));
         let size = lookup.size(mem.cpu_peek(addr)).max(1);
         addr = addr.wrapping_add(size);
     }

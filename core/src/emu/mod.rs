@@ -244,12 +244,17 @@ impl Emulator {
     }
 
     pub fn debug_snapshot(&self) -> debug::DebugSnapshot {
+        let regs = cpu::disasm::CpuRegs {
+            x: self.cpu.x,
+            y: self.cpu.y,
+        };
         let (disasm, pc_idx) = cpu::disasm::disassemble_around(
             self.cpu.pc,
             debug::DISASM_CONTEXT,
             debug::DISASM_CONTEXT,
             &*self.mem,
             &self.lookup,
+            Some(&regs),
         );
         let mut palette_data = [0u8; 32];
         for i in 0..32u16 {
