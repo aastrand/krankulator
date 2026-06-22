@@ -12,6 +12,7 @@ pub struct DebugUi {
     renderer: egui_wgpu::Renderer,
     sprite_textures: HashMap<u8, egui::TextureHandle>,
     nt_textures: Vec<egui::TextureHandle>,
+    pt_textures: Vec<egui::TextureHandle>,
 }
 
 impl DebugUi {
@@ -42,6 +43,7 @@ impl DebugUi {
             renderer,
             sprite_textures: HashMap::new(),
             nt_textures: Vec::new(),
+            pt_textures: Vec::new(),
         }
     }
 
@@ -86,12 +88,27 @@ impl DebugUi {
             }
         }
 
+        for (i, pt) in snapshot.pattern_tables.iter().enumerate() {
+            let w = pt.width as usize;
+            let h = pt.height as usize;
+            let image = rgb_to_color_image(&pt.pixels, w, h);
+            if let Some(tex) = self.pt_textures.get_mut(i) {
+                tex.set(image, egui::TextureOptions::NEAREST);
+            } else {
+                let tex =
+                    self.ctx
+                        .load_texture(format!("pt_{i}"), image, egui::TextureOptions::NEAREST);
+                self.pt_textures.push(tex);
+            }
+        }
+
         let sprite_textures = &self.sprite_textures;
         let nt_textures = &self.nt_textures;
+        let pt_textures = &self.pt_textures;
         let raw_input = self.state.take_egui_input(window);
         #[allow(deprecated)]
         let full_output = self.ctx.run(raw_input, |ctx| {
-            common::build_ui(ctx, snapshot, sprite_textures, nt_textures);
+            common::build_ui(ctx, snapshot, sprite_textures, nt_textures, pt_textures);
         });
 
         self.state

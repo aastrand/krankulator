@@ -22,12 +22,13 @@ pub fn build_ui(
     snapshot: &DebugSnapshot,
     sprite_textures: &HashMap<u8, egui::TextureHandle>,
     nt_textures: &[egui::TextureHandle],
+    pt_textures: &[egui::TextureHandle],
 ) {
     egui::SidePanel::left("debug_left")
         .exact_width(PANEL_WIDTH)
         .resizable(false)
         .show(ctx, |ui| {
-            draw_left_panel(ui, snapshot, nt_textures);
+            draw_left_panel(ui, snapshot, nt_textures, pt_textures);
         });
 
     egui::SidePanel::right("debug_right")
@@ -42,6 +43,7 @@ fn draw_left_panel(
     ui: &mut egui::Ui,
     snapshot: &DebugSnapshot,
     nt_textures: &[egui::TextureHandle],
+    pt_textures: &[egui::TextureHandle],
 ) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -86,6 +88,8 @@ fn draw_left_panel(
             draw_palette(ui, &snapshot.palette);
             ui.add_space(8.0);
             draw_nametables(ui, nt_textures, &snapshot.ppu);
+            ui.add_space(8.0);
+            draw_pattern_tables(ui, pt_textures);
         });
 }
 
@@ -97,7 +101,7 @@ fn draw_right_panel(
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            draw_cpu_registers(ui, snapshot);
+            draw_cpu_and_stack(ui, snapshot);
             ui.add_space(8.0);
             draw_ppu_state(ui, snapshot);
             ui.add_space(8.0);
@@ -107,33 +111,30 @@ fn draw_right_panel(
         });
 }
 
-fn draw_cpu_registers(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
+fn draw_cpu_and_stack(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
     ui.heading("CPU");
     ui.separator();
 
     ui.style_mut().override_font_id = Some(egui::FontId::monospace(12.0));
 
     let cpu = &snapshot.cpu;
-    ui.label(format!("PC: {:04X}  A: {:02X}", cpu.pc, cpu.a));
-    ui.label(format!("X:  {:02X}    Y: {:02X}", cpu.x, cpu.y));
-    ui.label(format!("SP: {:02X}    CYC: {}", cpu.sp, cpu.cycle));
-
-    ui.add_space(4.0);
-
-    let flags = [
-        ('N', 0x80),
-        ('V', 0x40),
-        ('-', 0x20),
-        ('B', 0x10),
-        ('D', 0x08),
-        ('I', 0x04),
-        ('Z', 0x02),
-        ('C', 0x01),
-    ];
+    ui.label(format!(
+        "PC:{:04X} A:{:02X} X:{:02X} Y:{:02X} SP:{:02X}",
+        cpu.pc, cpu.a, cpu.x, cpu.y, cpu.sp
+    ));
+    ui.label(format!("CYC: {}", cpu.cycle));
 
     ui.horizontal(|ui| {
-        ui.label("Flags: ");
-        for (name, bit) in &flags {
+        for &(name, bit) in &[
+            ('N', 0x80),
+            ('V', 0x40),
+            ('-', 0x20),
+            ('B', 0x10),
+            ('D', 0x08),
+            ('I', 0x04),
+            ('Z', 0x02),
+            ('C', 0x01),
+        ] {
             let set = cpu.status & bit != 0;
             let color = if set {
                 egui::Color32::from_rgb(100, 255, 100)
@@ -143,6 +144,17 @@ fn draw_cpu_registers(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
             ui.label(egui::RichText::new(name.to_string()).color(color));
         }
     });
+
+    if !snapshot.stack.is_empty() {
+        let sp = cpu.sp;
+        let addr = 0x0100u16 + sp.wrapping_add(1) as u16;
+        let bytes: Vec<String> = snapshot
+            .stack
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect();
+        ui.label(format!("Stack ({:04X}): {}", addr, bytes.join(" ")));
+    }
 }
 
 fn draw_ppu_state(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
@@ -310,6 +322,42 @@ fn draw_scroll_viewport(
                 .rect_stroke(vp_rect, 0.0, stroke, egui::StrokeKind::Outside);
         }
     }
+}
+
+fn draw_pattern_tables(ui: &mut egui::Ui, pt_textures: &[egui::TextureHandle]) {
+    ui.heading("Pattern Tables");
+    ui.separator();
+
+    if pt_textures.len() < 2 {
+        return;
+    }
+
+    let labels = ["$0000", "$1000"];
+    let avail_w = ui.available_width();
+    let spacing = 4.0;
+    let cell_w = (avail_w - spacing) / 2.0;
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = spacing;
+        for (i, tex) in pt_textures.iter().enumerate() {
+            let size = egui::vec2(cell_w, cell_w);
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(labels[i])
+                        .color(egui::Color32::GRAY)
+                        .monospace()
+                        .size(9.0),
+                );
+                let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                ui.painter().image(
+                    tex.id(),
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            });
+        }
+    });
 }
 
 fn draw_apu_waveforms(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {

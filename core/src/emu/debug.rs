@@ -55,9 +55,11 @@ pub struct DebugSnapshot {
     pub disasm: Vec<DisasmLine>,
     pub disasm_pc_index: usize,
     pub palette: [u8; 32],
+    pub stack: Vec<u8>,
     pub oam: [u8; ppu::OAM_DATA_SIZE],
     pub sprites: Vec<SpriteInfo>,
     pub nametables: Vec<NametableImage>,
+    pub pattern_tables: [NametableImage; 2],
 }
 
 pub fn render_sprites(
@@ -219,4 +221,50 @@ pub fn render_all_nametables(
         render_nametable(0x800, ppu, mem, chr_snapshot),
         render_nametable(0xC00, ppu, mem, chr_snapshot),
     ]
+}
+
+const PT_TILES: u32 = 16;
+const PT_PX: u32 = PT_TILES * 8;
+
+pub fn render_pattern_table(
+    base: u16,
+    palette_ram: &[u8; 32],
+    mem: &dyn MemoryMapper,
+    chr_snapshot: Option<&[u8]>,
+) -> NametableImage {
+    let mut pixels = vec![0u8; (PT_PX * PT_PX * 3) as usize];
+
+    for tile_row in 0..PT_TILES {
+        for tile_col in 0..PT_TILES {
+            let tile_idx = tile_row * PT_TILES + tile_col;
+            for row in 0..8u16 {
+                let addr = base + tile_idx as u16 * 16 + row;
+                let lo = read_chr(addr, chr_snapshot, mem);
+                let hi = read_chr(addr + 8, chr_snapshot, mem);
+
+                for col in 0..8u16 {
+                    let bit = 7 - col;
+                    let color_idx = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                    let nes_color = if color_idx == 0 {
+                        palette_ram[0] as usize
+                    } else {
+                        palette_ram[color_idx as usize] as usize
+                    } % palette::PALETTE_SIZE;
+                    let (r, g, b) = palette::PALETTE[nes_color];
+                    let px_x = tile_col * 8 + col as u32;
+                    let px_y = tile_row * 8 + row as u32;
+                    let px = ((px_y * PT_PX + px_x) * 3) as usize;
+                    pixels[px] = r;
+                    pixels[px + 1] = g;
+                    pixels[px + 2] = b;
+                }
+            }
+        }
+    }
+
+    NametableImage {
+        pixels,
+        width: PT_PX,
+        height: PT_PX,
+    }
 }

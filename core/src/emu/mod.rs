@@ -291,6 +291,15 @@ impl Emulator {
             disasm,
             disasm_pc_index: pc_idx,
             palette: palette_data,
+            stack: {
+                let sp = self.cpu.sp;
+                let top = sp.wrapping_add(1);
+                let count = (0xFFu16 - sp as u16) as usize;
+                let count = count.min(16);
+                (0..count)
+                    .map(|i| self.mem.cpu_peek(0x0100 + top as u16 + i as u16))
+                    .collect()
+            },
             oam: *self.ppu.oam_data(),
             sprites: debug::render_sprites(self.ppu.oam_data(), &self.ppu, &*self.mem),
             nametables: debug::render_all_nametables(
@@ -302,6 +311,17 @@ impl Emulator {
                     Some(&self.debug_chr_snapshot)
                 },
             ),
+            pattern_tables: {
+                let chr = if self.debug_chr_snapshot.is_empty() {
+                    None
+                } else {
+                    Some(self.debug_chr_snapshot.as_slice())
+                };
+                [
+                    debug::render_pattern_table(0x0000, &palette_data, &*self.mem, chr),
+                    debug::render_pattern_table(0x1000, &palette_data, &*self.mem, chr),
+                ]
+            },
         }
     }
 
