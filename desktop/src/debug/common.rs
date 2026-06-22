@@ -51,27 +51,34 @@ fn draw_left_panel(
 
             ui.style_mut().override_font_id = Some(egui::FontId::monospace(12.0));
 
-            for (i, line) in snapshot.disasm.iter().enumerate() {
-                let is_pc = i == snapshot.disasm_pc_index;
-                let bytes_str = match line.byte_count {
-                    1 => format!("{:02X}      ", line.bytes[0]),
-                    2 => format!("{:02X} {:02X}   ", line.bytes[0], line.bytes[1]),
-                    3 => format!(
-                        "{:02X} {:02X} {:02X}",
-                        line.bytes[0], line.bytes[1], line.bytes[2]
-                    ),
-                    _ => "         ".to_string(),
-                };
-                let text = format!("{:04X}: {} {}", line.addr, bytes_str, line.text);
+            use krankulator_core::emu::debug::DISASM_CONTEXT;
+            let disasm_lines = DISASM_CONTEXT * 2 + 1;
 
-                if is_pc {
-                    let label = egui::RichText::new(text)
-                        .color(egui::Color32::BLACK)
-                        .background_color(egui::Color32::from_rgb(100, 200, 100));
-                    ui.label(label);
+            for i in 0..disasm_lines {
+                if let Some(line) = snapshot.disasm.get(i) {
+                    let is_pc = i == snapshot.disasm_pc_index;
+                    let bytes_str = match line.byte_count {
+                        1 => format!("{:02X}      ", line.bytes[0]),
+                        2 => format!("{:02X} {:02X}   ", line.bytes[0], line.bytes[1]),
+                        3 => format!(
+                            "{:02X} {:02X} {:02X}",
+                            line.bytes[0], line.bytes[1], line.bytes[2]
+                        ),
+                        _ => "         ".to_string(),
+                    };
+                    let text = format!("{:04X}: {} {}", line.addr, bytes_str, line.text);
+
+                    if is_pc {
+                        let label = egui::RichText::new(text)
+                            .color(egui::Color32::BLACK)
+                            .background_color(egui::Color32::from_rgb(100, 200, 100));
+                        ui.label(label);
+                    } else {
+                        let label = egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY);
+                        ui.label(label);
+                    }
                 } else {
-                    let label = egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY);
-                    ui.label(label);
+                    ui.label(" ");
                 }
             }
 
