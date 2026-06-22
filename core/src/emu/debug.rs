@@ -4,7 +4,7 @@ use super::gfx::palette;
 use super::memory::MemoryMapper;
 use super::ppu;
 
-pub const DISASM_CONTEXT: usize = 8;
+pub const DISASM_CONTEXT: usize = 6;
 
 pub struct CpuSnapshot {
     pub pc: u16,

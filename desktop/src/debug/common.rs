@@ -28,14 +28,14 @@ pub fn build_ui(
         .exact_width(PANEL_WIDTH)
         .resizable(false)
         .show(ctx, |ui| {
-            draw_left_panel(ui, snapshot, nt_textures, pt_textures);
+            draw_left_panel(ui, snapshot, nt_textures, pt_textures, sprite_textures);
         });
 
     egui::SidePanel::right("debug_right")
         .exact_width(PANEL_WIDTH)
         .resizable(false)
         .show(ctx, |ui| {
-            draw_right_panel(ui, snapshot, sprite_textures);
+            draw_right_panel(ui, snapshot);
         });
 }
 
@@ -44,71 +44,74 @@ fn draw_left_panel(
     snapshot: &DebugSnapshot,
     nt_textures: &[egui::TextureHandle],
     pt_textures: &[egui::TextureHandle],
-) {
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.heading("Disassembly");
-            ui.separator();
-
-            ui.style_mut().override_font_id = Some(egui::FontId::monospace(12.0));
-
-            use krankulator_core::emu::debug::DISASM_CONTEXT;
-            let disasm_lines = DISASM_CONTEXT * 2 + 1;
-
-            for i in 0..disasm_lines {
-                if let Some(line) = snapshot.disasm.get(i) {
-                    let is_pc = i == snapshot.disasm_pc_index;
-                    let bytes_str = match line.byte_count {
-                        1 => format!("{:02X}      ", line.bytes[0]),
-                        2 => format!("{:02X} {:02X}   ", line.bytes[0], line.bytes[1]),
-                        3 => format!(
-                            "{:02X} {:02X} {:02X}",
-                            line.bytes[0], line.bytes[1], line.bytes[2]
-                        ),
-                        _ => "         ".to_string(),
-                    };
-                    let text = format!("{:04X}: {} {}", line.addr, bytes_str, line.text);
-
-                    if is_pc {
-                        let label = egui::RichText::new(text)
-                            .color(egui::Color32::BLACK)
-                            .background_color(egui::Color32::from_rgb(100, 200, 100));
-                        ui.label(label);
-                    } else {
-                        let label = egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY);
-                        ui.label(label);
-                    }
-                } else {
-                    ui.label(" ");
-                }
-            }
-
-            ui.add_space(8.0);
-            draw_palette(ui, &snapshot.palette);
-            ui.add_space(8.0);
-            draw_nametables(ui, nt_textures, &snapshot.ppu);
-            ui.add_space(8.0);
-            draw_pattern_tables(ui, pt_textures);
-        });
-}
-
-fn draw_right_panel(
-    ui: &mut egui::Ui,
-    snapshot: &DebugSnapshot,
     sprite_textures: &HashMap<u8, egui::TextureHandle>,
 ) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            draw_cpu_and_stack(ui, snapshot);
-            ui.add_space(8.0);
             draw_ppu_state(ui, snapshot);
             ui.add_space(8.0);
-            draw_apu_waveforms(ui, snapshot);
+            draw_palette(ui, &snapshot.palette);
+            ui.add_space(8.0);
+            draw_pattern_tables(ui, pt_textures);
+            ui.add_space(8.0);
+            draw_nametables(ui, nt_textures, &snapshot.ppu);
             ui.add_space(8.0);
             draw_oam(ui, snapshot, sprite_textures);
         });
+}
+
+fn draw_right_panel(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            draw_disassembly(ui, snapshot);
+            ui.add_space(8.0);
+            draw_cpu_and_stack(ui, snapshot);
+            ui.add_space(8.0);
+            draw_apu_waveforms(ui, snapshot);
+        });
+}
+
+fn draw_disassembly(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
+    ui.heading("Disassembly");
+    ui.separator();
+
+    ui.style_mut().override_font_id = Some(egui::FontId::monospace(12.0));
+
+    use krankulator_core::emu::debug::DISASM_CONTEXT;
+    let disasm_lines = DISASM_CONTEXT * 2 + 1;
+
+    for i in 0..disasm_lines {
+        if let Some(line) = snapshot.disasm.get(i) {
+            let is_pc = i == snapshot.disasm_pc_index;
+            let bytes_str = match line.byte_count {
+                1 => format!("{:02X}      ", line.bytes[0]),
+                2 => format!("{:02X} {:02X}   ", line.bytes[0], line.bytes[1]),
+                3 => format!(
+                    "{:02X} {:02X} {:02X}",
+                    line.bytes[0], line.bytes[1], line.bytes[2]
+                ),
+                _ => "         ".to_string(),
+            };
+            let mut text = format!("{:04X}: {} {}", line.addr, bytes_str, line.text);
+            if let Some(detail) = &line.operand_detail {
+                text.push_str(&format!("  {detail}"));
+            }
+
+            if is_pc {
+                let label = egui::RichText::new(text)
+                    .color(egui::Color32::BLACK)
+                    .background_color(egui::Color32::from_rgb(100, 200, 100));
+                ui.label(label);
+            } else {
+                let label = egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY);
+                ui.label(label);
+            }
+        } else {
+            ui.label(" ");
+        }
+    }
 }
 
 fn draw_cpu_and_stack(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
@@ -122,9 +125,8 @@ fn draw_cpu_and_stack(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
         "PC:{:04X} A:{:02X} X:{:02X} Y:{:02X} SP:{:02X}",
         cpu.pc, cpu.a, cpu.x, cpu.y, cpu.sp
     ));
-    ui.label(format!("CYC: {}", cpu.cycle));
-
     ui.horizontal(|ui| {
+        ui.label(format!("CYC:{}", cpu.cycle));
         for &(name, bit) in &[
             ('N', 0x80),
             ('V', 0x40),
