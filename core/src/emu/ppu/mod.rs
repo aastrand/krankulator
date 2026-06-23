@@ -725,7 +725,8 @@ impl PPU {
     }
 
     pub fn oam_dma_write(&mut self, offset: u8, value: u8) {
-        self.oam_ram[offset as usize] = value;
+        let addr = self.oam_addr.wrapping_add(offset);
+        self.oam_ram[addr as usize] = value;
     }
 
     pub fn step_dot_with_rendering(
@@ -2841,6 +2842,127 @@ mod tests {
                     adjacent
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_oam_rotation_changes_selected_sprites() {
+        let mut ppu = PPU::new();
+        ppu.ppu_mask = MASK_RENDERING_ENABLE;
+
+        let target_scanline: u16 = 100;
+        ppu.scanline = target_scanline - 1;
+
+        for i in 0u8..12 {
+            let base = (i as usize) * OAM_ENTRY_SIZE;
+            ppu.oam_ram[base] = (target_scanline - 1) as u8;
+            ppu.oam_ram[base + 1] = i;
+            ppu.oam_ram[base + 2] = 0;
+            ppu.oam_ram[base + 3] = i * 20;
+        }
+
+        ppu.start_sprite_evaluation();
+        for _ in 0..64 {
+            ppu.sprite_evaluation_tick();
+        }
+
+        assert_eq!(ppu.secondary_oam_count, 8);
+        let first_run_tiles: Vec<u8> = (0..8)
+            .map(|i| ppu.secondary_oam[i * OAM_ENTRY_SIZE + 1])
+            .collect();
+        assert_eq!(first_run_tiles, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        let mut rotated_oam = [0u8; OAM_DATA_SIZE];
+        for i in 0..64 {
+            let src = i * OAM_ENTRY_SIZE;
+            let dst = ((i + 60) % 64) * OAM_ENTRY_SIZE;
+            rotated_oam[dst..dst + OAM_ENTRY_SIZE]
+                .copy_from_slice(&ppu.oam_ram[src..src + OAM_ENTRY_SIZE]);
+        }
+        ppu.oam_ram.copy_from_slice(&rotated_oam);
+
+        ppu.start_sprite_evaluation();
+        for _ in 0..64 {
+            ppu.sprite_evaluation_tick();
+        }
+
+        assert_eq!(ppu.secondary_oam_count, 8);
+        let second_run_tiles: Vec<u8> = (0..8)
+            .map(|i| ppu.secondary_oam[i * OAM_ENTRY_SIZE + 1])
+            .collect();
+        assert_ne!(
+            first_run_tiles, second_run_tiles,
+            "OAM rotation should change which sprites are selected"
+        );
+        assert_eq!(second_run_tiles, vec![4, 5, 6, 7, 8, 9, 10, 11]);
+    }
+
+    #[test]
+    fn test_prerender_scanline_evaluation_populates_scanline_zero() {
+        let mut ppu = PPU::new();
+        let mut mem = super::memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+        ppu.ppu_mask = MASK_RENDERING_ENABLE;
+
+        for i in 0u8..4 {
+            let base = (i as usize) * OAM_ENTRY_SIZE;
+            ppu.oam_ram[base] = 255;
+            ppu.oam_ram[base + 1] = i + 1;
+            ppu.oam_ram[base + 2] = 0;
+            ppu.oam_ram[base + 3] = i * 30;
+        }
+
+        ppu.scanline = ppu.pre_render_scanline;
+        ppu.cycle = 0;
+        for _ in 0..341 {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        }
+
+        assert_eq!(ppu.scanline, 0);
+        assert_eq!(ppu.cycle, 0);
+
+        ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+        assert_eq!(ppu.cycle, 1);
+        assert_eq!(
+            ppu.sprite_line_count, 0,
+            "Y=255 should NOT appear on scanline 0 for 8x8 sprites"
+        );
+    }
+
+    #[test]
+    fn test_full_frame_sprite_evaluation_pipeline() {
+        let mut ppu = PPU::new();
+        let mut mem = super::memory::IdentityMapper::new(0x4000);
+        let mut framebuffer = Buffer::new();
+        ppu.ppu_mask = MASK_RENDERING_ENABLE;
+
+        let target_scanline: u16 = 50;
+        for i in 0u8..4 {
+            let base = (i as usize) * OAM_ENTRY_SIZE;
+            ppu.oam_ram[base] = (target_scanline - 1) as u8;
+            ppu.oam_ram[base + 1] = i + 1;
+            ppu.oam_ram[base + 2] = 0;
+            ppu.oam_ram[base + 3] = i * 30;
+        }
+
+        ppu.scanline = ppu.pre_render_scanline;
+        ppu.cycle = 0;
+
+        loop {
+            ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
+            if ppu.scanline == target_scanline && ppu.cycle == 1 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            ppu.sprite_line_count, 4,
+            "4 sprites should be visible on scanline {}",
+            target_scanline
+        );
+        for i in 0..4 {
+            let e = ppu.sprite_line[i];
+            assert_eq!(e.x, (i as u8) * 30);
         }
     }
 }

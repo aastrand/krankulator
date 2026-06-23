@@ -174,15 +174,6 @@ fn draw_ppu_state(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
         "Scroll: ({},{})  Frame: {}",
         ppu.scroll_x, ppu.scroll_y, ppu.frame
     ));
-    ui.label(format!(
-        "SpSL: {}/{}  OAM: {}/{}",
-        ppu.sprite_visible_scanlines, ppu.sprite_scanlines,
-        ppu.oam_selected_count, 64
-    ));
-    ui.label(format!(
-        "Px: {}  BehBG: {}",
-        ppu.sprite_rendered_px, ppu.sprite_behind_bg_px
-    ));
 }
 
 fn draw_palette(ui: &mut egui::Ui, palette_ram: &[u8; 32]) {
