@@ -99,15 +99,14 @@ fn draw_disassembly(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
                 text.push_str(&format!("  {detail}"));
             }
 
-            if is_pc {
-                let label = egui::RichText::new(text)
+            let label = if is_pc {
+                egui::RichText::new(text)
                     .color(egui::Color32::BLACK)
-                    .background_color(egui::Color32::from_rgb(100, 200, 100));
-                ui.label(label);
+                    .background_color(egui::Color32::from_rgb(100, 200, 100))
             } else {
-                let label = egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY);
-                ui.label(label);
-            }
+                egui::RichText::new(text).color(egui::Color32::LIGHT_GRAY)
+            };
+            ui.add(egui::Label::new(label).wrap_mode(egui::TextWrapMode::Truncate));
         } else {
             ui.label(" ");
         }
@@ -174,6 +173,15 @@ fn draw_ppu_state(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
     ui.label(format!(
         "Scroll: ({},{})  Frame: {}",
         ppu.scroll_x, ppu.scroll_y, ppu.frame
+    ));
+    ui.label(format!(
+        "SpSL: {}/{}  OAM: {}/{}",
+        ppu.sprite_visible_scanlines, ppu.sprite_scanlines,
+        ppu.oam_selected_count, 64
+    ));
+    ui.label(format!(
+        "Px: {}  BehBG: {}",
+        ppu.sprite_rendered_px, ppu.sprite_behind_bg_px
     ));
 }
 
