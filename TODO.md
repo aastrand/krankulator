@@ -258,13 +258,14 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Linux/Windows: gilrs crate with event-based input, SdlMappings filter to avoid misdetected HID devices
   - Web: Gamepad API (navigator.getGamepads()), standard mapping, OR-merged with keyboard/touch
   - Auto-detect connected controllers (up to 2)
-  - D-pad and analog stick mapping (with deadzone)
-  - Two-player support (Joy-Con pair auto-splits into P1/P2)
+  - D-pad and analog stick mapping (with deadzone), all 4 face buttons (A/B + turbo on Y/X)
+  - Two-player support (Joy-Con pair auto-splits into P1/P2, all buttons mapped including turbo)
   - Edge-detected save/load state and slot cycling on P1
+  - Shoulders: RB=save, LB=load. Triggers: LT=rewind, RT=fast forward
   - All platforms: input sources OR-merged so keyboard and gamepad work simultaneously
 - [x] Inhibit screensaver/suspend while running (D-Bus `org.freedesktop.ScreenSaver.Inhibit` via gdbus on Linux) [S]
 - [x] Configurable key/button bindings [M]
-  - `Action` enum (27 variants): P1/P2 NES buttons + system actions (save/load/rewind/mute/etc.)
+  - `Action` enum (33 variants): P1/P2 NES buttons, turbo buttons + system actions (save/load/rewind/mute/etc.)
   - `InputBindings` with separate keyboard (`KeyId`) and gamepad (`GamepadButtonId`) binding vectors
   - Press-to-bind overlay UI: F10 or Emulation → Input Settings menu item
   - In-framebuffer overlay using 8x8 font, state machine (SelectAction → ActionMenu → WaitingForInput)
@@ -272,7 +273,7 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
   - Two-player keyboard support (P2 bindings assignable, no defaults)
   - Desktop only (web/libretro excluded — libretro has its own remapping, web can follow later)
 - [ ] Per-controller gamepad profiles [S]
-- [ ] Turbo A/B buttons (optional toggle) [XS]
+- [x] Turbo A/B buttons (~30 Hz toggle, gamepad North/West default, P1+P2, keyboard rebindable) [XS]
 
 ---
 
@@ -314,8 +315,8 @@ Web: keyboard + touch controls (virtual d-pad with deadzone, A/B/Start/Select bu
 
 ## Emulation Features
 
-- [x] Rewind (hold W or right trigger to scrub back through 10s of gameplay at 2x speed) [L]
-- [x] Fast-forward (hold Space for uncapped speed) [S]
+- [x] Rewind (hold W or LT to scrub back through 10s of gameplay at 2x speed) [L]
+- [x] Fast forward (hold Space or RT for uncapped speed) [S]
 - [ ] Slow-motion (0.5x speed toggle) [XS]
 - [ ] Screenshot (save framebuffer as PNG) [S]
 - [ ] Video recording (save to GIF or MP4) [L]

@@ -25,7 +25,7 @@ use crate::debug::DebugUi;
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
-    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, NES_TEX_HEIGHT,
+    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
     NES_TEX_WIDTH, NTSC_FRAME_DURATION,
 };
 use crate::bindings::ui::{BindingUi, UiEvent};
@@ -60,6 +60,9 @@ pub struct WinitPixelsIOHandler {
     last_frame_ms: f64,
     kb_state: u8,
     p2_kb_state: u8,
+    turbo_kb_state: u8,
+    p2_turbo_kb_state: u8,
+    turbo: TurboState,
     fast_forward: bool,
     pixel_perfect: bool,
     rewind_held: bool,
@@ -186,6 +189,9 @@ impl WinitPixelsIOHandler {
             last_frame_ms: 0.0,
             kb_state: 0,
             p2_kb_state: 0,
+            turbo_kb_state: 0,
+            p2_turbo_kb_state: 0,
+            turbo: TurboState::new(),
             fast_forward: false,
             pixel_perfect: settings.integer_scaling,
             rewind_held: false,
@@ -381,6 +387,8 @@ struct PollHandler<'a> {
     overscan_changed: bool,
     kb_state: &'a mut u8,
     p2_kb_state: &'a mut u8,
+    turbo_kb_state: &'a mut u8,
+    p2_turbo_kb_state: &'a mut u8,
     fast_forward: &'a mut bool,
     exit: bool,
     save_state: bool,
@@ -459,6 +467,19 @@ impl ApplicationHandler for PollHandler<'_> {
                     }
 
                     for action in self.bindings.keyboard_action(&key_id) {
+                        if let Some((player, bit)) = action.turbo_controller_bit() {
+                            let state = if player == 0 {
+                                &mut *self.turbo_kb_state
+                            } else {
+                                &mut *self.p2_turbo_kb_state
+                            };
+                            if pressed {
+                                *state |= bit;
+                            } else {
+                                *state &= !bit;
+                            }
+                            continue;
+                        }
                         match action {
                             Action::Fullscreen => {
                                 if pressed {
@@ -639,6 +660,8 @@ impl IOHandler for WinitPixelsIOHandler {
             overscan_changed: false,
             kb_state: &mut self.kb_state,
             p2_kb_state: &mut self.p2_kb_state,
+            turbo_kb_state: &mut self.turbo_kb_state,
+            p2_turbo_kb_state: &mut self.p2_turbo_kb_state,
             fast_forward: &mut self.fast_forward,
             exit: false,
             save_state: false,
@@ -906,6 +929,9 @@ impl IOHandler for WinitPixelsIOHandler {
                 &self.bindings,
                 self.kb_state,
                 self.p2_kb_state,
+                self.turbo_kb_state,
+                self.p2_turbo_kb_state,
+                &mut self.turbo,
                 mem,
                 &mut result,
             );

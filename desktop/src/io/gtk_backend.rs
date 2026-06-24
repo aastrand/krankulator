@@ -21,7 +21,7 @@ use crate::debug::{DebugUi, PANEL_WIDTH};
 
 use super::{
     add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
-    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, NES_TEX_HEIGHT,
+    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
     NTSC_FRAME_DURATION,
 };
 use crate::bindings::ui::{BindingUi, UiEvent};
@@ -123,6 +123,9 @@ pub struct GtkPixelsIOHandler {
     frame_duration: Duration,
     kb_state: Rc<Cell<u8>>,
     p2_kb_state: Rc<Cell<u8>>,
+    turbo_kb_state: Rc<Cell<u8>>,
+    p2_turbo_kb_state: Rc<Cell<u8>>,
+    turbo: TurboState,
     fast_forward: Rc<Cell<bool>>,
     pixel_perfect: Rc<Cell<bool>>,
     scanlines: Rc<Cell<bool>>,
@@ -271,6 +274,8 @@ impl GtkPixelsIOHandler {
         let exit_flag = Rc::new(Cell::new(false));
         let kb_state = Rc::new(Cell::new(0u8));
         let p2_kb_state = Rc::new(Cell::new(0u8));
+        let turbo_kb_state = Rc::new(Cell::new(0u8));
+        let p2_turbo_kb_state = Rc::new(Cell::new(0u8));
         let fast_forward = Rc::new(Cell::new(false));
         let muted = Rc::new(Cell::new(false));
         let save_state_flag = Rc::new(Cell::new(false));
@@ -300,6 +305,8 @@ impl GtkPixelsIOHandler {
         {
             let kb = kb_state.clone();
             let p2kb = p2_kb_state.clone();
+            let tkb = turbo_kb_state.clone();
+            let p2tkb = p2_turbo_kb_state.clone();
             let ff = fast_forward.clone();
             let mt = muted.clone();
             let save = save_state_flag.clone();
@@ -332,8 +339,8 @@ impl GtkPixelsIOHandler {
                     return glib::Propagation::Proceed;
                 }
                 handle_key(
-                    event, true, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay, &rw,
-                    &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
+                    event, true, &kb, &p2kb, &tkb, &p2tkb, &ff, &mt, &save, &load, &cycle, &reset,
+                    &overlay, &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
                 );
                 glib::Propagation::Proceed
             });
@@ -342,6 +349,8 @@ impl GtkPixelsIOHandler {
         {
             let kb = kb_state.clone();
             let p2kb = p2_kb_state.clone();
+            let tkb = turbo_kb_state.clone();
+            let p2tkb = p2_turbo_kb_state.clone();
             let ff = fast_forward.clone();
             let mt = muted.clone();
             let save = save_state_flag.clone();
@@ -366,8 +375,8 @@ impl GtkPixelsIOHandler {
                     return glib::Propagation::Proceed;
                 }
                 handle_key(
-                    event, false, &kb, &p2kb, &ff, &mt, &save, &load, &cycle, &reset, &overlay,
-                    &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
+                    event, false, &kb, &p2kb, &tkb, &p2tkb, &ff, &mt, &save, &load, &cycle, &reset,
+                    &overlay, &rw, &fs, &ex, &pp, &sl, &car, &su, &sd, &bi, &td, &tp,
                 );
                 glib::Propagation::Proceed
             });
@@ -392,6 +401,9 @@ impl GtkPixelsIOHandler {
             frame_duration: NTSC_FRAME_DURATION,
             kb_state,
             p2_kb_state,
+            turbo_kb_state,
+            p2_turbo_kb_state,
+            turbo: TurboState::new(),
             fast_forward,
             pixel_perfect,
             scanlines,
@@ -656,6 +668,8 @@ fn handle_key(
     pressed: bool,
     kb_state: &Rc<Cell<u8>>,
     p2_kb_state: &Rc<Cell<u8>>,
+    turbo_kb_state: &Rc<Cell<u8>>,
+    p2_turbo_kb_state: &Rc<Cell<u8>>,
     fast_forward: &Rc<Cell<bool>>,
     muted: &Rc<Cell<bool>>,
     save_state: &Rc<Cell<bool>>,
@@ -696,8 +710,23 @@ fn handle_key(
     let bindings = bindings.borrow();
     let mut p1_kb = kb_state.get();
     let mut p2_kb = p2_kb_state.get();
+    let mut p1_turbo = turbo_kb_state.get();
+    let mut p2_turbo = p2_turbo_kb_state.get();
 
     for action in bindings.keyboard_action(&key_id) {
+        if let Some((player, bit)) = action.turbo_controller_bit() {
+            let state = if player == 0 {
+                &mut p1_turbo
+            } else {
+                &mut p2_turbo
+            };
+            if pressed {
+                *state |= bit;
+            } else {
+                *state &= !bit;
+            }
+            continue;
+        }
         match action {
             Action::Fullscreen => {
                 if pressed {
@@ -779,6 +808,8 @@ fn handle_key(
 
     kb_state.set(p1_kb);
     p2_kb_state.set(p2_kb);
+    turbo_kb_state.set(p1_turbo);
+    p2_turbo_kb_state.set(p2_turbo);
 }
 
 impl IOHandler for GtkPixelsIOHandler {
@@ -1118,6 +1149,9 @@ impl IOHandler for GtkPixelsIOHandler {
                 &self.bindings.borrow(),
                 self.kb_state.get(),
                 self.p2_kb_state.get(),
+                self.turbo_kb_state.get(),
+                self.p2_turbo_kb_state.get(),
+                &mut self.turbo,
                 mem,
                 &mut result,
             );
