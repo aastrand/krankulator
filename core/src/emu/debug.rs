@@ -65,6 +65,8 @@ pub struct DebugSnapshot {
 pub fn render_sprites(
     oam: &[u8; ppu::OAM_DATA_SIZE],
     ppu: &ppu::PPU,
+    palette_ram: &[u8; 32],
+    chr_snapshot: Option<&[u8]>,
     mem: &dyn MemoryMapper,
 ) -> Vec<SpriteInfo> {
     let sprite_height = ppu.ctrl_sprite_size();
@@ -103,8 +105,8 @@ pub fn render_sprites(
                 (addr, addr + 8)
             };
 
-            let lo = mem.ppu_read(pat_addr_lo);
-            let hi = mem.ppu_read(pat_addr_hi);
+            let lo = read_chr(pat_addr_lo, chr_snapshot, mem);
+            let hi = read_chr(pat_addr_hi, chr_snapshot, mem);
 
             for col in 0..8 {
                 let actual_col = if flip_h { col } else { 7 - col };
@@ -112,12 +114,12 @@ pub fn render_sprites(
                 let bit_hi = (hi >> actual_col) & 1;
                 let color_idx = bit_lo | (bit_hi << 1);
 
-                let pal_addr = 0x3F10 + u16::from(palette_id) * 4 + u16::from(color_idx);
-                let nes_color = if color_idx == 0 {
-                    mem.ppu_read(0x3F00) as usize
+                let pal_idx = if color_idx == 0 {
+                    0x00
                 } else {
-                    mem.ppu_read(pal_addr) as usize
-                } % palette::PALETTE_SIZE;
+                    0x10 + palette_id * 4 + color_idx
+                } as usize;
+                let nes_color = palette_ram[pal_idx] as usize % palette::PALETTE_SIZE;
 
                 let (r, g, b) = palette::PALETTE[nes_color];
                 let px_col = if flip_h { 7 - col } else { col } as usize;
@@ -159,8 +161,9 @@ fn read_chr(addr: u16, chr_snapshot: Option<&[u8]>, mem: &dyn MemoryMapper) -> u
 pub fn render_nametable(
     nt_base: u16,
     ppu: &ppu::PPU,
-    mem: &dyn MemoryMapper,
+    palette_ram: &[u8; 32],
     chr_snapshot: Option<&[u8]>,
+    mem: &dyn MemoryMapper,
 ) -> NametableImage {
     let pattern_base = ppu.ctrl_background_pattern_addr();
     let mut pixels = vec![0u8; (NT_PX_W * NT_PX_H * 3) as usize];
@@ -184,11 +187,11 @@ pub fn render_nametable(
                     let bit = 7 - col;
                     let color_idx = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
 
-                    let pal_addr = 0x3F00 + u16::from(palette_id) * 4 + u16::from(color_idx);
+                    let pal_idx = (palette_id as usize) * 4 + color_idx as usize;
                     let nes_color = if color_idx == 0 {
-                        mem.ppu_read(0x3F00) as usize
+                        palette_ram[0] as usize
                     } else {
-                        mem.ppu_read(pal_addr) as usize
+                        palette_ram[pal_idx] as usize
                     } % palette::PALETTE_SIZE;
 
                     let (r, g, b) = palette::PALETTE[nes_color];
@@ -212,14 +215,15 @@ pub fn render_nametable(
 
 pub fn render_all_nametables(
     ppu: &ppu::PPU,
-    mem: &dyn MemoryMapper,
+    palette_ram: &[u8; 32],
     chr_snapshot: Option<&[u8]>,
+    mem: &dyn MemoryMapper,
 ) -> Vec<NametableImage> {
     vec![
-        render_nametable(0x000, ppu, mem, chr_snapshot),
-        render_nametable(0x400, ppu, mem, chr_snapshot),
-        render_nametable(0x800, ppu, mem, chr_snapshot),
-        render_nametable(0xC00, ppu, mem, chr_snapshot),
+        render_nametable(0x000, ppu, palette_ram, chr_snapshot, mem),
+        render_nametable(0x400, ppu, palette_ram, chr_snapshot, mem),
+        render_nametable(0x800, ppu, palette_ram, chr_snapshot, mem),
+        render_nametable(0xC00, ppu, palette_ram, chr_snapshot, mem),
     ]
 }
 

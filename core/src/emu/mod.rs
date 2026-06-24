@@ -110,6 +110,7 @@ pub struct Emulator {
     debug_active: bool,
     paused: bool,
     debug_chr_snapshot: Vec<u8>,
+    debug_palette_snapshot: [u8; 32],
     debug_chr_captured_this_frame: bool,
     paused_frame: Vec<u8>,
 }
@@ -225,6 +226,7 @@ impl Emulator {
             debug_active: false,
             paused: false,
             debug_chr_snapshot: Vec::new(),
+            debug_palette_snapshot: [0u8; 32],
             debug_chr_captured_this_frame: false,
             paused_frame: Vec::new(),
         }
@@ -256,10 +258,15 @@ impl Emulator {
             &self.lookup,
             Some(&regs),
         );
-        let mut palette_data = [0u8; 32];
-        for i in 0..32u16 {
-            palette_data[i as usize] = self.mem.ppu_read(0x3F00 + i);
-        }
+        let palette_data = if self.debug_chr_captured_this_frame {
+            self.debug_palette_snapshot
+        } else {
+            let mut pal = [0u8; 32];
+            for i in 0..32u16 {
+                pal[i as usize] = self.mem.ppu_read(0x3F00 + i);
+            }
+            pal
+        };
         debug::DebugSnapshot {
             cpu: debug::CpuSnapshot {
                 pc: self.cpu.pc,
@@ -306,16 +313,28 @@ impl Emulator {
                     .collect()
             },
             oam: *self.ppu.oam_data(),
-            sprites: debug::render_sprites(self.ppu.oam_data(), &self.ppu, &*self.mem),
-            nametables: debug::render_all_nametables(
-                &self.ppu,
-                &*self.mem,
-                if self.debug_chr_snapshot.is_empty() {
+            sprites: {
+                let chr = if self.debug_chr_snapshot.is_empty() {
                     None
                 } else {
-                    Some(&self.debug_chr_snapshot)
-                },
-            ),
+                    Some(self.debug_chr_snapshot.as_slice())
+                };
+                debug::render_sprites(
+                    self.ppu.oam_data(),
+                    &self.ppu,
+                    &palette_data,
+                    chr,
+                    &*self.mem,
+                )
+            },
+            nametables: {
+                let chr = if self.debug_chr_snapshot.is_empty() {
+                    None
+                } else {
+                    Some(self.debug_chr_snapshot.as_slice())
+                };
+                debug::render_all_nametables(&self.ppu, &palette_data, chr, &*self.mem)
+            },
             pattern_tables: {
                 let chr = if self.debug_chr_snapshot.is_empty() {
                     None
@@ -788,6 +807,9 @@ impl Emulator {
                 self.debug_chr_snapshot.resize(0x2000, 0);
                 for (i, byte) in self.debug_chr_snapshot.iter_mut().enumerate() {
                     *byte = self.mem.ppu_read(i as u16);
+                }
+                for i in 0..32u16 {
+                    self.debug_palette_snapshot[i as usize] = self.mem.ppu_read(0x3F00 + i);
                 }
                 self.debug_chr_captured_this_frame = true;
             }
