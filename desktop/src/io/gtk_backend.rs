@@ -158,6 +158,7 @@ pub struct GtkPixelsIOHandler {
     debug_snapshot: Rc<RefCell<Option<DebugSnapshot>>>,
     frame_clock_mode: bool,
     frame_time_cell: Rc<Cell<f64>>,
+    combined_ff: Rc<Cell<bool>>,
 }
 
 impl GtkPixelsIOHandler {
@@ -438,6 +439,7 @@ impl GtkPixelsIOHandler {
             debug_snapshot,
             frame_clock_mode: false,
             frame_time_cell: Rc::new(Cell::new(0.0)),
+            combined_ff: Rc::new(Cell::new(false)),
         }
     }
 
@@ -450,7 +452,7 @@ impl GtkPixelsIOHandler {
     }
 
     pub fn fast_forward_flag(&self) -> Rc<Cell<bool>> {
-        self.fast_forward.clone()
+        self.combined_ff.clone()
     }
 
     pub fn frame_time_cell(&self) -> Rc<Cell<f64>> {
@@ -1179,6 +1181,7 @@ impl IOHandler for GtkPixelsIOHandler {
             );
         }
 
+        self.combined_ff.set(result.fast_forward);
         result
     }
 
