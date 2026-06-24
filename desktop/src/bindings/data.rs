@@ -18,6 +18,10 @@ pub enum Action {
     P2Down,
     P2Left,
     P2Right,
+    P1TurboA,
+    P1TurboB,
+    P2TurboA,
+    P2TurboB,
     SaveState,
     LoadState,
     CycleSlot,
@@ -52,6 +56,10 @@ impl Action {
             Action::P2Down => "p2_down",
             Action::P2Left => "p2_left",
             Action::P2Right => "p2_right",
+            Action::P1TurboA => "p1_turbo_a",
+            Action::P1TurboB => "p1_turbo_b",
+            Action::P2TurboA => "p2_turbo_a",
+            Action::P2TurboB => "p2_turbo_b",
             Action::SaveState => "save_state",
             Action::LoadState => "load_state",
             Action::CycleSlot => "cycle_slot",
@@ -86,6 +94,10 @@ impl Action {
             "p2_down" => Some(Action::P2Down),
             "p2_left" => Some(Action::P2Left),
             "p2_right" => Some(Action::P2Right),
+            "p1_turbo_a" => Some(Action::P1TurboA),
+            "p1_turbo_b" => Some(Action::P1TurboB),
+            "p2_turbo_a" => Some(Action::P2TurboA),
+            "p2_turbo_b" => Some(Action::P2TurboB),
             "save_state" => Some(Action::SaveState),
             "load_state" => Some(Action::LoadState),
             "cycle_slot" => Some(Action::CycleSlot),
@@ -121,6 +133,10 @@ impl Action {
             Action::P2Down => "P2 Down",
             Action::P2Left => "P2 Left",
             Action::P2Right => "P2 Right",
+            Action::P1TurboA => "P1 Turbo A",
+            Action::P1TurboB => "P1 Turbo B",
+            Action::P2TurboA => "P2 Turbo A",
+            Action::P2TurboB => "P2 Turbo B",
             Action::SaveState => "Save State",
             Action::LoadState => "Load State",
             Action::CycleSlot => "Cycle Slot",
@@ -159,6 +175,16 @@ impl Action {
         }
     }
 
+    pub fn turbo_controller_bit(self) -> Option<(u8, u8)> {
+        match self {
+            Action::P1TurboA => Some((0, controller::A)),
+            Action::P1TurboB => Some((0, controller::B)),
+            Action::P2TurboA => Some((1, controller::A)),
+            Action::P2TurboB => Some((1, controller::B)),
+            _ => None,
+        }
+    }
+
     pub const ALL: &'static [Action] = &[
         Action::P1A,
         Action::P1B,
@@ -176,6 +202,10 @@ impl Action {
         Action::P2Down,
         Action::P2Left,
         Action::P2Right,
+        Action::P1TurboA,
+        Action::P1TurboB,
+        Action::P2TurboA,
+        Action::P2TurboB,
         Action::SaveState,
         Action::LoadState,
         Action::CycleSlot,
@@ -346,6 +376,8 @@ impl Default for InputBindings {
             gamepad: vec![
                 (GamepadButtonId("East".into()), Action::P1A),
                 (GamepadButtonId("South".into()), Action::P1B),
+                (GamepadButtonId("North".into()), Action::P1TurboA),
+                (GamepadButtonId("West".into()), Action::P1TurboB),
                 (GamepadButtonId("Start".into()), Action::P1Start),
                 (GamepadButtonId("Select".into()), Action::P1Select),
                 (GamepadButtonId("DPadUp".into()), Action::P1Up),
@@ -354,8 +386,8 @@ impl Default for InputBindings {
                 (GamepadButtonId("DPadRight".into()), Action::P1Right),
                 (GamepadButtonId("RightTrigger".into()), Action::SaveState),
                 (GamepadButtonId("LeftTrigger".into()), Action::LoadState),
-                (GamepadButtonId("LeftTrigger2".into()), Action::CycleSlot),
-                (GamepadButtonId("RightTrigger2".into()), Action::Rewind),
+                (GamepadButtonId("LeftTrigger2".into()), Action::Rewind),
+                (GamepadButtonId("RightTrigger2".into()), Action::FastForward),
             ],
         }
     }

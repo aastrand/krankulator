@@ -168,7 +168,7 @@ cargo clippy --workspace
 
 **Rewind (`emu/rewind.rs`)**
 - `RewindBuffer`: ring buffer of savestate + framebuffer pairs (300 slots = 10s at 30fps capture rate)
-- Captures every other frame to give 2x rewind speed. Rewind activated via `PollResult.rewind` (W key or right trigger)
+- Captures every other frame to give 2x rewind speed. Rewind activated via `PollResult.rewind` (W key or LT trigger)
 - During rewind, emulation is paused; frames are popped and rendered with overlay showing remaining time
 
 **IO (`emu/io/`)**
@@ -189,14 +189,14 @@ cargo clippy --workspace
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
 - `debug_ui.rs` — egui 0.34 debug panels (F12 toggle, P to pause). Left panel: scrolling disassembly (10+10 lines around PC) and 4 nametables in 2x2 grid with scroll viewport overlay. Right panel: CPU registers, PPU state, APU oscilloscope waveforms, and sprite tile grid. Window widens by 2×PANEL_WIDTH when active. macOS/Windows only (wgpu/egui); not available on Linux GTK backend.
-- `bindings.rs` — Configurable input bindings data model: `Action` enum (27 variants for P1/P2 NES buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs.
+- `bindings.rs` — Configurable input bindings data model: `Action` enum (33 variants for P1/P2 NES buttons, turbo buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs; `turbo_controller_bit()` does the same for turbo variants.
 - `bindings_ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, `correct_aspect_ratio`, `window_scale`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
-- `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`), `apply_gamepad()` merges keyboard + gamepad state into controllers, `display_width()`/`window_size_for_scale()` helpers for 8:7 PAR viewport calculation
+- `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`), `TurboState` (frame counter for alternating turbo presses), `apply_gamepad()` merges keyboard + gamepad + turbo state into controllers, `display_width()`/`window_size_for_scale()` helpers for 8:7 PAR viewport calculation
 - `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust). Keyboard input routed through `InputBindings` lookup. Binding UI integration via captured key buffer (PollHandler borrows bindings immutably, captured keys processed after handler is dropped).
 - `io/gtk_backend.rs` — Linux: `GtkPixelsIOHandler` using GTK3 + GLArea (OpenGL 3.3 via glow + eglGetProcAddress), muda menu via `init_for_gtk_window()`, native Wayland support. CRT-Lottes-Fast shader (GLSL 3.30, adapted from web ES 3.0 sources). Menu bar hidden in fullscreen. Screensaver/suspend inhibited via D-Bus `org.freedesktop.ScreenSaver.Inhibit`. Keyboard input routed through `InputBindings` lookup. Binding UI state shared via `Rc<Cell<>>` pattern.
 - `audio.rs` — `AudioOutput`: rodio + ringbuf for audio playback
-- `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; `poll(bindings)` maps physical buttons through configurable `InputBindings` to produce controller bits + edge-detected meta-actions; `poll_raw_buttons()` returns pressed button names for binding UI capture; filters by SdlMappings to avoid misdetected HID devices
+- `gamepad.rs` — Platform-abstracted gamepad input (GCController on macOS, gilrs on Linux/Windows); Joy-Con pair auto-split into two players; reads all 4 face buttons + shoulders + triggers; `poll(bindings)` maps physical buttons through configurable `InputBindings` to produce controller bits, turbo bits + edge-detected meta-actions; `poll_raw_buttons()` returns pressed button names for binding UI capture; filters by SdlMappings to avoid misdetected HID devices
 
 ### Web Frontend (`web/`)
 
@@ -256,16 +256,18 @@ Two macros in `core/src/lib.rs`:
 **Input bindings (desktop)**
 - `InputBindings` maps physical keys/buttons to `Action` enum via linear scan (~40 entries, called per key event not per frame)
 - Keyboard: `KeyId` wraps platform key names (winit `KeyCode` debug names as canonical format, GDK keys mapped to same). `keyboard_action(key)` returns all matching actions.
-- Gamepad: `GamepadButtonId` wraps gilrs `Button` variant names. Physical buttons read into `RawState`, then `pressed_buttons()` iterates as GamepadButtonId names, looked up via `gamepad_action(btn)`.
-- `apply_gamepad()` OR-merges P1/P2 keyboard state with gamepad bits per player into controller bitmask
+- Gamepad: `GamepadButtonId` wraps gilrs `Button` variant names. Physical buttons read into `RawState` (all 4 face buttons + shoulders + triggers), then `pressed_buttons()` iterates as GamepadButtonId names, looked up via `gamepad_action(btn)`.
+- Default gamepad layout: East=A, South=B, North=Turbo A, West=Turbo B, D-Pad, Start/Select, RB=Save, LB=Load, LT=Rewind, RT=Fast Forward
+- `apply_gamepad()` OR-merges P1/P2 keyboard state with gamepad bits per player into controller bitmask, applies turbo toggling (alternates button press every frame via `TurboState`)
 - Gamepad meta-actions (save/load/cycle) use edge detection (trigger on press, not hold)
-- Rewind is level-based (held, not edge-detected)
+- Rewind and fast forward are level-based (held, not edge-detected)
+- Turbo buttons alternate the corresponding NES button every frame (~30Hz at 60fps) while held
 - Binding UI (F10 or Emulation → Input Settings): in-framebuffer overlay drawn on a secondary `Buffer` copy, game renders but controllers zeroed
 - Settings persistence: `bind_kb_{action}={KeyId}`, `bind_gp_{action}={GamepadButtonId}` in settings.txt. No bind keys = defaults.
 
 **Input merging**
 - Multiple input sources (keyboard, touch, gamepad) are OR-merged into a single controller state bitmask each frame
-- Desktop: keyboard state tracked in `kb_state: u8` / `p2_kb_state: u8`, OR'd with gamepad P1/P2 bits, written via `load_status()`
+- Desktop: keyboard state tracked in `kb_state: u8` / `p2_kb_state: u8` + `turbo_kb_state`/`p2_turbo_kb_state`, OR'd with gamepad P1/P2 + turbo bits, written via `load_status()`
 - Web: keyboard/touch keys set OR'd with Gamepad API poll result
 
 ## File Structure
@@ -282,11 +284,11 @@ core/               — Platform-independent emulation library
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
   src/debug_ui.rs   — egui debug panels (F12 toggle, disasm + nametables + CPU/PPU/APU + sprites)
-  src/bindings.rs   — Input bindings data model (Action, KeyId, GamepadButtonId, InputBindings)
+  src/bindings.rs   — Input bindings data model (Action incl. turbo variants, KeyId, GamepadButtonId, InputBindings)
   src/bindings_ui.rs — Press-to-bind overlay UI (state machine, framebuffer drawing)
   src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, correct_aspect_ratio, window_scale, input bindings)
   src/gamepad.rs    — Platform-abstracted gamepad input (GCController/gilrs), binding-based mapping
-  src/io/mod.rs     — Shared menu, recent ROMs, platform re-export, gamepad merging, PAR/viewport helpers
+  src/io/mod.rs     — Shared menu, recent ROMs, platform re-export, TurboState, gamepad + turbo merging, PAR/viewport helpers
   src/io/winit_backend.rs — macOS/Windows IOHandler (winit + pixels + CRT shader)
   src/io/gtk_backend.rs   — Linux IOHandler (GTK3 + GLArea + glow)
   src/audio.rs      — rodio AudioBackend

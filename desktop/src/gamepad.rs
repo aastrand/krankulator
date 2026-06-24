@@ -3,16 +3,21 @@ use crate::bindings::{Action, InputBindings};
 pub struct GamepadState {
     pub p1_bits: u8,
     pub p2_bits: u8,
+    pub turbo_p1_bits: u8,
+    pub turbo_p2_bits: u8,
     pub save_state: bool,
     pub load_state: bool,
     pub cycle_slot: bool,
     pub rewind: bool,
+    pub fast_forward: bool,
 }
 
 #[derive(Default)]
 struct RawState {
     a: bool,
     b: bool,
+    north: bool,
+    west: bool,
     start: bool,
     select: bool,
     up: bool,
@@ -30,6 +35,8 @@ impl RawState {
         [
             (self.a, "East"),
             (self.b, "South"),
+            (self.north, "North"),
+            (self.west, "West"),
             (self.start, "Start"),
             (self.select, "Select"),
             (self.up, "DPadUp"),
@@ -109,15 +116,17 @@ impl Gamepads {
             if let Some(s) = state {
                 let mut p1_bits: u8 = 0;
                 let mut p2_bits: u8 = 0;
+                let mut turbo_p1_bits: u8 = 0;
+                let mut turbo_p2_bits: u8 = 0;
                 let mut save_raw = false;
                 let mut load_raw = false;
                 let mut cycle_raw = false;
                 let mut rewind = false;
+                let mut fast_forward = false;
 
                 for btn_name in s.pressed_buttons() {
                     for action in bindings.gamepad_action(btn_name) {
                         if let Some((player, bit)) = action.controller_bit() {
-                            // Gamepad slot offsets the player: P1 actions on gamepad 1 go to P2
                             let effective = (player as usize + i) % 2;
                             if effective == 0 {
                                 p1_bits |= bit;
@@ -125,11 +134,20 @@ impl Gamepads {
                                 p2_bits |= bit;
                             }
                         }
+                        if let Some((player, bit)) = action.turbo_controller_bit() {
+                            let effective = (player as usize + i) % 2;
+                            if effective == 0 {
+                                turbo_p1_bits |= bit;
+                            } else {
+                                turbo_p2_bits |= bit;
+                            }
+                        }
                         match action {
                             Action::SaveState => save_raw = true,
                             Action::LoadState => load_raw = true,
                             Action::CycleSlot => cycle_raw = true,
                             Action::Rewind => rewind = true,
+                            Action::FastForward => fast_forward = true,
                             _ => {}
                         }
                     }
@@ -146,10 +164,13 @@ impl Gamepads {
                 states[i] = Some(GamepadState {
                     p1_bits,
                     p2_bits,
+                    turbo_p1_bits,
+                    turbo_p2_bits,
                     save_state: save_edge,
                     load_state: load_edge,
                     cycle_slot: cycle_edge,
                     rewind,
+                    fast_forward,
                 });
             }
         }
@@ -206,10 +227,12 @@ mod platform {
                             right: ry < -0.5,
                             a: sw_x,
                             b: sw_b,
+                            north: sw_a,
+                            west: sw_y,
                             start: gamepad.buttonMenu().isPressed(),
                             select: r_sh || r_tr,
-                            left_shoulder: sw_a,
-                            right_shoulder: sw_y,
+                            left_shoulder: false,
+                            right_shoulder: false,
                             left_trigger: false,
                             right_trigger: false,
                         });
@@ -227,6 +250,8 @@ mod platform {
                             right: ly < -0.5,
                             a: dpad.down().isPressed(),
                             b: dpad.left().isPressed(),
+                            north: dpad.right().isPressed(),
+                            west: dpad.up().isPressed(),
                             start: gamepad.buttonOptions().is_some_and(|b| b.isPressed()),
                             select: l_sh || l_tr,
                             left_shoulder: false,
@@ -245,6 +270,8 @@ mod platform {
                         result[slot] = Some(RawState {
                             a: gamepad.buttonB().isPressed(),
                             b: gamepad.buttonA().isPressed(),
+                            north: gamepad.buttonY().isPressed(),
+                            west: gamepad.buttonX().isPressed(),
                             start: gamepad.buttonMenu().isPressed(),
                             select: gamepad.buttonOptions().is_some_and(|b| b.isPressed()),
                             up: dpad.up().isPressed() || ly > 0.5,
@@ -359,6 +386,8 @@ mod platform {
                     result[i] = Some(RawState {
                         a: s.a,
                         b: s.b,
+                        north: s.north,
+                        west: s.west,
                         start: s.start,
                         select: s.select,
                         up: s.up,
@@ -381,6 +410,8 @@ mod platform {
             match btn {
                 Button::East => s.a = pressed,
                 Button::South => s.b = pressed,
+                Button::North => s.north = pressed,
+                Button::West => s.west = pressed,
                 Button::Start => s.start = pressed,
                 Button::Select => s.select = pressed,
                 Button::DPadUp => s.up = pressed,

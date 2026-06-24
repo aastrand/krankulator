@@ -23,6 +23,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
 - **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
 - **Configurable input bindings** — rebind keyboard and gamepad buttons via in-game press-to-bind UI (F10 or Emulation → Input Settings); persisted to settings file
+- **Turbo buttons** — A/B turbo (~30 Hz toggle) on gamepad face buttons (Y/X) or rebindable keyboard keys; works for both players
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
 - **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
 - **RetroArch / libretro core** — load as a core in RetroArch for shaders, netplay, achievements, and universal controller support (Linux x86_64/aarch64, Windows, macOS)
@@ -209,29 +210,49 @@ All keyboard and gamepad bindings are configurable. Press **F10** or use **Emula
 | F10 | Input settings |
 | F11 | Toggle fullscreen |
 | I | Toggle integer/fill scaling |
-| Space | Fast-forward (hold) |
+| Space | Fast forward (hold) |
 | Tab | Toggle frame time overlay |
 | Esc | Quit |
 
 #### Gamepad (auto-detected)
 
-Standard controllers (Pro Controller, Xbox, PS, 8BitDo) use conventional mapping. Joy-Con pair auto-splits into P1 (right) and P2 (left):
+Standard controllers (Pro Controller, Xbox, PS, 8BitDo) use conventional mapping:
+
+| Button | Action |
+|--------|--------|
+| D-pad / Left stick | D-pad |
+| East (B / Circle) | NES A |
+| South (A / Cross) | NES B |
+| North (Y / Triangle) | Turbo A |
+| West (X / Square) | Turbo B |
+| Start | Start |
+| Select / Back | Select |
+| RB (R1) | Save state |
+| LB (L1) | Load state |
+| LT (L2) | Rewind (hold) |
+| RT (R2) | Fast forward (hold) |
+
+Turbo buttons alternate the corresponding NES button press every frame (~30 Hz at 60 fps).
+
+Joy-Con pair auto-splits into P1 (right) and P2 (left):
 
 | Button (P1 right Joy-Con) | Action |
 |---------------------------|--------|
 | Stick | D-pad |
 | Switch X | NES A |
 | Switch B | NES B |
+| Switch A | Turbo A |
+| Switch Y | Turbo B |
 | + | Start |
 | R / ZR | Select |
-| Switch A | Load state |
-| Switch Y | Save state |
 
 | Button (P2 left Joy-Con) | Action |
 |--------------------------|--------|
 | Stick | D-pad |
 | D-pad down | NES A |
 | D-pad left | NES B |
+| D-pad right | Turbo A |
+| D-pad up | Turbo B |
 | - | Start |
 | L / ZL | Select |
 

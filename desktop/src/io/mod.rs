@@ -319,11 +319,32 @@ pub(crate) fn open_rom_dialog() -> Option<String> {
     })
 }
 
+pub struct TurboState {
+    frame_counter: u8,
+}
+
+impl TurboState {
+    pub fn new() -> Self {
+        Self { frame_counter: 0 }
+    }
+
+    fn tick(&mut self) {
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+    }
+
+    fn is_active(&self) -> bool {
+        self.frame_counter % 2 == 0
+    }
+}
+
 pub(crate) fn apply_gamepad(
     gamepads: &mut Gamepads,
     bindings: &InputBindings,
     p1_kb_state: u8,
     p2_kb_state: u8,
+    p1_turbo_kb: u8,
+    p2_turbo_kb: u8,
+    turbo: &mut TurboState,
     mem: &mut dyn memory::MemoryMapper,
     result: &mut PollResult,
 ) {
@@ -334,10 +355,14 @@ pub(crate) fn apply_gamepad(
 
     let mut p0_state = p1_kb_state;
     let mut p1_state = p2_kb_state;
+    let mut turbo_p0: u8 = p1_turbo_kb;
+    let mut turbo_p1: u8 = p2_turbo_kb;
 
-    if let Some(s) = &gp.states[0] {
+    for s in gp.states.iter().flatten() {
         p0_state |= s.p1_bits;
         p1_state |= s.p2_bits;
+        turbo_p0 |= s.turbo_p1_bits;
+        turbo_p1 |= s.turbo_p2_bits;
         if s.save_state {
             result.save_state = true;
         }
@@ -350,23 +375,16 @@ pub(crate) fn apply_gamepad(
         if s.rewind {
             result.rewind = true;
         }
-    }
-    if let Some(s) = &gp.states[1] {
-        p0_state |= s.p1_bits;
-        p1_state |= s.p2_bits;
-        if s.save_state {
-            result.save_state = true;
-        }
-        if s.load_state {
-            result.load_state = true;
-        }
-        if s.cycle_slot {
-            result.cycle_slot = true;
-        }
-        if s.rewind {
-            result.rewind = true;
+        if s.fast_forward {
+            result.fast_forward = true;
         }
     }
+
+    if turbo.is_active() {
+        p0_state |= turbo_p0;
+        p1_state |= turbo_p1;
+    }
+    turbo.tick();
 
     mem.controllers()[0].load_status(p0_state);
     mem.controllers()[1].load_status(p1_state);
