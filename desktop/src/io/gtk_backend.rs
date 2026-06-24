@@ -156,6 +156,8 @@ pub struct GtkPixelsIOHandler {
     toggle_pause_flag: Rc<Cell<bool>>,
     debug_active: Rc<Cell<bool>>,
     debug_snapshot: Rc<RefCell<Option<DebugSnapshot>>>,
+    frame_clock_mode: bool,
+    frame_time_cell: Rc<Cell<f64>>,
 }
 
 impl GtkPixelsIOHandler {
@@ -434,7 +436,25 @@ impl GtkPixelsIOHandler {
             toggle_pause_flag,
             debug_active,
             debug_snapshot,
+            frame_clock_mode: false,
+            frame_time_cell: Rc::new(Cell::new(0.0)),
         }
+    }
+
+    pub fn gl_area(&self) -> &gtk::GLArea {
+        &self.gl_area
+    }
+
+    pub fn set_frame_clock_mode(&mut self, enabled: bool) {
+        self.frame_clock_mode = enabled;
+    }
+
+    pub fn fast_forward_flag(&self) -> Rc<Cell<bool>> {
+        self.fast_forward.clone()
+    }
+
+    pub fn frame_time_cell(&self) -> Rc<Cell<f64>> {
+        self.frame_time_cell.clone()
     }
 
     fn save_display_settings(&self) {
@@ -824,8 +844,10 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn poll(&mut self, mem: &mut dyn memory::MemoryMapper, apu: &mut apu::APU) -> PollResult {
-        while gtk::events_pending() {
-            gtk::main_iteration();
+        if !self.frame_clock_mode {
+            while gtk::events_pending() {
+                gtk::main_iteration();
+            }
         }
 
         let mut recent_rom_path: Option<String> = None;
@@ -1161,7 +1183,11 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn frame_time_ms(&self) -> Option<f64> {
-        Some(self.last_frame_ms)
+        if self.frame_clock_mode {
+            Some(self.frame_time_cell.get())
+        } else {
+            Some(self.last_frame_ms)
+        }
     }
 
     fn set_frame_duration_nanos(&mut self, nanos: u64) {
@@ -1180,28 +1206,31 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        // GTK-aware frame pacing: process events while waiting instead of
-        // blocking with thread::sleep, so the Wayland compositor can deliver
-        // frame callbacks and actually present every frame.
         let elapsed = self.last_frame_time.elapsed();
         self.last_frame_ms = elapsed.as_secs_f64() * 1000.0;
-        if !self.fast_forward.get() && elapsed < self.frame_duration {
-            let remaining = self.frame_duration - elapsed;
-            if remaining > Duration::from_millis(2) {
-                let coarse_end = self.frame_duration - Duration::from_millis(2);
-                while self.last_frame_time.elapsed() < coarse_end {
+
+        if !self.frame_clock_mode {
+            // GTK-aware frame pacing: process events while waiting instead of
+            // blocking with thread::sleep, so the Wayland compositor can deliver
+            // frame callbacks and actually present every frame.
+            if !self.fast_forward.get() && elapsed < self.frame_duration {
+                let remaining = self.frame_duration - elapsed;
+                if remaining > Duration::from_millis(2) {
+                    let coarse_end = self.frame_duration - Duration::from_millis(2);
+                    while self.last_frame_time.elapsed() < coarse_end {
+                        if gtk::events_pending() {
+                            gtk::main_iteration();
+                        } else {
+                            std::thread::sleep(Duration::from_micros(500));
+                        }
+                    }
+                }
+                while self.last_frame_time.elapsed() < self.frame_duration {
                     if gtk::events_pending() {
                         gtk::main_iteration();
                     } else {
-                        std::thread::sleep(Duration::from_micros(500));
+                        std::hint::spin_loop();
                     }
-                }
-            }
-            while self.last_frame_time.elapsed() < self.frame_duration {
-                if gtk::events_pending() {
-                    gtk::main_iteration();
-                } else {
-                    std::hint::spin_loop();
                 }
             }
         }

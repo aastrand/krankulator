@@ -12,6 +12,63 @@ use krankulator_core::emu;
 use krankulator_core::emu::io::loader;
 use krankulator_core::util;
 
+#[cfg(target_os = "linux")]
+struct FrameClockState {
+    gl_area: gtk::GLArea,
+    fast_forward: std::rc::Rc<std::cell::Cell<bool>>,
+    frame_time_cell: std::rc::Rc<std::cell::Cell<f64>>,
+}
+
+#[cfg(target_os = "linux")]
+fn create_io(
+    rom_name: &str,
+    settings: &mut settings::Settings,
+) -> (
+    Box<dyn krankulator_core::emu::io::IOHandler>,
+    FrameClockState,
+) {
+    let mut platform_io = io::PlatformIOHandler::new(256, 240, rom_name, settings);
+    let fc = FrameClockState {
+        gl_area: platform_io.gl_area().clone(),
+        fast_forward: platform_io.fast_forward_flag(),
+        frame_time_cell: platform_io.frame_time_cell(),
+    };
+    platform_io.set_frame_clock_mode(true);
+    (Box::new(platform_io), fc)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn create_io(
+    rom_name: &str,
+    settings: &mut settings::Settings,
+) -> Box<dyn krankulator_core::emu::io::IOHandler> {
+    Box::new(io::PlatformIOHandler::new(256, 240, rom_name, settings))
+}
+
+fn reload_rom(emu: &mut emu::Emulator, path: &str, region_arg: RegionArg) {
+    match load_rom_file(path) {
+        Ok(mapper) => {
+            let region = match region_arg {
+                RegionArg::Auto => detect_region_from_file(path),
+                RegionArg::Ntsc => emu::Region::Ntsc,
+                RegionArg::Pal => emu::Region::Pal,
+            };
+            println!(
+                "Loaded {} (mapper {}, {})",
+                path,
+                mapper.mapper_id(),
+                region
+            );
+            emu.load_rom_with_region(mapper, path, region);
+            io::add_recent_rom(path);
+        }
+        Err(msg) => {
+            eprintln!("Failed to load ROM: {msg}");
+            emu.overlay.toast(msg);
+        }
+    }
+}
+
 fn extract_nes_from_zip(path: &str) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("Failed to open {path}: {e}"))?;
     let mut archive =
@@ -125,6 +182,9 @@ fn main() -> Result<(), String> {
     let args = Args::parse();
     let mut settings = settings::load_settings();
 
+    #[cfg(target_os = "linux")]
+    let mut fc_state: Option<FrameClockState> = None;
+
     let mut emu = if let Some(ref input) = args.input {
         match args.loader.as_str() {
             "bin" => {
@@ -165,12 +225,16 @@ fn main() -> Result<(), String> {
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or(input);
-                        let io = Box::new(io::PlatformIOHandler::new(
-                            256,
-                            240,
-                            rom_name,
-                            &mut settings,
-                        ));
+
+                        #[cfg(target_os = "linux")]
+                        let (io, fc) = create_io(rom_name, &mut settings);
+                        #[cfg(target_os = "linux")]
+                        {
+                            fc_state = Some(fc);
+                        }
+                        #[cfg(not(target_os = "linux"))]
+                        let io = create_io(rom_name, &mut settings);
+
                         emu::Emulator::new_with_region(io, mapper, audio, region)
                     } else {
                         emu::Emulator::new_headless_with_region(mapper, region)
@@ -200,12 +264,16 @@ fn main() -> Result<(), String> {
             audio::AudioOutput::try_new(emu::apu::SAMPLE_RATE)
                 .expect("No audio output device available"),
         );
-        let io = Box::new(io::PlatformIOHandler::new(
-            256,
-            240,
-            "krankulator",
-            &mut settings,
-        ));
+
+        #[cfg(target_os = "linux")]
+        let (io, fc) = create_io("krankulator", &mut settings);
+        #[cfg(target_os = "linux")]
+        {
+            fc_state = Some(fc);
+        }
+        #[cfg(not(target_os = "linux"))]
+        let io = create_io("krankulator", &mut settings);
+
         let mut emu = emu::Emulator::new_with(io, mapper, audio);
         emu.toggle_should_exit_on_infinite_loop(false);
         emu.toggle_should_trigger_nmi(false);
@@ -234,30 +302,16 @@ fn main() -> Result<(), String> {
     emu.toggle_quiet_mode(args.quiet);
     emu.toggle_debug_on_infinite_loop(args.debug);
 
+    #[cfg(target_os = "linux")]
+    if let Some(fc) = fc_state {
+        run_frame_clock(emu, fc, args.region);
+        return Ok(());
+    }
+
     loop {
         emu.run();
         match emu.take_pending_open_rom() {
-            Some(path) => match load_rom_file(&path) {
-                Ok(mapper) => {
-                    let region = match args.region {
-                        RegionArg::Auto => detect_region_from_file(&path),
-                        RegionArg::Ntsc => emu::Region::Ntsc,
-                        RegionArg::Pal => emu::Region::Pal,
-                    };
-                    println!(
-                        "Loaded {} (mapper {}, {})",
-                        path,
-                        mapper.mapper_id(),
-                        region
-                    );
-                    emu.load_rom_with_region(mapper, &path, region);
-                    io::add_recent_rom(&path);
-                }
-                Err(msg) => {
-                    eprintln!("Failed to load ROM: {msg}");
-                    emu.overlay.toast(msg);
-                }
-            },
+            Some(path) => reload_rom(&mut emu, &path, args.region),
             None => break,
         }
     }
@@ -275,6 +329,92 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn run_frame_clock(mut emu: emu::Emulator, fc: FrameClockState, region_arg: RegionArg) {
+    use gtk::prelude::WidgetExtManual;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    use std::time::Instant;
+
+    if let Err(msg) = emu.init() {
+        eprintln!("{msg}");
+    }
+
+    let emu = Rc::new(RefCell::new(emu));
+
+    let emu_ref = emu.clone();
+    let fast_forward = fc.fast_forward;
+    let frame_time_cell = fc.frame_time_cell;
+    let last_tick = Rc::new(RefCell::new(Instant::now()));
+    let time_accum = Rc::new(RefCell::new(0.0f64));
+    let was_ff = Rc::new(Cell::new(false));
+
+    fc.gl_area.add_tick_callback(move |_widget, _clock| {
+        let now = Instant::now();
+        let elapsed_ms = {
+            let lt = last_tick.borrow();
+            lt.elapsed().as_secs_f64() * 1000.0
+        };
+        *last_tick.borrow_mut() = now;
+
+        let frame_duration_ms = emu_ref.borrow().region.frame_duration_nanos as f64 / 1_000_000.0;
+        let ff = fast_forward.get();
+        let max_frames = if ff { 20 } else { 2 };
+        let mut accum = *time_accum.borrow() + elapsed_ms;
+        if !ff && was_ff.get() {
+            accum = 0.0;
+        }
+        was_ff.set(ff);
+        let mut frames_run = 0;
+
+        loop {
+            if !ff && accum < frame_duration_ms {
+                break;
+            }
+            if frames_run >= max_frames {
+                break;
+            }
+
+            let frame_start = Instant::now();
+            let mut emu = emu_ref.borrow_mut();
+            if !emu.step() {
+                match emu.take_pending_open_rom() {
+                    Some(path) => {
+                        reload_rom(&mut emu, &path, region_arg);
+                        accum = 0.0;
+                        break;
+                    }
+                    None => {
+                        emu.shutdown();
+                        drop(emu);
+                        gtk::main_quit();
+                        return glib::ControlFlow::Break;
+                    }
+                }
+            }
+            drop(emu);
+            frame_time_cell.set(frame_start.elapsed().as_secs_f64() * 1000.0);
+            accum -= frame_duration_ms;
+            frames_run += 1;
+
+            if frames_run < max_frames {
+                while gtk::events_pending() {
+                    gtk::main_iteration();
+                }
+            }
+        }
+
+        if accum > frame_duration_ms * 3.0 {
+            accum = 0.0;
+        }
+        *time_accum.borrow_mut() = accum;
+
+        glib::ControlFlow::Continue
+    });
+
+    gtk::main();
 }
 
 fn config_dir() -> Option<std::path::PathBuf> {

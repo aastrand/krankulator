@@ -611,8 +611,19 @@ impl Emulator {
         }
     }
 
+    pub fn shutdown(&self) {
+        self.exit();
+    }
+
+    pub fn step(&mut self) -> bool {
+        if self.paused {
+            return self.paused_step() != CycleState::Exiting;
+        }
+        self.run_one_frame()
+    }
+
     pub fn run(&mut self) {
-        if let Err(msg) = self.iohandler.init() {
+        if let Err(msg) = self.init() {
             self.iohandler.log(msg)
         }
 
@@ -640,7 +651,7 @@ impl Emulator {
             }
         }
 
-        self.exit();
+        self.shutdown();
     }
 
     fn paused_step(&mut self) -> CycleState {
