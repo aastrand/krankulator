@@ -8,7 +8,9 @@ pub use gtk_backend::GtkPixelsIOHandler as PlatformIOHandler;
 #[cfg(not(target_os = "linux"))]
 pub use winit_backend::WinitPixelsIOHandler as PlatformIOHandler;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(not(target_os = "linux"))]
+use std::time::Instant;
 
 use muda::{
     accelerator::{Accelerator, Key, KeyAccelerator, CMD_OR_CTRL},
@@ -390,6 +392,7 @@ pub(crate) fn apply_gamepad(
     mem.controllers()[1].load_status(p1_state);
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn frame_pace(
     last_frame_time: &mut Instant,
     fast_forward: bool,
@@ -411,6 +414,7 @@ pub(crate) fn frame_pace(
 }
 
 #[cfg(test)]
+#[cfg(not(target_os = "linux"))]
 mod tests {
     use super::*;
 

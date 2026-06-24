@@ -20,7 +20,7 @@ use krankulator_core::emu::memory;
 use crate::debug::{DebugUi, PANEL_WIDTH};
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, open_rom_dialog,
     populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
     NTSC_FRAME_DURATION,
 };
@@ -1180,11 +1180,32 @@ impl IOHandler for GtkPixelsIOHandler {
     }
 
     fn render(&mut self, buf: &gfx::buf::Buffer) {
-        self.last_frame_ms = frame_pace(
-            &mut self.last_frame_time,
-            self.fast_forward.get(),
-            self.frame_duration,
-        );
+        // GTK-aware frame pacing: process events while waiting instead of
+        // blocking with thread::sleep, so the Wayland compositor can deliver
+        // frame callbacks and actually present every frame.
+        let elapsed = self.last_frame_time.elapsed();
+        self.last_frame_ms = elapsed.as_secs_f64() * 1000.0;
+        if !self.fast_forward.get() && elapsed < self.frame_duration {
+            let remaining = self.frame_duration - elapsed;
+            if remaining > Duration::from_millis(2) {
+                let coarse_end = self.frame_duration - Duration::from_millis(2);
+                while self.last_frame_time.elapsed() < coarse_end {
+                    if gtk::events_pending() {
+                        gtk::main_iteration();
+                    } else {
+                        std::thread::sleep(Duration::from_micros(500));
+                    }
+                }
+            }
+            while self.last_frame_time.elapsed() < self.frame_duration {
+                if gtk::events_pending() {
+                    gtk::main_iteration();
+                } else {
+                    std::hint::spin_loop();
+                }
+            }
+        }
+        self.last_frame_time = Instant::now();
 
         let render_buf = if self.binding_ui.is_active() {
             self.ui_buf.data.copy_from_slice(&buf.data);
