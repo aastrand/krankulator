@@ -100,6 +100,14 @@ cargo clippy --workspace
 
 **Always run `cargo fmt` before committing.** Formatting changes must not be mixed into functional commits.
 
+### Git hooks
+
+A pre-commit hook that runs `cargo fmt --check` and `cargo clippy` is included in `.githooks/`. Enable it with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## Architecture Overview
 
 ### Core Library (`core/src/`)
