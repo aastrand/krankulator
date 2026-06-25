@@ -10,6 +10,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    - name: Update dependencies
+      run: sudo apt-get update
+    - name: Install dependencies
+      run: sudo apt-get install libncurses-dev libncursesw5-dev libasound2-dev libudev-dev libgtk-3-dev libxdo-dev
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+    - name: Clippy
+      run: cargo clippy --workspace -- -D warnings
+
   build:
     runs-on: ubuntu-latest
     steps:
