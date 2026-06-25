@@ -2,6 +2,7 @@ mod audio;
 pub(crate) mod crt_renderer;
 mod input;
 mod io;
+mod loading_screen;
 mod persistence;
 
 use std::cell::{Cell, RefCell};
@@ -45,6 +46,7 @@ thread_local! {
 pub fn main() {
     console_error_panic_hook::set_once();
     set_status("Load a .nes ROM to start");
+    loading_screen::preload_sprite();
     KEYS.with(|keys| {
         input::setup_keyboard(keys.clone());
         input::setup_touch_controls(keys.clone());
@@ -247,12 +249,8 @@ fn setup_game_drawer() {
                     let _ = drawer_el.style().remove_property("transform");
                     let name = name.clone();
                     let rom_url = rom_url.clone();
-                    set_status(&format!("Fetching {name}..."));
                     wasm_bindgen_futures::spawn_local(async move {
-                        match fetch_rom(&rom_url).await {
-                            Ok(data) => start_emulator(data, Some(format!("{name}.nes"))),
-                            Err(e) => set_status(&format!("Failed to fetch {name}: {e}")),
-                        }
+                        load_rom_with_loading_screen(&rom_url, &name).await;
                     });
                 }) as Box<dyn FnMut(_)>);
                 card.add_event_listener_with_callback("click", onclick.as_ref().unchecked_ref())
@@ -463,10 +461,34 @@ async fn fetch_random_rom() {
             return;
         }
     };
-    set_status(&format!("Fetching {name}..."));
-    match fetch_rom(&rom_url).await {
-        Ok(data) => start_emulator(data, Some(format!("{name}.nes"))),
-        Err(e) => set_status(&format!("Failed to fetch {name}: {e}")),
+    load_rom_with_loading_screen(&rom_url, &name).await;
+}
+
+async fn load_rom_with_loading_screen(url: &str, name: &str) {
+    loading_screen::start_loading(name);
+
+    let result = loading_screen::fetch_with_progress(url).await;
+
+    loading_screen::stop_loading();
+
+    match result {
+        Ok(js_val) => {
+            let uint8 = js_sys::Uint8Array::new(&js_val);
+            let mut data = vec![0u8; uint8.length() as usize];
+            uint8.copy_to(&mut data);
+
+            if url.ends_with(".zip") || (data.len() > 4 && &data[0..4] == b"PK\x03\x04") {
+                match extract_nes_from_zip(&data) {
+                    Ok(rom) => start_emulator(rom, Some(format!("{name}.nes"))),
+                    Err(e) => set_status(&format!("Failed: {e}")),
+                }
+            } else {
+                start_emulator(data, Some(format!("{name}.nes")));
+            }
+        }
+        Err(e) => {
+            set_status(&format!("Failed to fetch {name}: {e:?}"));
+        }
     }
 }
 
@@ -481,32 +503,6 @@ async fn fetch_json(url: &str) -> Result<JsValue, String> {
     wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|_| "no json")?)
         .await
         .map_err(|e| format!("{e:?}"))
-}
-
-async fn fetch_rom(url: &str) -> Result<Vec<u8>, String> {
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window().fetch_with_str(url))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-
-    let resp: web_sys::Response = resp_value.dyn_into().map_err(|_| "not a Response")?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-
-    let buf =
-        wasm_bindgen_futures::JsFuture::from(resp.array_buffer().map_err(|_| "no array_buffer")?)
-            .await
-            .map_err(|e| format!("{e:?}"))?;
-
-    let uint8 = js_sys::Uint8Array::new(&buf);
-    let mut data = vec![0u8; uint8.length() as usize];
-    uint8.copy_to(&mut data);
-
-    if url.ends_with(".zip") || (data.len() > 4 && &data[0..4] == b"PK\x03\x04") {
-        extract_nes_from_zip(&data)
-    } else {
-        Ok(data)
-    }
 }
 
 fn extract_nes_from_zip(zip: &[u8]) -> Result<Vec<u8>, String> {
