@@ -20,9 +20,9 @@ use krankulator_core::emu::memory;
 use crate::debug::{DebugUi, PANEL_WIDTH};
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, display_width, open_rom_dialog, KbState,
-    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
-    NTSC_FRAME_DURATION,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, open_rom_dialog,
+    populate_recent_submenu, window_size_for_scale, KbState, MenuIds, MenuItems, TurboState,
+    NES_TEX_HEIGHT, NTSC_FRAME_DURATION,
 };
 use crate::bindings::ui::{BindingUi, UiEvent};
 use crate::bindings::{Action, InputBindings, KeyId};

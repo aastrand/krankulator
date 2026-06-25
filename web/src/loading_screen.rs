@@ -95,11 +95,7 @@ fn create_overlay(target_id: &str) -> Option<(HtmlCanvasElement, CanvasRendering
         return None;
     }
 
-    let canvas: HtmlCanvasElement = document()
-        .create_element("canvas")
-        .ok()?
-        .dyn_into()
-        .ok()?;
+    let canvas: HtmlCanvasElement = document().create_element("canvas").ok()?.dyn_into().ok()?;
     canvas.set_width(256);
     canvas.set_height(240);
 
@@ -217,11 +213,20 @@ fn draw_frame(
 
             let frame_sx = (frame % 4) as f64 * src_w;
             ctx.save();
-            ctx.translate(mm_x + dst_w / 2.0, mm_y + dst_h / 2.0).unwrap();
+            ctx.translate(mm_x + dst_w / 2.0, mm_y + dst_h / 2.0)
+                .unwrap();
             ctx.scale(-1.0, 1.0).unwrap();
             let _ = ctx
                 .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                    sprite, frame_sx, 0.0, src_w, src_h, -dst_w / 2.0, -dst_h / 2.0, dst_w, dst_h,
+                    sprite,
+                    frame_sx,
+                    0.0,
+                    src_w,
+                    src_h,
+                    -dst_w / 2.0,
+                    -dst_h / 2.0,
+                    dst_w,
+                    dst_h,
                 );
             ctx.restore();
         }

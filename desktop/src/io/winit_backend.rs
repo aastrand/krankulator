@@ -24,9 +24,9 @@ use krankulator_core::util;
 use crate::debug::DebugUi;
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog, KbState,
-    populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
-    NES_TEX_WIDTH, NTSC_FRAME_DURATION,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
+    populate_recent_submenu, window_size_for_scale, KbState, MenuIds, MenuItems, TurboState,
+    NES_TEX_HEIGHT, NES_TEX_WIDTH, NTSC_FRAME_DURATION,
 };
 use crate::bindings::ui::{BindingUi, UiEvent};
 use crate::bindings::{Action, InputBindings, KeyId};
