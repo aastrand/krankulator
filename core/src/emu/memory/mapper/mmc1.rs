@@ -358,13 +358,10 @@ impl MemoryMapper for MMC1Mapper {
             0x0 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
             0x50 => 0,
-            0x60 | 0x70 => {
-                if self.mmc_ram_enabled {
+            0x60 | 0x70
+                if self.mmc_ram_enabled => {
                     unsafe { *self.mmc_ram_ptr.offset((addr - MMC_RAM_ADDR) as _) }
-                } else {
-                    0
                 }
-            }
             0x80 | 0x90 | 0xa0 | 0xb0 => {
                 self.banks[self.low_bank_idx][(addr % LOW_BANK_ADDR) as usize]
             }

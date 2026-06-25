@@ -47,9 +47,9 @@ extern "C" {
 }
 
 thread_local! {
-    static MEGAMAN_SPRITE: RefCell<Option<HtmlImageElement>> = RefCell::new(None);
-    static LOADING_OVERLAYS: RefCell<Vec<(HtmlCanvasElement, CanvasRenderingContext2d)>> = RefCell::new(Vec::new());
-    static LOADING_LABEL: RefCell<String> = RefCell::new(String::new());
+    static MEGAMAN_SPRITE: RefCell<Option<HtmlImageElement>> = const { RefCell::new(None) };
+    static LOADING_OVERLAYS: RefCell<Vec<(HtmlCanvasElement, CanvasRenderingContext2d)>> = const { RefCell::new(Vec::new()) };
+    static LOADING_LABEL: RefCell<String> = const { RefCell::new(String::new()) };
     static LOADING_ACTIVE: Cell<bool> = const { Cell::new(false) };
 }
 

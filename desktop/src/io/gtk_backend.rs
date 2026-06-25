@@ -20,7 +20,7 @@ use krankulator_core::emu::memory;
 use crate::debug::{DebugUi, PANEL_WIDTH};
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, display_width, open_rom_dialog,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, open_rom_dialog, KbState,
     populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
     NTSC_FRAME_DURATION,
 };
@@ -1171,10 +1171,12 @@ impl IOHandler for GtkPixelsIOHandler {
             apply_gamepad(
                 &mut self.gamepads,
                 &self.bindings.borrow(),
-                self.kb_state.get(),
-                self.p2_kb_state.get(),
-                self.turbo_kb_state.get(),
-                self.p2_turbo_kb_state.get(),
+                KbState {
+                    p1: self.kb_state.get(),
+                    p2: self.p2_kb_state.get(),
+                    p1_turbo: self.turbo_kb_state.get(),
+                    p2_turbo: self.p2_turbo_kb_state.get(),
+                },
                 &mut self.turbo,
                 mem,
                 &mut result,

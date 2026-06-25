@@ -24,7 +24,7 @@ use krankulator_core::util;
 use crate::debug::DebugUi;
 
 use super::{
-    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog,
+    add_recent_rom, apply_gamepad, build_menu_contents, display_width, frame_pace, open_rom_dialog, KbState,
     populate_recent_submenu, window_size_for_scale, MenuIds, MenuItems, TurboState, NES_TEX_HEIGHT,
     NES_TEX_WIDTH, NTSC_FRAME_DURATION,
 };
@@ -927,10 +927,12 @@ impl IOHandler for WinitPixelsIOHandler {
             apply_gamepad(
                 &mut self.gamepads,
                 &self.bindings,
-                self.kb_state,
-                self.p2_kb_state,
-                self.turbo_kb_state,
-                self.p2_turbo_kb_state,
+                KbState {
+                    p1: self.kb_state,
+                    p2: self.p2_kb_state,
+                    p1_turbo: self.turbo_kb_state,
+                    p2_turbo: self.p2_turbo_kb_state,
+                },
                 &mut self.turbo,
                 mem,
                 &mut result,

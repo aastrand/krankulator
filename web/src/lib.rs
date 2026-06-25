@@ -426,19 +426,13 @@ async fn fetch_random_rom() {
             return;
         }
     };
-    let arr = match js_sys::Array::try_from(list) {
-        Ok(a) => a,
-        Err(_) => {
-            set_status("Game list is not an array");
-            return;
-        }
-    };
+    let arr: js_sys::Array = list.into();
     let playable: Vec<JsValue> = (0..arr.length())
         .map(|i| arr.get(i))
         .filter(|e| {
             js_sys::Reflect::get(e, &"rom".into())
                 .ok()
-                .map_or(false, |v| v.is_string())
+                .is_some_and(|v| v.is_string())
         })
         .collect();
     if playable.is_empty() {
@@ -447,11 +441,11 @@ async fn fetch_random_rom() {
     }
     let idx = (js_sys::Math::random() * playable.len() as f64) as usize;
     let entry = &playable[idx];
-    let name = js_sys::Reflect::get(&entry, &"name".into())
+    let name = js_sys::Reflect::get(entry, &"name".into())
         .ok()
         .and_then(|v| v.as_string())
         .unwrap_or_default();
-    let rom_url = match js_sys::Reflect::get(&entry, &"rom".into())
+    let rom_url = match js_sys::Reflect::get(entry, &"rom".into())
         .ok()
         .and_then(|v| v.as_string())
     {

@@ -335,17 +335,21 @@ impl TurboState {
     }
 
     fn is_active(&self) -> bool {
-        self.frame_counter % 2 == 0
+        self.frame_counter.is_multiple_of(2)
     }
+}
+
+pub(crate) struct KbState {
+    pub p1: u8,
+    pub p2: u8,
+    pub p1_turbo: u8,
+    pub p2_turbo: u8,
 }
 
 pub(crate) fn apply_gamepad(
     gamepads: &mut Gamepads,
     bindings: &InputBindings,
-    p1_kb_state: u8,
-    p2_kb_state: u8,
-    p1_turbo_kb: u8,
-    p2_turbo_kb: u8,
+    kb: KbState,
     turbo: &mut TurboState,
     mem: &mut dyn memory::MemoryMapper,
     result: &mut PollResult,
@@ -355,10 +359,10 @@ pub(crate) fn apply_gamepad(
         result.toasts.push(msg);
     }
 
-    let mut p0_state = p1_kb_state;
-    let mut p1_state = p2_kb_state;
-    let mut turbo_p0: u8 = p1_turbo_kb;
-    let mut turbo_p1: u8 = p2_turbo_kb;
+    let mut p0_state = kb.p1;
+    let mut p1_state = kb.p2;
+    let mut turbo_p0: u8 = kb.p1_turbo;
+    let mut turbo_p1: u8 = kb.p2_turbo;
 
     for s in gp.states.iter().flatten() {
         p0_state |= s.p1_bits;
