@@ -1775,30 +1775,66 @@ impl Emulator {
                     self.cpu.clear_status_flag(cpu::CARRY_BIT);
                 }
             }
-            opcodes::SHA_INY | opcodes::SHA_ABY => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.a & self.cpu.x & high;
-                self.cpu_write(addr, value);
+            opcodes::SHA_INY => {
+                let (addr, uncorrected, crossed) = self.addr_indirect_idx(self.cpu.pc, self.cpu.y);
+                self.cpu_read(uncorrected);
+                let high = (uncorrected >> 8) as u8;
+                let value = self.cpu.a & self.cpu.x & high.wrapping_add(1);
+                let write_addr = if crossed {
+                    memory::to_16b_addr(value, addr as u8)
+                } else {
+                    addr
+                };
+                self.cpu_write(write_addr, value);
+            }
+            opcodes::SHA_ABY => {
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                self.cpu_read(uncorrected);
+                let high = (uncorrected >> 8) as u8;
+                let value = self.cpu.a & self.cpu.x & high.wrapping_add(1);
+                let write_addr = if crossed {
+                    memory::to_16b_addr(value, addr as u8)
+                } else {
+                    addr
+                };
+                self.cpu_write(write_addr, value);
             }
             opcodes::TAS_ABY => {
-                let addr = self.addr(opcode);
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                self.cpu_read(uncorrected);
                 self.cpu.sp = self.cpu.a & self.cpu.x;
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.sp & high;
-                self.cpu_write(addr, value);
+                let high = (uncorrected >> 8) as u8;
+                let value = self.cpu.sp & high.wrapping_add(1);
+                let write_addr = if crossed {
+                    memory::to_16b_addr(value, addr as u8)
+                } else {
+                    addr
+                };
+                self.cpu_write(write_addr, value);
             }
             opcodes::SHY_ABX => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.y & high;
-                self.cpu_write(addr, value);
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.x);
+                self.cpu_read(uncorrected);
+                let high = (uncorrected >> 8) as u8;
+                let value = self.cpu.y & high.wrapping_add(1);
+                let write_addr = if crossed {
+                    memory::to_16b_addr(value, addr as u8)
+                } else {
+                    addr
+                };
+                self.cpu_write(write_addr, value);
             }
             opcodes::SHX_ABY => {
-                let addr = self.addr(opcode);
-                let high = ((addr >> 8) as u8).wrapping_add(1);
-                let value = self.cpu.x & high;
-                self.cpu_write(addr, value);
+                let (addr, uncorrected, crossed) = self.addr_absolute_idx(self.cpu.pc, self.cpu.y);
+                self.cpu_read(uncorrected);
+                let high = (uncorrected >> 8) as u8;
+                let value = self.cpu.x & high.wrapping_add(1);
+                let write_addr = if crossed {
+                    memory::to_16b_addr(value, addr as u8)
+                } else {
+                    addr
+                };
+                self.cpu_write(write_addr, value);
             }
             opcodes::LAS_ABY => {
                 let addr = self.addr(opcode);
