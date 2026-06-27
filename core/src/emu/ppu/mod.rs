@@ -600,8 +600,19 @@ impl PPU {
         }
     }
 
+    fn is_rendering_active(&self) -> bool {
+        let rendering_enabled = self.mask_background_enabled() || self.mask_sprites_enabled();
+        let rendering_scanline =
+            self.scanline < SCREEN_HEIGHT as u16 || self.scanline == self.pre_render_scanline;
+        rendering_enabled && rendering_scanline
+    }
+
     fn inc_vram_addr_v(&mut self) {
-        if (self.ppu_ctrl & CTRL_VRAM_ADDR_INC) == CTRL_VRAM_ADDR_INC {
+        let rendering = self.is_rendering_active();
+        if rendering {
+            self.inc_coarse_x();
+            self.inc_y();
+        } else if (self.ppu_ctrl & CTRL_VRAM_ADDR_INC) == CTRL_VRAM_ADDR_INC {
             self.v = self.v.wrapping_add(VRAM_INC_DOWN);
         } else {
             self.v = self.v.wrapping_add(VRAM_INC_ACROSS);
