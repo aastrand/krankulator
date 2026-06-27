@@ -1374,12 +1374,19 @@ impl Emulator {
             }
 
             opcodes::JSR_ABS => {
-                // Jump to SubRoutine
+                // 6502 JSR cycle sequence:
+                // 2: fetch ADL from PC+1
+                // 3: internal (dummy read from stack)
+                // 4: push PCH, SP--
+                // 5: push PCL, SP--
+                // 6: fetch ADH from PC+2
+                let adl = self.cpu_read(self.cpu.pc.wrapping_add(1));
+                self.cpu_read(self.stack_addr(self.cpu.sp));
                 self.push_pc_to_stack(2);
-                let addr: u16 = self.addr_absolute(self.cpu.pc);
+                let adh = self.cpu_read(self.cpu.pc.wrapping_add(2));
+                let addr = memory::to_16b_addr(adh, adl);
                 self.log_push(addr);
                 self.cpu.pc = addr;
-                // Compensate for length addition
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
             }
 
