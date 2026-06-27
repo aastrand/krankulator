@@ -32,6 +32,7 @@ pub const MASK_BACKGROUND_LEFT_ENABLE: u8 = 0b0000_0010;
 pub const MASK_SPRITES_LEFT_ENABLE: u8 = 0b0000_0100;
 pub const MASK_BACKGROUND_ENABLE: u8 = 0b0000_1000;
 pub const MASK_SPRITES_ENABLE: u8 = 0b0001_0000;
+const MASK_GREYSCALE: u8 = 0b0000_0001;
 #[cfg(test)]
 pub const MASK_RENDERING_ENABLE: u8 = 0b0001_1000;
 
@@ -579,9 +580,11 @@ impl PPU {
                 let read_addr = self.v & V_ADDR_MASK;
                 let value = if (PALETTE_START..=PALETTE_END).contains(&read_addr) {
                     let mirrored_addr = read_addr & PALETTE_MIRROR_MASK;
-                    let result = mem.ppu_read(read_addr as _);
+                    let mut result = mem.ppu_read(read_addr as _);
                     self.ppu_data_buf = mem.ppu_read(mirrored_addr as _);
-                    // Palette reads: lower 6 bits from palette, upper 2 from decayed open bus.
+                    if self.ppu_mask & MASK_GREYSCALE != 0 {
+                        result &= 0x30;
+                    }
                     self.refresh_open_bus_bits(result, 0x3F);
                     (result & 0x3F) | (self.decayed_open_bus() & 0xC0)
                 } else {
