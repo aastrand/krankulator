@@ -24,6 +24,7 @@ pub struct NROMMapper {
 
     _chr_bank: Box<[u8; NROM_CHR_BANK_SIZE]>,
     chr_ptr: *mut u8,
+    chr_is_ram: bool,
 
     _vram: Box<[u8; VRAM_SIZE as usize]>,
     vrm_ptr: *mut u8,
@@ -51,6 +52,7 @@ impl NROMMapper {
 
         let addr_space_ptr = mem.as_mut_ptr();
 
+        let chr_is_ram = chr_rom.is_none();
         let mut chr_bank = Box::new(chr_rom.unwrap_or([0; NROM_CHR_BANK_SIZE]));
         let chr_ptr = chr_bank.as_mut_ptr();
 
@@ -71,6 +73,7 @@ impl NROMMapper {
 
             _chr_bank: chr_bank,
             chr_ptr,
+            chr_is_ram,
 
             _vram: vram,
             vrm_ptr,
@@ -161,7 +164,11 @@ impl MemoryMapper for NROMMapper {
         }
         let page = addr_to_page(addr);
         match page {
-            0x0 | 0x10 => unsafe { *self.chr_ptr.offset(addr as isize) = value },
+            0x0 | 0x10 => {
+                if self.chr_is_ram {
+                    unsafe { *self.chr_ptr.offset(addr as isize) = value }
+                }
+            }
             0x20 => {
                 addr = super::mirror_nametable_addr(addr, self.nametable_alignment) % VRAM_SIZE;
                 unsafe { *self.vrm_ptr.offset(addr as isize) = value }
