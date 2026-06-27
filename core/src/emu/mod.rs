@@ -1152,6 +1152,7 @@ impl Emulator {
             }
 
             opcodes::ASL => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.asl(self.cpu.a);
                 self.log_push(self.cpu.a as u16);
@@ -1256,15 +1257,19 @@ impl Emulator {
                 self.cpu.pc = self.cpu.pc.wrapping_sub(self.lookup.size(opcode));
             }
             opcodes::CLC => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.clear_status_flag(cpu::CARRY_BIT);
             }
             opcodes::CLV => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.clear_status_flag(cpu::OVERFLOW_BIT);
             }
             opcodes::CLD => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.clear_status_flag(cpu::DECIMAL_BIT);
             }
             opcodes::CLI => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.clear_status_flag(cpu::INTERRUPT_BIT);
             }
 
@@ -1301,16 +1306,14 @@ impl Emulator {
             }
 
             opcodes::DEX => {
-                // Decrement Index X by One
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.x = self.cpu.x.wrapping_sub(1);
-                // Increment and decrement instructions do not affect the carry flag.
                 self.cpu.check_negative(self.cpu.x);
                 self.cpu.check_zero(self.cpu.x);
             }
             opcodes::DEY => {
-                // Decrement Index Y by One
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.y = self.cpu.y.wrapping_sub(1);
-                // Increment and decrement instructions do not affect the carry flag.
                 self.cpu.check_negative(self.cpu.y);
                 self.cpu.check_zero(self.cpu.y);
             }
@@ -1396,16 +1399,14 @@ impl Emulator {
             }
 
             opcodes::INX => {
-                // Increment Index X by One
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.x = self.cpu.x.wrapping_add(1);
-                // Increment and decrement instructions do not affect the carry flag.
                 self.cpu.check_negative(self.cpu.x);
                 self.cpu.check_zero(self.cpu.x);
             }
             opcodes::INY => {
-                // Increment Index Y by One
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.y = self.cpu.y.wrapping_add(1);
-                // Increment and decrement instructions do not affect the carry flag.
                 self.cpu.check_negative(self.cpu.y);
                 self.cpu.check_zero(self.cpu.y);
             }
@@ -1462,6 +1463,7 @@ impl Emulator {
             }
 
             opcodes::LSR => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.lsr(self.cpu.a);
                 self.log_push(self.cpu.a as u16);
@@ -1472,7 +1474,7 @@ impl Emulator {
             }
 
             opcodes::NOP => {
-                // No operation
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
             }
 
             opcodes::ORA_ABS
@@ -1488,28 +1490,23 @@ impl Emulator {
             }
 
             opcodes::PHA => {
-                // PusH Accumulator
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.push_to_stack(self.cpu.a);
             }
             opcodes::PLA => {
-                // PuLl Accumulator
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.a = self.pull_from_stack();
                 self.cpu.check_negative(self.cpu.a);
                 self.cpu.check_zero(self.cpu.a);
             }
             opcodes::PHP => {
-                // PusH Processor status
-                // software instructions BRK & PHP will push the B flag as being 1.
-                // hardware interrupts IRQ & NMI will push the B flag as being 0.
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.push_to_stack(self.cpu.status | cpu::BREAK_BIT);
             }
             opcodes::PLP => {
-                // PuLl Processor status
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.status = self.pull_from_stack();
-
-                // TODO: should we set ignore?
                 self.cpu.set_status_flag(cpu::IGNORE_BIT);
-                // when the flags are restored (via PLP or RTI), the B bit is discarded.
                 self.cpu.clear_status_flag(cpu::BREAK_BIT);
             }
 
@@ -1578,6 +1575,7 @@ impl Emulator {
             }
 
             opcodes::ROL => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.rol(self.cpu.a);
                 self.log_push(self.cpu.a as u16);
@@ -1588,6 +1586,7 @@ impl Emulator {
             }
 
             opcodes::ROR => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.log_push(self.cpu.a as u16);
                 self.cpu.a = self.cpu.ror(self.cpu.a);
                 self.log_push(self.cpu.a as u16);
@@ -1617,12 +1616,15 @@ impl Emulator {
             }
 
             opcodes::SEC => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.set_status_flag(cpu::CARRY_BIT);
             }
             opcodes::SED => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.set_status_flag(cpu::DECIMAL_BIT);
             }
             opcodes::SEI => {
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.set_status_flag(cpu::INTERRUPT_BIT);
             }
 
@@ -1674,39 +1676,38 @@ impl Emulator {
             }
 
             opcodes::TAX => {
-                // Transfer Accumulator to Index X
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.x = self.cpu.a;
                 self.cpu.check_negative(self.cpu.x);
                 self.cpu.check_zero(self.cpu.x);
             }
             opcodes::TXA => {
-                // Transfer Index X to Accumulator
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.a = self.cpu.x;
                 self.cpu.check_negative(self.cpu.a);
                 self.cpu.check_zero(self.cpu.a);
             }
             opcodes::TAY => {
-                // Transfer Accumulator to Index Y
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.y = self.cpu.a;
                 self.cpu.check_negative(self.cpu.y);
                 self.cpu.check_zero(self.cpu.y);
             }
             opcodes::TYA => {
-                // Transfer Index Y to Accumulator
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.a = self.cpu.y;
                 self.cpu.check_negative(self.cpu.a);
                 self.cpu.check_zero(self.cpu.a);
             }
             opcodes::TSX => {
-                // Transfer Stack Pointer to Index X
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.x = self.cpu.sp;
                 self.cpu.check_negative(self.cpu.x);
                 self.cpu.check_zero(self.cpu.x);
             }
             opcodes::TXS => {
-                // Transfer Index X to Stack Pointer
+                self.cpu_read(self.cpu.pc.wrapping_add(1));
                 self.cpu.sp = self.cpu.x;
-                // TSX sets NZ - TXS does not
             }
             opcodes::ANC_0B | opcodes::ANC_2B => {
                 let addr = self.addr(opcode);
@@ -1857,6 +1858,8 @@ impl Emulator {
                 if mode != opcodes::ADDR_MODE_NA {
                     let addr = self.addr(opcode);
                     self.cpu_read(addr);
+                } else {
+                    self.cpu_read(self.cpu.pc.wrapping_add(1));
                 }
             }
         }
