@@ -1219,4 +1219,182 @@ mod tests {
         let result = emu2.load_state_from_bytes(&saved);
         assert!(result.is_err());
     }
+
+    // --- AccuracyCoin ---
+    //
+    // AccuracyCoin is a 141-test NES accuracy suite by 100thCoin.
+    // https://github.com/100thCoin/AccuracyCoin
+    //
+    // Protocol:
+    //   - Press Start at page top to run all tests
+    //   - $35 = RunningAllTests flag ($01 = running, $00 = done)
+    //   - $0400-$0492 = per-test results: $01 = pass, $FF = skip,
+    //     odd > 1 = draw (multiple valid behaviors), even = fail (error code)
+
+    use crate::emu::apu;
+    use crate::emu::io;
+    use crate::emu::io::controller;
+    use crate::emu::memory;
+
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    struct ScriptedIOHandler {
+        buttons: Rc<Cell<u8>>,
+    }
+
+    impl io::IOHandler for ScriptedIOHandler {
+        fn init(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn log(&self, _logline: String) {}
+        fn poll(
+            &mut self,
+            mem: &mut dyn memory::MemoryMapper,
+            _apu: &mut apu::APU,
+        ) -> io::PollResult {
+            mem.controllers()[0].load_status(self.buttons.get());
+            io::PollResult::default()
+        }
+        fn render(&mut self, _buf: &crate::emu::gfx::buf::Buffer) {}
+        fn exit(&self, _s: String) {}
+    }
+
+    fn run_accuracy_coin() -> (u32, u32, u32, u32, Vec<String>) {
+        let rom_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../input/nes/AccuracyCoin.nes");
+
+        let buttons = Rc::new(Cell::new(0u8));
+        let io_handler = Box::new(ScriptedIOHandler {
+            buttons: buttons.clone(),
+        });
+        let audio = Box::new(crate::emu::audio::SilentAudioOutput::new())
+            as Box<dyn crate::emu::audio::AudioBackend>;
+        let mapper = loader::load_nes(&String::from(rom_path));
+        let mut emu = emu::Emulator::new_with(io_handler, mapper, audio);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.toggle_should_trigger_nmi(true);
+
+        // Let the ROM initialize
+        for _ in 0..180 {
+            emu.run_one_frame();
+        }
+
+        // Press Start to run all tests
+        buttons.set(controller::START);
+        for _ in 0..5 {
+            emu.run_one_frame();
+        }
+        buttons.set(0);
+
+        // Wait for tests to complete ($35: $01 = running, $00 = done)
+        let mut was_running = false;
+        for _ in 0..(60 * 60 * 30) {
+            if !emu.run_one_frame() {
+                break;
+            }
+            let running = emu.mem.cpu_read(0x35);
+            if running == 0x01 {
+                was_running = true;
+            } else if was_running && running == 0x00 {
+                for _ in 0..120 {
+                    emu.run_one_frame();
+                }
+                break;
+            }
+        }
+        assert!(
+            was_running,
+            "AccuracyCoin never started — Start press may not have registered"
+        );
+
+        let page_names = [
+            "CPU Behavior",
+            "Addressing Modes",
+            "Unofficial: SLO",
+            "Unofficial: RLA",
+            "Unofficial: SRE",
+            "Unofficial: RRA",
+            "Unofficial: _AX",
+            "Unofficial: DCP",
+            "Unofficial: ISC",
+            "Unofficial: SH_",
+            "Unofficial: Immediates",
+            "CPU Interrupts",
+            "DMA Tests",
+            "APU Timing",
+            "Power-On State",
+            "PPU Behavior",
+            "PPU Timing",
+            "Sprite Zero Hits",
+            "PPU Misc",
+            "CPU Behavior 2",
+        ];
+        let tests_per_page = [
+            11, 8, 7, 7, 7, 7, 5, 7, 7, 6, // Pages 1-10
+            8, 8, 6, 7, 5, 10, 8, 6, 7, 10, // Pages 11-20
+        ];
+
+        let mut pass = 0u32;
+        let mut fail = 0u32;
+        let mut skip = 0u32;
+        let mut draw = 0u32;
+        let mut idx = 0u16;
+        let mut failures = Vec::new();
+
+        for (page, &count) in tests_per_page.iter().enumerate() {
+            for test_num in 0..count {
+                let result = emu.mem.cpu_read(0x0400 + idx);
+                match result {
+                    0xFF => skip += 1,
+                    r if r & 0x01 != 0 => {
+                        if r == 0x01 {
+                            pass += 1;
+                        } else {
+                            draw += 1;
+                        }
+                    }
+                    err => {
+                        fail += 1;
+                        failures.push(format!(
+                            "  {} test {} (${:04X}): error 0x{:02X}",
+                            page_names[page],
+                            test_num + 1,
+                            0x0400 + idx,
+                            err,
+                        ));
+                    }
+                }
+                idx += 1;
+            }
+        }
+
+        (pass, fail, draw, skip, failures)
+    }
+
+    #[test]
+    #[ignore]
+    fn test_accuracy_coin() {
+        let (pass, fail, draw, skip, failures) = run_accuracy_coin();
+        let total = pass + fail + draw;
+
+        println!("\n=== AccuracyCoin Results ===");
+        println!(
+            "Passed: {pass}/{total} ({:.1}%)",
+            pass as f64 / total.max(1) as f64 * 100.0
+        );
+        println!("Failed: {fail}");
+        println!("Draw:   {draw}");
+        if skip > 0 {
+            println!("Skip:   {skip}");
+        }
+
+        if !failures.is_empty() {
+            println!("\nFailed tests:");
+            for f in &failures {
+                println!("{f}");
+            }
+        }
+    }
 }

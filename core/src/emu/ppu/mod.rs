@@ -576,7 +576,7 @@ impl PPU {
                 value
             }
             DATA_ADDR => {
-                let read_addr = self.v;
+                let read_addr = self.v & V_ADDR_MASK;
                 let value = if (PALETTE_START..=PALETTE_END).contains(&read_addr) {
                     let mirrored_addr = read_addr & PALETTE_MIRROR_MASK;
                     let result = mem.ppu_read(read_addr as _);
@@ -668,7 +668,7 @@ impl PPU {
                 self.ppu_addr_idx = if self.w { 1 } else { 0 };
             }
             DATA_ADDR => {
-                let write_addr = self.v;
+                let write_addr = self.v & V_ADDR_MASK;
                 let page = memory::addr_to_page(write_addr);
                 match page {
                     0x20 | 0x30 => {
