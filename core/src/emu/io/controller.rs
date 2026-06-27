@@ -42,7 +42,11 @@ impl Controller {
         if self.strobe {
             return self.status & 1;
         }
-        let bit = (self.shift >> (self.polls % 8)) & 1;
+        let bit = if self.polls < 8 {
+            (self.shift >> self.polls) & 1
+        } else {
+            1
+        };
         self.polls = self.polls.wrapping_add(1);
         bit
     }
