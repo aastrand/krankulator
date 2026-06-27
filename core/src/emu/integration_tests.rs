@@ -1310,30 +1310,30 @@ mod tests {
         );
 
         let page_names = [
-            "CPU Behavior",
-            "Addressing Modes",
-            "Unofficial: SLO",
-            "Unofficial: RLA",
-            "Unofficial: SRE",
-            "Unofficial: RRA",
-            "Unofficial: _AX",
-            "Unofficial: DCP",
-            "Unofficial: ISC",
-            "Unofficial: SH_",
-            "Unofficial: Immediates",
-            "CPU Interrupts",
-            "DMA Tests",
-            "APU Timing",
-            "Power-On State",
-            "PPU Behavior",
-            "PPU Timing",
-            "Sprite Zero Hits",
-            "PPU Misc",
-            "CPU Behavior 2",
+            "CPU Behavior",     // 9 tests
+            "Addressing Modes", // 6 tests
+            "Unofficial: SLO",  // 7 tests
+            "Unofficial: RLA",  // 7 tests
+            "Unofficial: SRE",  // 7 tests
+            "Unofficial: RRA",  // 7 tests
+            "Unofficial: _AX",  // 10 tests
+            "Unofficial: DCP",  // 7 tests
+            "Unofficial: ISC",  // 7 tests
+            "Unofficial: SH_",  // 6 tests
+            "Unofficial: Imm",  // 8 tests
+            "CPU Interrupts",   // 3 tests
+            "DMA Tests",        // 10 tests
+            "APU Timing",       // 9 tests
+            "Power-On State",   // 5 tests (DRAW)
+            "PPU Behavior",     // 8 tests
+            "PPU Timing",       // 7 tests
+            "Sprite Zero Hits", // 9 tests
+            "PPU Misc",         // 9 tests
+            "CPU Behavior 2",   // 5 tests
         ];
         let tests_per_page = [
-            11, 8, 7, 7, 7, 7, 5, 7, 7, 6, // Pages 1-10
-            8, 8, 6, 7, 5, 10, 8, 6, 7, 10, // Pages 11-20
+            9, 6, 7, 7, 7, 7, 10, 7, 7, 6, // Pages 1-10
+            8, 3, 10, 9, 5, 8, 7, 9, 9, 5, // Pages 11-20
         ];
 
         let mut pass = 0u32;
