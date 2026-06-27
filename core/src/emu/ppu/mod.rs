@@ -1613,7 +1613,7 @@ impl PPU {
 
         let bg_v = self.background_v_for_dot(dot);
         let fine_x = self.background_fine_x_for_dot(dot);
-        let fine_y = ((bg_v >> V_FINE_Y_SHIFT) & 0x07);
+        let fine_y = (bg_v >> V_FINE_Y_SHIFT) & 0x07;
         let tile_id = mem.ppu_read(NAMETABLE_BASE | (bg_v & NAMETABLE_ADDR_MASK)) as u16;
         let pattern_addr = self.ctrl_background_pattern_addr() + tile_id * TILE_STRIDE + fine_y;
         let low = mem.ppu_read(pattern_addr);

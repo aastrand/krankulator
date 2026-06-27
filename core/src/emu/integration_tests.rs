@@ -1260,6 +1260,176 @@ mod tests {
         fn exit(&self, _s: String) {}
     }
 
+    #[rustfmt::skip]
+    const ACCURACY_COIN_TESTS: [(u16, &str, &str); 146] = [
+        // Page 1: CPU Behavior (9)
+        (0x0405, "CPU Behavior", "ROMnotWritable"),
+        (0x0403, "CPU Behavior", "RAMMirror"),
+        (0x044D, "CPU Behavior", "ProgramCounter_Wraparound"),
+        (0x0474, "CPU Behavior", "DecimalFlag"),
+        (0x0475, "CPU Behavior", "BFlag"),
+        (0x0406, "CPU Behavior", "DummyReads"),
+        (0x0407, "CPU Behavior", "DummyWrites"),
+        (0x0408, "CPU Behavior", "OpenBus"),
+        (0x047D, "CPU Behavior", "AllNOPs"),
+        // Page 2: Addressing Modes (6)
+        (0x046E, "Addressing Modes", "AbsIndex"),
+        (0x046F, "Addressing Modes", "ZPgIndex"),
+        (0x0470, "Addressing Modes", "Indirect"),
+        (0x0471, "Addressing Modes", "IndIndeX"),
+        (0x0472, "Addressing Modes", "IndIndeY"),
+        (0x0473, "Addressing Modes", "Relative"),
+        // Page 3: Unofficial SLO (7)
+        (0x0409, "Unofficial: SLO", "SLO_03"),
+        (0x040A, "Unofficial: SLO", "SLO_07"),
+        (0x040B, "Unofficial: SLO", "SLO_0F"),
+        (0x040C, "Unofficial: SLO", "SLO_13"),
+        (0x040D, "Unofficial: SLO", "SLO_17"),
+        (0x040E, "Unofficial: SLO", "SLO_1B"),
+        (0x040F, "Unofficial: SLO", "SLO_1F"),
+        // Page 4: Unofficial RLA (7)
+        (0x0419, "Unofficial: RLA", "RLA_23"),
+        (0x041A, "Unofficial: RLA", "RLA_27"),
+        (0x041B, "Unofficial: RLA", "RLA_2F"),
+        (0x041C, "Unofficial: RLA", "RLA_33"),
+        (0x041D, "Unofficial: RLA", "RLA_37"),
+        (0x041E, "Unofficial: RLA", "RLA_3B"),
+        (0x041F, "Unofficial: RLA", "RLA_3F"),
+        // Page 5: Unofficial SRE (7)
+        (0x0420, "Unofficial: SRE", "SRE_43"),
+        (0x047F, "Unofficial: SRE", "SRE_47"),
+        (0x0422, "Unofficial: SRE", "SRE_4F"),
+        (0x0423, "Unofficial: SRE", "SRE_53"),
+        (0x0424, "Unofficial: SRE", "SRE_57"),
+        (0x0425, "Unofficial: SRE", "SRE_5B"),
+        (0x0426, "Unofficial: SRE", "SRE_5F"),
+        // Page 6: Unofficial RRA (7)
+        (0x0427, "Unofficial: RRA", "RRA_63"),
+        (0x0428, "Unofficial: RRA", "RRA_67"),
+        (0x0429, "Unofficial: RRA", "RRA_6F"),
+        (0x042A, "Unofficial: RRA", "RRA_73"),
+        (0x042B, "Unofficial: RRA", "RRA_77"),
+        (0x042C, "Unofficial: RRA", "RRA_7B"),
+        (0x042D, "Unofficial: RRA", "RRA_7F"),
+        // Page 7: Unofficial _AX (10)
+        (0x042E, "Unofficial: _AX", "SAX_83"),
+        (0x042F, "Unofficial: _AX", "SAX_87"),
+        (0x0430, "Unofficial: _AX", "SAX_8F"),
+        (0x0431, "Unofficial: _AX", "SAX_97"),
+        (0x0432, "Unofficial: _AX", "LAX_A3"),
+        (0x0433, "Unofficial: _AX", "LAX_A7"),
+        (0x0434, "Unofficial: _AX", "LAX_AF"),
+        (0x0435, "Unofficial: _AX", "LAX_B3"),
+        (0x0436, "Unofficial: _AX", "LAX_B7"),
+        (0x0437, "Unofficial: _AX", "LAX_BF"),
+        // Page 8: Unofficial DCP (7)
+        (0x0438, "Unofficial: DCP", "DCP_C3"),
+        (0x0439, "Unofficial: DCP", "DCP_C7"),
+        (0x043A, "Unofficial: DCP", "DCP_CF"),
+        (0x043B, "Unofficial: DCP", "DCP_D3"),
+        (0x043C, "Unofficial: DCP", "DCP_D7"),
+        (0x043D, "Unofficial: DCP", "DCP_DB"),
+        (0x043E, "Unofficial: DCP", "DCP_DF"),
+        // Page 9: Unofficial ISC (7)
+        (0x043F, "Unofficial: ISC", "ISC_E3"),
+        (0x0440, "Unofficial: ISC", "ISC_E7"),
+        (0x0441, "Unofficial: ISC", "ISC_EF"),
+        (0x0442, "Unofficial: ISC", "ISC_F3"),
+        (0x0443, "Unofficial: ISC", "ISC_F7"),
+        (0x0444, "Unofficial: ISC", "ISC_FB"),
+        (0x0445, "Unofficial: ISC", "ISC_FF"),
+        // Page 10: Unofficial SH_ (6)
+        (0x0446, "Unofficial: SH_", "SHA_93"),
+        (0x0447, "Unofficial: SH_", "SHA_9F"),
+        (0x0448, "Unofficial: SH_", "SHS_9B"),
+        (0x0449, "Unofficial: SH_", "SHY_9C"),
+        (0x044A, "Unofficial: SH_", "SHX_9E"),
+        (0x044B, "Unofficial: SH_", "LAE_BB"),
+        // Page 11: Unofficial Immediates (8)
+        (0x0410, "Unofficial: Imm", "ANC_0B"),
+        (0x0411, "Unofficial: Imm", "ANC_2B"),
+        (0x0412, "Unofficial: Imm", "ASR_4B"),
+        (0x0413, "Unofficial: Imm", "ARR_6B"),
+        (0x0414, "Unofficial: Imm", "ANE_8B"),
+        (0x0415, "Unofficial: Imm", "LXA_AB"),
+        (0x0416, "Unofficial: Imm", "AXS_CB"),
+        (0x0417, "Unofficial: Imm", "SBC_EB"),
+        // Page 12: CPU Interrupts (3)
+        (0x0461, "CPU Interrupts", "IFlagLatency"),
+        (0x0462, "CPU Interrupts", "NmiAndBrk"),
+        (0x0463, "CPU Interrupts", "NmiAndIrq"),
+        // Page 13: DMA Tests (10)
+        (0x046C, "DMA Tests", "DMA_Plus_OpenBus"),
+        (0x0488, "DMA Tests", "DMA_Plus_2002R"),
+        (0x044C, "DMA Tests", "DMA_Plus_2007R"),
+        (0x044F, "DMA Tests", "DMA_Plus_2007W"),
+        (0x045D, "DMA Tests", "DMA_Plus_4015R"),
+        (0x045E, "DMA Tests", "DMA_Plus_4016R"),
+        (0x046B, "DMA Tests", "DMABusConflict"),
+        (0x0477, "DMA Tests", "DMCDMAPlusOAMDMA"),
+        (0x0479, "DMA Tests", "ExplicitDMAAbort"),
+        (0x0478, "DMA Tests", "ImplicitDMAAbort"),
+        // Page 14: APU Timing (9)
+        (0x0465, "APU Timing", "APULengthCounter"),
+        (0x0466, "APU Timing", "APULengthTable"),
+        (0x0467, "APU Timing", "FrameCounterIRQ"),
+        (0x0468, "APU Timing", "FrameCounter4Step"),
+        (0x0469, "APU Timing", "FrameCounter5Step"),
+        (0x046A, "APU Timing", "DeltaModulationChannel"),
+        (0x045C, "APU Timing", "APURegActivation"),
+        (0x045F, "APU Timing", "ControllerStrobing"),
+        (0x047A, "APU Timing", "ControllerClocking"),
+        // Page 15: Power-On State (5 DRAW)
+        (0x03FF, "Power-On State", "DrawTest_1"),
+        (0x03FF, "Power-On State", "DrawTest_2"),
+        (0x03FF, "Power-On State", "DrawTest_3"),
+        (0x03FF, "Power-On State", "DrawTest_4"),
+        (0x03FF, "Power-On State", "DrawTest_5"),
+        // Page 16: PPU Behavior (8)
+        (0x0485, "PPU Behavior", "CHRROMIsNotWritable"),
+        (0x0404, "PPU Behavior", "PPURegMirror"),
+        (0x044E, "PPU Behavior", "PPUOpenBus"),
+        (0x0476, "PPU Behavior", "PPUReadBuffer"),
+        (0x047E, "PPU Behavior", "PaletteRAMQuirks"),
+        (0x0486, "PPU Behavior", "RenderingFlagBehavior"),
+        (0x048A, "PPU Behavior", "Rendering2007Read"),
+        (0x0481, "PPU Behavior", "AttributesAsTiles"),
+        // Page 17: PPU Timing (7)
+        (0x0450, "PPU Timing", "VBlank_Beginning"),
+        (0x0451, "PPU Timing", "VBlank_End"),
+        (0x0452, "PPU Timing", "NMI_Control"),
+        (0x0453, "PPU Timing", "NMI_Timing"),
+        (0x0454, "PPU Timing", "NMI_Suppression"),
+        (0x0455, "PPU Timing", "NMI_VBL_End"),
+        (0x0456, "PPU Timing", "NMI_Disabled_VBL_Start"),
+        // Page 18: Sprite Zero Hits (9)
+        (0x0459, "Sprite Zero Hits", "SprOverflow_Behavior"),
+        (0x0457, "Sprite Zero Hits", "Sprite0Hit_Behavior"),
+        (0x048D, "Sprite Zero Hits", "2002FlagClearTiming"),
+        (0x0489, "Sprite Zero Hits", "SuddenlyResizeSprite"),
+        (0x0458, "Sprite Zero Hits", "ArbitrarySpriteZero"),
+        (0x045A, "Sprite Zero Hits", "MisalignedOAM_Behavior"),
+        (0x045B, "Sprite Zero Hits", "Address2004_Behavior"),
+        (0x047B, "Sprite Zero Hits", "OAM_Corruption"),
+        (0x0480, "Sprite Zero Hits", "INC4014"),
+        // Page 19: PPU Misc (9)
+        (0x0482, "PPU Misc", "tRegisterQuirks"),
+        (0x0483, "PPU Misc", "StaleBGShiftRegisters"),
+        (0x048F, "PPU Misc", "StaleSpriteShiftRegs"),
+        (0x0487, "PPU Misc", "BGSerialIn"),
+        (0x0484, "PPU Misc", "Scanline0Sprites"),
+        (0x048C, "PPU Misc", "2004_Stress"),
+        (0x048E, "PPU Misc", "2007_Stress"),
+        (0x0491, "PPU Misc", "ALERead"),
+        (0x0492, "PPU Misc", "HybridAddresses"),
+        // Page 20: CPU Behavior 2 (5)
+        (0x0460, "CPU Behavior 2", "InstructionTiming"),
+        (0x046D, "CPU Behavior 2", "ImpliedDummyRead"),
+        (0x048B, "CPU Behavior 2", "BranchDummyRead"),
+        (0x047C, "CPU Behavior 2", "JSREdgeCases"),
+        (0x0490, "CPU Behavior 2", "InternalDataBus"),
+    ];
+
     fn run_accuracy_coin() -> (u32, u32, u32, u32, Vec<String>) {
         let rom_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../input/nes/AccuracyCoin.nes");
 
@@ -1276,19 +1446,16 @@ mod tests {
         emu.toggle_verbose_mode(false);
         emu.toggle_should_trigger_nmi(true);
 
-        // Let the ROM initialize
         for _ in 0..180 {
             emu.run_one_frame();
         }
 
-        // Press Start to run all tests
         buttons.set(controller::START);
         for _ in 0..5 {
             emu.run_one_frame();
         }
         buttons.set(0);
 
-        // Wait for tests to complete ($35: $01 = running, $00 = done)
         let mut was_running = false;
         for _ in 0..(60 * 60 * 30) {
             if !emu.run_one_frame() {
@@ -1309,64 +1476,28 @@ mod tests {
             "AccuracyCoin never started — Start press may not have registered"
         );
 
-        let page_names = [
-            "CPU Behavior",     // 9 tests
-            "Addressing Modes", // 6 tests
-            "Unofficial: SLO",  // 7 tests
-            "Unofficial: RLA",  // 7 tests
-            "Unofficial: SRE",  // 7 tests
-            "Unofficial: RRA",  // 7 tests
-            "Unofficial: _AX",  // 10 tests
-            "Unofficial: DCP",  // 7 tests
-            "Unofficial: ISC",  // 7 tests
-            "Unofficial: SH_",  // 6 tests
-            "Unofficial: Imm",  // 8 tests
-            "CPU Interrupts",   // 3 tests
-            "DMA Tests",        // 10 tests
-            "APU Timing",       // 9 tests
-            "Power-On State",   // 5 tests (DRAW)
-            "PPU Behavior",     // 8 tests
-            "PPU Timing",       // 7 tests
-            "Sprite Zero Hits", // 9 tests
-            "PPU Misc",         // 9 tests
-            "CPU Behavior 2",   // 5 tests
-        ];
-        let tests_per_page = [
-            9, 6, 7, 7, 7, 7, 10, 7, 7, 6, // Pages 1-10
-            8, 3, 10, 9, 5, 8, 7, 9, 9, 5, // Pages 11-20
-        ];
-
         let mut pass = 0u32;
         let mut fail = 0u32;
         let mut skip = 0u32;
         let mut draw = 0u32;
-        let mut idx = 0u16;
         let mut failures = Vec::new();
 
-        for (page, &count) in tests_per_page.iter().enumerate() {
-            for test_num in 0..count {
-                let result = emu.mem.cpu_read(0x0400 + idx);
-                match result {
-                    0xFF => skip += 1,
-                    r if r & 0x01 != 0 => {
-                        if r == 0x01 {
-                            pass += 1;
-                        } else {
-                            draw += 1;
-                        }
-                    }
-                    err => {
-                        fail += 1;
-                        failures.push(format!(
-                            "  {} test {} (${:04X}): error 0x{:02X}",
-                            page_names[page],
-                            test_num + 1,
-                            0x0400 + idx,
-                            err,
-                        ));
-                    }
+        for &(addr, page, name) in &ACCURACY_COIN_TESTS {
+            let result = emu.mem.cpu_read(addr);
+            match result {
+                0xFF => skip += 1,
+                0x01 => pass += 1,
+                r if r & 0x01 != 0 => draw += 1,
+                0x00 => {
+                    skip += 1;
                 }
-                idx += 1;
+                err => {
+                    fail += 1;
+                    let sub_test = (err >> 2) & 0x3F;
+                    failures.push(format!(
+                        "  {page} / {name} (${addr:04X}): sub-test {sub_test}",
+                    ));
+                }
             }
         }
 
@@ -1395,6 +1526,115 @@ mod tests {
             for f in &failures {
                 println!("{f}");
             }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_accuracy_coin_single() {
+        let rom_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../input/nes/AccuracyCoin.nes");
+        let buttons = Rc::new(Cell::new(0u8));
+        let io_handler = Box::new(ScriptedIOHandler {
+            buttons: buttons.clone(),
+        });
+        let audio = Box::new(crate::emu::audio::SilentAudioOutput::new())
+            as Box<dyn crate::emu::audio::AudioBackend>;
+        let mapper = loader::load_nes(&String::from(rom_path));
+        let mut emu = emu::Emulator::new_with(io_handler, mapper, audio);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.toggle_should_trigger_nmi(true);
+
+        for _ in 0..180 {
+            emu.run_one_frame();
+        }
+
+        // Press Down to move to first test, then A to run it
+        buttons.set(controller::DOWN);
+        for _ in 0..5 {
+            emu.run_one_frame();
+        }
+        buttons.set(0);
+        for _ in 0..10 {
+            emu.run_one_frame();
+        }
+        buttons.set(controller::A);
+        for _ in 0..5 {
+            emu.run_one_frame();
+        }
+        buttons.set(0);
+
+        // Wait for the test to complete
+        for _ in 0..300 {
+            emu.run_one_frame();
+        }
+
+        // Check the result at $0400 and the test's own address $0405
+        eprintln!("After single test run:");
+        eprintln!("$0400 = {:#04X}", emu.mem.cpu_read(0x0400));
+        eprintln!("$0405 = {:#04X}", emu.mem.cpu_read(0x0405));
+        for addr in 0x0400u16..=0x040Fu16 {
+            eprint!("{:02X} ", emu.mem.cpu_read(addr));
+        }
+        eprintln!();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_accuracy_coin_dump() {
+        let rom_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../input/nes/AccuracyCoin.nes");
+        let buttons = Rc::new(Cell::new(0u8));
+        let io_handler = Box::new(ScriptedIOHandler {
+            buttons: buttons.clone(),
+        });
+        let audio = Box::new(crate::emu::audio::SilentAudioOutput::new())
+            as Box<dyn crate::emu::audio::AudioBackend>;
+        let mapper = loader::load_nes(&String::from(rom_path));
+        let mut emu = emu::Emulator::new_with(io_handler, mapper, audio);
+        emu.toggle_debug_on_infinite_loop(false);
+        emu.toggle_quiet_mode(true);
+        emu.toggle_verbose_mode(false);
+        emu.toggle_should_trigger_nmi(true);
+
+        for _ in 0..180 {
+            emu.run_one_frame();
+        }
+        buttons.set(controller::START);
+        for _ in 0..5 {
+            emu.run_one_frame();
+        }
+        buttons.set(0);
+
+        let mut was_running = false;
+        for _ in 0..(60 * 60 * 30) {
+            if !emu.run_one_frame() {
+                break;
+            }
+            let running = emu.mem.cpu_read(0x35);
+            if running == 0x01 {
+                was_running = true;
+            } else if was_running && running == 0x00 {
+                for _ in 0..120 {
+                    emu.run_one_frame();
+                }
+                break;
+            }
+        }
+        assert!(was_running);
+
+        eprintln!("\nRaw memory $0400-$0492:");
+        for row in 0..10 {
+            let base = 0x0400 + row * 16;
+            let mut line = format!("${:04X}: ", base);
+            for col in 0..16u16 {
+                let addr = base + col;
+                if addr > 0x0492 {
+                    break;
+                }
+                line.push_str(&format!("{:02X} ", emu.mem.cpu_read(addr)));
+            }
+            eprintln!("{line}");
         }
     }
 }
