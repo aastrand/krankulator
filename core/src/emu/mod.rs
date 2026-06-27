@@ -1078,29 +1078,36 @@ impl Emulator {
     fn cpu_read(&mut self, addr: u16) -> u8 {
         self.sync_for_cpu_access(addr, false);
         let ppu_reg = self.ppu_reg_cpu_addr(addr);
-        let value = if let Some(reg) = ppu_reg {
+        // 2A03-internal registers ($4015, $4016, $4017) don't drive the external data bus
+        let (value, updates_bus) = if let Some(reg) = ppu_reg {
             let v = self.ppu.read(reg, &*self.mem);
             if reg == ppu::DATA_ADDR {
                 let a = self.ppu.get_current_vram_addr();
                 self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
             }
-            v
+            (v, true)
         } else if addr == APU_STATUS_ADDR {
-            self.apu.read(addr)
+            let v = (self.apu.read(addr) & 0xDF) | (self.cpu_open_bus & 0x20);
+            (v, false)
         } else if addr == CONTROLLER1_ADDR {
-            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
-                | (self.mem.controllers()[0].poll() & CONTROLLER_DATA_MASK)
+            let v = (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[0].poll() & CONTROLLER_DATA_MASK);
+            (v, false)
         } else if addr == CONTROLLER2_ADDR {
-            (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
-                | (self.mem.controllers()[1].poll() & CONTROLLER_DATA_MASK)
+            let v = (self.cpu_open_bus & OPEN_BUS_UPPER_MASK)
+                | (self.mem.controllers()[1].poll() & CONTROLLER_DATA_MASK);
+            (v, false)
         } else if (APU_REG_START..APU_STATUS_ADDR).contains(&addr)
             || (IO_EXPANSION_START..IO_EXPANSION_END).contains(&addr)
+            || self.mem.is_cpu_open_bus(addr)
         {
-            self.cpu_open_bus
+            (self.cpu_open_bus, false)
         } else {
-            self.mem.cpu_read(addr)
+            (self.mem.cpu_read(addr), true)
         };
-        self.cpu_open_bus = value;
+        if updates_bus {
+            self.cpu_open_bus = value;
+        }
         self.cpu_bus_cycle_offset = self.cpu_bus_cycle_offset.wrapping_add(1);
         value
     }

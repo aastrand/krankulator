@@ -91,6 +91,10 @@ pub trait MemoryMapper {
 
     fn notify_ppu_mask(&mut self, _value: u8) {}
 
+    fn is_cpu_open_bus(&self, _addr: u16) -> bool {
+        false
+    }
+
     fn audio_expansion_output(&self) -> f32 {
         0.0
     }

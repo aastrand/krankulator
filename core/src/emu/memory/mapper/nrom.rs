@@ -185,6 +185,10 @@ impl MemoryMapper for NROMMapper {
         false
     }
 
+    fn is_cpu_open_bus(&self, addr: u16) -> bool {
+        (0x4020..0x6000).contains(&addr)
+    }
+
     fn mapper_id(&self) -> u8 {
         0
     }
