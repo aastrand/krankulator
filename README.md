@@ -17,7 +17,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 42 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~148 Famicom exclusives and homebrew (see [Mapper support](#mapper-support) below)
+- **Mappers** — 44 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~148 Famicom exclusives and homebrew (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -51,7 +51,9 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 21 | VRC4a/VRC4c | Konami | 8KB PRG + 1KB CHR banking, IRQ |
 | 22 | VRC2a | Konami | Half-resolution CHR banking |
 | 23 | VRC2b/VRC4e/VRC4f | Konami | Crisis Force, Tiny Toon (JP) |
+| 24 | VRC6a | Konami | Akumajou Densetsu, expansion audio (2 pulse + saw) |
 | 25 | VRC2c/VRC4b/VRC4d | Konami | Gradius II, Bio Miracle Upa |
+| 26 | VRC6b | Konami | Madara, Esper Dream 2 (A0/A1 swapped) |
 | 28 | Action 53 | Homebrew | Multicart mapper, 4 banking modes |
 | 30 | UNROM 512 | Homebrew | 16KB PRG + 32KB CHR RAM, NESmaker |
 | 31 | NSF/Homebrew | Homebrew | 4KB PRG bank granularity, 8 slots |
@@ -98,7 +100,7 @@ graph TD
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
-    Mem --> VRC["VRC1/VRC2/VRC3/VRC4<br/>Konami"]
+    Mem --> VRC["VRC1/VRC2/VRC3/VRC4/VRC6<br/>Konami"]
     Mem --> Bandai["Bandai FCG<br/>I2C EEPROM + IRQ"]
     Mem --> Jaleco["Jaleco SS88006<br/>nibble-split banking"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]

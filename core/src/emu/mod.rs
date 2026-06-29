@@ -239,6 +239,7 @@ impl Emulator {
     pub fn toggle_debug(&mut self) {
         self.debug_active = !self.debug_active;
         self.apu.set_debug_capture(self.debug_active);
+        self.mem.set_debug_capture(self.debug_active);
     }
 
     pub fn is_debug_active(&self) -> bool {
@@ -299,7 +300,11 @@ impl Emulator {
                     nametable_select: nt_select,
                 }
             },
-            apu: self.apu.debug_state(),
+            apu: {
+                let mut state = self.apu.debug_state();
+                state.expansion_channels = self.mem.expansion_audio_debug();
+                state
+            },
             disasm,
             disasm_pc_index: pc_idx,
             palette: palette_data,

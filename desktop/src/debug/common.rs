@@ -368,6 +368,12 @@ fn draw_apu_waveforms(ui: &mut egui::Ui, snapshot: &DebugSnapshot) {
     for ch in &snapshot.apu.channels {
         draw_waveform(ui, ch.name, &ch.waveform, ch.enabled, 40.0);
     }
+    if !snapshot.apu.expansion_channels.is_empty() {
+        ui.separator();
+        for ch in &snapshot.apu.expansion_channels {
+            draw_waveform(ui, ch.name, &ch.waveform, ch.enabled, 40.0);
+        }
+    }
     draw_waveform(ui, "Mix", &snapshot.apu.mixed_waveform, true, 50.0);
 }
 

@@ -99,6 +99,12 @@ pub trait MemoryMapper {
         0.0
     }
 
+    fn set_debug_capture(&mut self, _on: bool) {}
+
+    fn expansion_audio_debug(&self) -> Vec<super::apu::ChannelDebugState> {
+        vec![]
+    }
+
     #[allow(dead_code)]
     fn addr_absolute(&mut self, pc: u16) -> u16 {
         self.get_16b_addr(pc.wrapping_add(1) as _)

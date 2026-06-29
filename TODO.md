@@ -2,7 +2,7 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), MMC4 (10), Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Namco 163 (19), Action 53 (28), UNROM 512 (30), Mapper 31, VRC2/VRC4 (21/22/23/25), Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
+Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), MMC4 (10), Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Namco 163 (19), VRC2/VRC4 (21/22/23/25), VRC6 (24/26), Action 53 (28), UNROM 512 (30), Mapper 31, Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
 Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA and PAL titles. Remaining gaps are Japan-only Famicom games.
 
 ### Completed: Priority 1 quick wins
@@ -70,11 +70,13 @@ Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA an
 - Games: Salamander (Life Force JP)
 - 16KB PRG banking + 16-bit/8-bit IRQ counter, CHR RAM only.
 
-### Priority 5 (remaining): Famicom — Konami VRC expansion audio
+### Completed: Priority 5c — Famicom Konami VRC expansion audio
 
-**Mappers 24/26 — VRC6 (Konami)** [M-L] — 3 games
+**Mappers 24/26 — VRC6 (Konami)** [done]
 - Games: Akumajou Densetsu (Castlevania III JP — the definitive version), Madara, Esper Dream 2
-- VRC6 expansion audio: 2 pulse + 1 sawtooth channels. Address swap between 24 and 26.
+- VRC6 expansion audio: 2 pulse + 1 sawtooth channels. Address swap between 24 and 26. Debug panel waveform visualization.
+
+### Priority 5 (remaining): Famicom — Konami VRC expansion audio
 
 **Mapper 85 — VRC7 (Konami)** [L] — 2 games
 - Games: Lagrange Point (acclaimed sci-fi RPG with OPLL FM synthesis), Tiny Toon 2 JP
@@ -236,13 +238,13 @@ Current coverage: **~93-95% of all licensed NES/Famicom games**. Nearly all miss
 
 | Priority | Mappers | Category | New games | Effort | Highlight titles |
 |----------|---------|----------|-----------|--------|------------------|
-| Done | 0-5,7,9-11,16,18,19,21-25,28,30,31,33,34,48,66,68,69,71,73,75,78,87,88,105,118,119,140,152,159,180,184,185,206,210 | Licensed NES + Famicom + homebrew | ~2300 | — | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Bandai + Jaleco + homebrew |
-| 5 | 24,26,85 | Famicom Konami expansion audio | ~5 | M-L | Castlevania III JP, Lagrange Point |
+| Done | 0-5,7,9-11,16,18,19,21-26,28,30,31,33,34,48,66,68,69,71,73,75,78,87,88,105,118,119,140,152,159,180,184,185,206,210 | Licensed NES + Famicom + homebrew | ~2303 | — | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Bandai + Jaleco + homebrew |
+| 5 | 85 | Famicom Konami expansion audio | ~2 | L | Lagrange Point |
 | 6 | 32,65,67,80,82,207 | Famicom Taito/Irem/Sunsoft | ~20 | S-M | Minelvaton Saga, Spartan X 2, Image Fight, Fantasy Zone II |
 | 7 | 70,72,76,86,89,92,93,94,95,97,154 | Famicom trivial discrete | ~25 | XS each | Megami Tensei, Pinball Quest, Dragon Buster |
 | 8 | 64,79,113,228 | Unlicensed | ~30 | XS-M | Shinobi, Rolling Thunder, Tiles of Fate |
 
-Implementing priorities 6+7 (trivial/moderate mappers) would bring coverage to **~98%**. VRC6/VRC7 (priority 5) are low game count but high prestige — they're the expansion audio showcases.
+Implementing priorities 6+7 (trivial/moderate mappers) would bring coverage to **~98%**. VRC7 (priority 5) is low game count but high prestige — it's the remaining expansion audio showcase (FM synthesis).
 
 PAL-exclusive licensed games need **zero** new mappers — all use mappers 0/1/2/4/7 already supported.
 

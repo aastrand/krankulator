@@ -143,6 +143,7 @@ pub struct ChannelDebugState {
 pub struct ApuDebugState {
     pub channels: [ChannelDebugState; 5],
     pub mixed_waveform: Vec<f32>,
+    pub expansion_channels: Vec<ChannelDebugState>,
 }
 
 struct WaveformCapture {
@@ -379,6 +380,7 @@ impl APU {
                 },
             ],
             mixed_waveform: read_buf(5),
+            expansion_channels: vec![],
         }
     }
 

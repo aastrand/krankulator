@@ -342,6 +342,14 @@ fn load_nes_from_bytes_inner(
             mapper_id as u8,
             submapper,
         )),
+        24 | 26 => Box::new(mapper::vrc6::Vrc6Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+            mapper_id as u8,
+        )),
         30 => Box::new(mapper::unrom512::Unrom512Mapper::new(
             flags, prg_banks, submapper,
         )),
