@@ -104,6 +104,7 @@ pub struct Emulator {
     rewind_buffer: rewind::RewindBuffer,
     rewind_capture_tick: bool,
     rewinding: bool,
+    rewind_scratch: Vec<u8>,
     overscan: bool,
     static_noise: bool,
     noise_state: u32,
@@ -220,6 +221,7 @@ impl Emulator {
             rewind_buffer: rewind::RewindBuffer::new(),
             rewind_capture_tick: false,
             rewinding: false,
+            rewind_scratch: Vec::new(),
             overscan: false,
             static_noise: false,
             noise_state: 0x1234,
@@ -644,6 +646,7 @@ impl Emulator {
                     RewindStepResult::Continue => continue,
                     RewindStepResult::Done => {
                         self.rewinding = false;
+                        self.rewind_buffer.finish_rewind();
                         self.overlay.set_rewind_status(None);
                         self.audio.clear();
                         continue;
@@ -694,11 +697,87 @@ impl Emulator {
         CycleState::CpuAhead
     }
 
-    fn rewind_step(&mut self) -> RewindStepResult {
-        if let Some(savestate) = self.rewind_buffer.pop_into(&mut self.buf.data) {
-            let _ = self.load_state_from_bytes(&savestate);
+    fn run_cycle_core(&mut self) {
+        if self.cpu.cycle == self.cycles && !self.service_pending_irq() {
+            let cycle_before = self.cpu.cycle;
+            let i_flag_before = self.cpu.interrupt_flag();
+            let opcode = self.execute_instruction();
+            self.log_instruction(opcode, self.cpu.last_instruction);
+
+            let actual_cycles = self.cpu.cycle - cycle_before;
+            let penultimate = actual_cycles.saturating_sub(2);
+            let deadline_sub =
+                self.instruction_start_sub + penultimate * self.region.master_clocks_per_cpu;
+            self.irq_sample_deadline =
+                self.instruction_start_dot + deadline_sub / self.region.master_clocks_per_ppu + 1;
+
+            self.irq_allowed = if opcode == opcodes::RTI {
+                !self.cpu.interrupt_flag()
+            } else {
+                !i_flag_before
+            };
+
+            if self.branch_irq_suppressed {
+                self.irq_allowed = false;
+            }
+            if self.nmi_countdown > 0 {
+                self.nmi_countdown -= 1;
+            }
         }
-        let secs = self.rewind_buffer.len() as f64 / rewind::CAPTURES_PER_SECOND;
+
+        let ppu_dot_before_step = self.ppu.last_synced_dot;
+        self.master_clock_sub += self.region.master_clocks_per_cpu;
+        let ppu_advance = self.master_clock_sub / self.region.master_clocks_per_ppu;
+        self.master_clock_sub %= self.region.master_clocks_per_ppu;
+        let target_dot = self.master_clock + ppu_advance;
+        self.sync_ppu_to_dot(target_dot);
+        self.master_clock = target_dot;
+
+        self.apu.cycle(self.master_clock, &mut *self.mem);
+        self.mem.cpu_cycle(self.ppu.last_synced_dot);
+
+        if let Some(edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
+            if self.should_trigger_nmi && self.nmi_countdown < 0 {
+                if edge_dot < ppu_dot_before_step {
+                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
+                        1
+                    } else {
+                        2
+                    };
+                } else {
+                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
+                        0
+                    } else {
+                        1
+                    };
+                }
+            }
+        }
+        if self.should_trigger_nmi && self.nmi_countdown == 0 {
+            self.trigger_nmi();
+            self.nmi_countdown = -1;
+        }
+
+        self.cycles += 1;
+    }
+
+    fn reemulate_frame(&mut self) {
+        let target_frame = self.ppu.frames + 1;
+        while self.ppu.frames < target_frame {
+            self.run_cycle_core();
+            self.apu.get_audio_samples();
+        }
+        self.audio.clear();
+    }
+
+    fn rewind_step(&mut self) -> RewindStepResult {
+        if self.rewind_buffer.step_back_into(&mut self.rewind_scratch) {
+            let scratch = std::mem::take(&mut self.rewind_scratch);
+            let _ = self.load_state_from_bytes(&scratch);
+            self.rewind_scratch = scratch;
+            self.reemulate_frame();
+        }
+        let secs = self.rewind_buffer.rewind_remaining() as f64 / rewind::CAPTURES_PER_SECOND;
         self.overlay.set_rewind_status(Some(format!("{secs:.1}s")));
         self.overlay.draw(&mut self.buf);
         if self.overscan && self.region.region != region::Region::Pal {
@@ -722,6 +801,7 @@ impl Emulator {
                 RewindStepResult::Continue => return true,
                 RewindStepResult::Done => {
                     self.rewinding = false;
+                    self.rewind_buffer.finish_rewind();
                     self.overlay.set_rewind_status(None);
                     self.audio.clear();
                     // Fall through to run a normal frame immediately (matches desktop run() behavior)
@@ -775,48 +855,9 @@ impl Emulator {
                     state = CycleState::Exiting
                 }
             }
-
-            if !self.service_pending_irq() {
-                let cycle_before = self.cpu.cycle;
-                let i_flag_before = self.cpu.interrupt_flag();
-                let opcode = self.execute_instruction();
-                self.log_instruction(opcode, self.cpu.last_instruction);
-
-                let actual_cycles = self.cpu.cycle - cycle_before;
-                let penultimate = actual_cycles.saturating_sub(2);
-                let deadline_sub =
-                    self.instruction_start_sub + penultimate * self.region.master_clocks_per_cpu;
-                self.irq_sample_deadline = self.instruction_start_dot
-                    + deadline_sub / self.region.master_clocks_per_ppu
-                    + 1;
-
-                // The 6502 samples the I flag on the penultimate cycle of each instruction.
-                // Most instructions that change I (CLI, SEI, PLP) do so on their last
-                // cycle, so the penultimate-cycle I flag equals the value *before* the
-                // instruction executed. RTI is different: it restores flags early (cycle 4
-                // of 6), so its penultimate-cycle I reflects the *restored* value.
-                self.irq_allowed = if opcode == opcodes::RTI {
-                    !self.cpu.interrupt_flag()
-                } else {
-                    !i_flag_before
-                };
-
-                if self.branch_irq_suppressed {
-                    self.irq_allowed = false;
-                }
-                if self.nmi_countdown > 0 {
-                    self.nmi_countdown -= 1;
-                }
-            }
         }
 
-        let ppu_dot_before_step = self.ppu.last_synced_dot;
-        self.master_clock_sub += self.region.master_clocks_per_cpu;
-        let ppu_advance = self.master_clock_sub / self.region.master_clocks_per_ppu;
-        self.master_clock_sub %= self.region.master_clocks_per_ppu;
-        let target_dot = self.master_clock + ppu_advance;
-        self.sync_ppu_to_dot(target_dot);
-        self.master_clock = target_dot;
+        self.run_cycle_core();
 
         if self.debug_active {
             if self.ppu.scanline >= 240 && !self.debug_chr_captured_this_frame {
@@ -834,38 +875,9 @@ impl Emulator {
             }
         }
 
-        // Cycle the APU and mapper
-        self.apu.cycle(self.master_clock, &mut *self.mem);
-        self.mem.cpu_cycle(self.ppu.last_synced_dot);
         let samples = self.apu.get_audio_samples();
         if !samples.is_empty() {
             self.audio.push_samples(samples);
-        }
-
-        // NMI edge detection: consume rising edge recorded by PPU
-        if let Some(edge_dot) = self.ppu.nmi_rising_edge_dot.take() {
-            if self.should_trigger_nmi && self.nmi_countdown < 0 {
-                if edge_dot < ppu_dot_before_step {
-                    // Edge from mid-instruction PPU sync (register access or
-                    // BRK vector fetch). Fire after current instruction boundary.
-                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
-                        1
-                    } else {
-                        2
-                    };
-                } else {
-                    // Edge from the end-of-cycle 3-dot PPU step.
-                    self.nmi_countdown = if edge_dot <= self.irq_sample_deadline {
-                        0
-                    } else {
-                        1
-                    };
-                }
-            }
-        }
-        if self.should_trigger_nmi && self.nmi_countdown == 0 {
-            self.trigger_nmi();
-            self.nmi_countdown = -1;
         }
 
         if self.ppu.frames > self.last_rendered_frame {
@@ -877,7 +889,7 @@ impl Emulator {
                 self.rewind_capture_tick = !self.rewind_capture_tick;
                 if self.rewind_capture_tick {
                     let state = self.save_state_to_bytes();
-                    self.rewind_buffer.push(&state, &self.buf.data);
+                    self.rewind_buffer.push(&state);
                 }
             }
             if let Some(ms) = self.iohandler.frame_time_ms() {
@@ -917,6 +929,7 @@ impl Emulator {
             }
             if result.rewind && !self.rewind_buffer.is_empty() {
                 self.rewinding = true;
+                self.rewind_buffer.begin_rewind();
                 self.audio.clear();
             }
             self.overlay.set_fast_forward(result.fast_forward);
@@ -943,8 +956,6 @@ impl Emulator {
                 self.overlay.toast(msg);
             }
         }
-
-        self.cycles += 1;
 
         state
     }
