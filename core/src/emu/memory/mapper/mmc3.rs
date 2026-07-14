@@ -14,6 +14,7 @@ pub enum MMC3Variant {
     Standard, // Mapper 4
     TxSROM,   // Mapper 118: mirroring from CHR bank bit 7
     TQROM,    // Mapper 119: bit 6 selects CHR-RAM vs CHR-ROM
+    Mapper37, // NES-ZZ multicart: outer bank register at $6000-$7FFF windows PRG/CHR
 }
 
 pub struct MMC3Mapper {
@@ -31,6 +32,7 @@ pub struct MMC3Mapper {
     chr_bank_mode: u8,
     bank_select: u8,
     bank_regs: [u8; 8],
+    outer_bank: u8,
 
     // IRQ counter state
     irq_counter: u8,
@@ -151,6 +153,7 @@ impl MMC3Mapper {
             chr_bank_mode: 0,
             bank_select: 0,
             bank_regs: [0, 2, 4, 5, 6, 7, 0, 1],
+            outer_bank: 0,
             irq_counter: 0,
             irq_latch: 0,
             irq_enable: false,
@@ -166,9 +169,45 @@ impl MMC3Mapper {
         }
     }
 
+    // 8KB-bank (AND, OR) window applied to all MMC3 PRG outputs, per outer register
+    fn prg_window(&self) -> Option<(usize, usize)> {
+        match self.variant {
+            MMC3Variant::Mapper37 => Some(match self.outer_bank & 0x07 {
+                0..=2 => (0x07, 0x00),
+                3 => (0x07, 0x08),
+                4..=6 => (0x0F, 0x10),
+                _ => (0x07, 0x18),
+            }),
+            _ => None,
+        }
+    }
+
+    // 1KB-bank (AND, OR) window applied to all MMC3 CHR outputs
+    fn chr_window(&self) -> Option<(usize, usize)> {
+        match self.variant {
+            MMC3Variant::Mapper37 => Some(if self.outer_bank & 0x04 != 0 {
+                (0x7F, 0x80)
+            } else {
+                (0x7F, 0x00)
+            }),
+            _ => None,
+        }
+    }
+
     fn get_prg_bank(&self, register: usize) -> usize {
         let banks = self.prg_rom.len();
-        (self.bank_regs[register] as usize) % banks
+        let mut bank = self.bank_regs[register] as usize;
+        if let Some((and, or)) = self.prg_window() {
+            bank = (bank & and) | or;
+        }
+        bank % banks
+    }
+
+    fn fixed_prg_bank(&self, from_end: usize) -> usize {
+        match self.prg_window() {
+            Some((and, or)) => (or + (and + 1).saturating_sub(from_end)) % self.prg_rom.len(),
+            None => self.prg_rom.len().saturating_sub(from_end),
+        }
     }
 
     fn get_chr_bank(&self, register: usize) -> usize {
@@ -182,6 +221,10 @@ impl MMC3Mapper {
                 }
             }
             _ => {
+                let raw = match self.chr_window() {
+                    Some((and, or)) if !self.chr_is_ram => (raw & and) | or,
+                    _ => raw,
+                };
                 let chr = if self.chr_is_ram {
                     &self.chr_ram
                 } else {
@@ -211,7 +254,7 @@ impl MMC3Mapper {
                     self.get_prg_bank(6)
                 } else {
                     // Mode 1: Fixed second-to-last bank at $8000-$9FFF
-                    self.prg_rom.len().saturating_sub(2)
+                    self.fixed_prg_bank(2)
                 }
             }
             0xA000..=0xBFFF => {
@@ -221,11 +264,7 @@ impl MMC3Mapper {
             0xC000..=0xDFFF => {
                 if self.prg_bank_mode == 0 {
                     // Mode 0: Fixed second-to-last bank at $C000-$DFFF
-                    if self.prg_rom.len() >= 2 {
-                        self.prg_rom.len() - 2
-                    } else {
-                        0
-                    }
+                    self.fixed_prg_bank(2)
                 } else {
                     // Mode 1: R6 at $C000-$DFFF
                     self.get_prg_bank(6)
@@ -233,11 +272,7 @@ impl MMC3Mapper {
             }
             0xE000..=0xFFFF => {
                 // Always fixed to last bank
-                if !self.prg_rom.is_empty() {
-                    self.prg_rom.len() - 1
-                } else {
-                    0
-                }
+                self.fixed_prg_bank(1)
             }
             _ => return None,
         };
@@ -426,7 +461,14 @@ impl MemoryMapper for MMC3Mapper {
                     *self.cpu_ram.as_mut_ptr().offset(ram_addr as isize) = value;
                 }
             }
-            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = value,
+            0x6000..=0x7FFF => {
+                if self.variant == MMC3Variant::Mapper37 {
+                    // NES-ZZ: outer bank register instead of PRG RAM
+                    self.outer_bank = value & 0x07;
+                } else {
+                    self.prg_ram[(addr - 0x6000) as usize] = value;
+                }
+            }
             0x8000..=0x9FFF => {
                 if addr & 1 == 0 {
                     // Bank select
@@ -602,6 +644,7 @@ impl MemoryMapper for MMC3Mapper {
             MMC3Variant::Standard => 4,
             MMC3Variant::TxSROM => 118,
             MMC3Variant::TQROM => 119,
+            MMC3Variant::Mapper37 => 37,
         }
     }
     fn submapper_id(&self) -> u8 {
@@ -626,6 +669,9 @@ impl MemoryMapper for MMC3Mapper {
         w.write_u8(self.prg_bank_mode);
         w.write_u8(self.chr_bank_mode);
         w.write_u8(self.bank_select);
+        if self.variant == MMC3Variant::Mapper37 {
+            w.write_u8(self.outer_bank);
+        }
         for &reg in &self.bank_regs {
             w.write_u8(reg);
         }
@@ -653,6 +699,9 @@ impl MemoryMapper for MMC3Mapper {
         self.prg_bank_mode = r.read_u8()?;
         self.chr_bank_mode = r.read_u8()?;
         self.bank_select = r.read_u8()?;
+        if self.variant == MMC3Variant::Mapper37 {
+            self.outer_bank = r.read_u8()?;
+        }
         for reg in &mut self.bank_regs {
             *reg = r.read_u8()?;
         }
@@ -688,6 +737,74 @@ mod tests {
             0,
             0,
         )
+    }
+
+    fn test_mapper37() -> MMC3Mapper {
+        // 256KB PRG: each 8KB bank filled with its index; 256KB CHR: each 1KB bank likewise
+        let mut prg_banks = vec![[0u8; 16384]; 16];
+        for (i, bank) in prg_banks.iter_mut().enumerate() {
+            bank[..8192].fill((2 * i) as u8);
+            bank[8192..].fill((2 * i + 1) as u8);
+        }
+        let mut chr_banks = vec![[0u8; 8192]; 32];
+        for (i, bank) in chr_banks.iter_mut().enumerate() {
+            for k in 0..8 {
+                bank[k * 1024..(k + 1) * 1024].fill((8 * i + k) as u8);
+            }
+        }
+        MMC3Mapper::new_variant(
+            0,
+            prg_banks,
+            chr_banks,
+            false,
+            None,
+            0,
+            MMC3Variant::Mapper37,
+            0,
+        )
+    }
+
+    #[test]
+    fn test_mapper37_prg_windows() {
+        let mut mapper = test_mapper37();
+
+        // Power-on: outer bank 0, first 64KB window (8KB banks 0-7)
+        assert_eq!(mapper.cpu_read(0xE000), 7);
+        assert_eq!(mapper.cpu_read(0xC000), 6);
+        mapper.cpu_write(0x8000, 6);
+        mapper.cpu_write(0x8001, 0x3F);
+        assert_eq!(mapper.cpu_read(0x8000), 7);
+
+        // Outer bank 3: second 64KB window (banks 8-15)
+        mapper.cpu_write(0x6000, 3);
+        assert_eq!(mapper.cpu_read(0xE000), 15);
+        mapper.cpu_write(0x8001, 0);
+        assert_eq!(mapper.cpu_read(0x8000), 8);
+
+        // Outer bank 4: 128KB window (banks 16-31)
+        mapper.cpu_write(0x6000, 4);
+        assert_eq!(mapper.cpu_read(0xE000), 31);
+        mapper.cpu_write(0x8001, 2);
+        assert_eq!(mapper.cpu_read(0x8000), 18);
+
+        // Outer bank 7: last 64KB window (banks 24-31)
+        mapper.cpu_write(0x6000, 7);
+        assert_eq!(mapper.cpu_read(0xE000), 31);
+        mapper.cpu_write(0x8001, 0);
+        assert_eq!(mapper.cpu_read(0x8000), 24);
+    }
+
+    #[test]
+    fn test_mapper37_chr_windows() {
+        let mut mapper = test_mapper37();
+
+        mapper.cpu_write(0x8000, 2);
+        mapper.cpu_write(0x8001, 0x40);
+        assert_eq!(mapper.ppu_read(0x1000), 0x40);
+
+        // Outer bank bit 2 selects the upper 128KB CHR half
+        mapper.cpu_write(0x6000, 4);
+        assert_eq!(mapper.ppu_read(0x1000), 0xC0);
     }
 
     #[test]

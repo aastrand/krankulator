@@ -149,7 +149,7 @@ git config core.hooksPath .githooks
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC4, MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/152/180/184/185)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC4, MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/152/180/184/185)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, `audio_expansion_output()` for expansion audio mixing, `set_debug_capture()` and `expansion_audio_debug()` for debug panel waveforms
@@ -364,7 +364,7 @@ All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 test
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC2, MMC3, MMC4 (10), MMC5, TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/152/180/184/185)
+- NROM, MMC1, MMC2, MMC3, MMC4 (10), MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/152/180/184/185)
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo
@@ -379,6 +379,7 @@ All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 test
 - VRC2/VRC4 (mappers 21/22/23/25): unified implementation with address-line remapping variants, 9 sub-variants, 8KB PRG + 1KB CHR banking, VRC4 adds scanline/cycle IRQ and PRG swap mode
 - VRC6 (mappers 24/26): 16KB+8KB switchable PRG + 8×1KB CHR with configurable granularity (1KB/2KB/4KB via $B003); VRC4-style scanline/cycle IRQ; 3-channel expansion audio (2 pulse + 1 sawtooth) with frequency halt/scaling; mapper 26 swaps A0/A1; debug panel waveforms via `expansion_audio_debug()`
 - MMC4 (mapper 10): MMC2 variant with 16KB switchable PRG + 16KB fixed, 8KB battery-backed PRG RAM at $6000, range-based left-half CHR latch triggers ($0FD8-$0FDF / $0FE8-$0FEF)
+- NES-ZZ (mapper 37, SMB+Tetris+NWC multicart): MMC3 variant with outer bank register at $6000-$7FFF windowing PRG (64KB/128KB blocks) and CHR (128KB halves); MMC3 fixed banks resolve to last banks within the active PRG window
 - BandaiFcgMapper (16/159): two submappers — FCG (registers at $6000, direct IRQ) and LZ93D50 (registers at $8000, latched IRQ + I2C EEPROM 24C02 with full START/STOP/ACK state machine); 16KB PRG + 8x1KB CHR + 4-way mirroring
 - JalecoSs88006Mapper (18): 3 switchable 8KB PRG + 8 independent 1KB CHR via nibble-split writes ($x000/$x001 = low/high nibble per bank); CPU-cycle IRQ with configurable width mask (4/8/12/16-bit); PRG RAM with chip-enable and write-protect
 
