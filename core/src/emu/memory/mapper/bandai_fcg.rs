@@ -26,10 +26,13 @@ struct Eeprom24C02 {
     shift_reg: u8,
     word_addr: u8,
     output_bit: bool,
+    // X24C01 (mapper 159): 128 bytes, no device-address byte — the first
+    // byte after START is the word address (bits 7-1) plus R/W (bit 0)
+    x24c01: bool,
 }
 
 impl Eeprom24C02 {
-    fn new(data: Option<&[u8]>) -> Self {
+    fn new(data: Option<&[u8]>, x24c01: bool) -> Self {
         let mut eeprom_data = [0xFF; EEPROM_SIZE_24C02];
         if let Some(d) = data {
             let len = d.len().min(EEPROM_SIZE_24C02);
@@ -45,6 +48,15 @@ impl Eeprom24C02 {
             shift_reg: 0,
             word_addr: 0,
             output_bit: true,
+            x24c01,
+        }
+    }
+
+    fn addr_mask(&self) -> u8 {
+        if self.x24c01 {
+            0x7F
+        } else {
+            0xFF
         }
     }
 
@@ -104,7 +116,7 @@ impl Eeprom24C02 {
                         self.bit_count += 1;
                         if self.bit_count == 8 {
                             self.data[self.word_addr as usize] = self.shift_reg;
-                            self.word_addr = self.word_addr.wrapping_add(1);
+                            self.word_addr = self.word_addr.wrapping_add(1) & self.addr_mask();
                             self.output_bit = false; // ACK
                         }
                     } else {
@@ -129,8 +141,15 @@ impl Eeprom24C02 {
                 EepromState::DeviceAddr => {
                     let rw = self.shift_reg & 1;
                     self.bit_count = 0;
+                    if self.x24c01 {
+                        self.word_addr = (self.shift_reg >> 1) & self.addr_mask();
+                    }
                     if rw == 0 {
-                        self.state = EepromState::WordAddr;
+                        self.state = if self.x24c01 {
+                            EepromState::WriteData
+                        } else {
+                            EepromState::WordAddr
+                        };
                         self.shift_reg = 0;
                         self.output_bit = true;
                     } else {
@@ -150,7 +169,7 @@ impl Eeprom24C02 {
                     self.output_bit = true;
                 }
                 EepromState::ReadData => {
-                    self.word_addr = self.word_addr.wrapping_add(1);
+                    self.word_addr = self.word_addr.wrapping_add(1) & self.addr_mask();
                     self.bit_count = 0;
                     self.output_bit = (self.data[self.word_addr as usize] >> 7) & 1 != 0;
                 }
@@ -187,6 +206,7 @@ pub struct BandaiFcgMapper {
     irq_enabled: bool,
     irq_pending: bool,
     submapper: Submapper,
+    is_mapper159: bool,
 
     eeprom: Option<Eeprom24C02>,
 
@@ -229,7 +249,7 @@ impl BandaiFcgMapper {
         };
 
         let eeprom = if variant == Submapper::Lz93d50 {
-            Some(Eeprom24C02::new(sram_data.as_deref()))
+            Some(Eeprom24C02::new(sram_data.as_deref(), false))
         } else {
             None
         };
@@ -247,12 +267,25 @@ impl BandaiFcgMapper {
             irq_enabled: false,
             irq_pending: false,
             submapper: variant,
+            is_mapper159: false,
             eeprom,
             _vram: vram,
             vram_ptr,
             palette_ram: [0x0F; PALETTE_SIZE],
             controllers: [controller::Controller::new(), controller::Controller::new()],
         }
+    }
+
+    pub fn new_mapper159(
+        flags: u8,
+        prg_banks_16k: Vec<[u8; PRG_BANK_SIZE]>,
+        chr_banks_8k: Vec<[u8; io::loader::CHR_BANK_SIZE]>,
+        sram_data: Option<Vec<u8>>,
+    ) -> Self {
+        let mut mapper = Self::new(flags, prg_banks_16k, chr_banks_8k, 5, None);
+        mapper.is_mapper159 = true;
+        mapper.eeprom = Some(Eeprom24C02::new(sram_data.as_deref(), true));
+        mapper
     }
 
     fn chr_bank(&self, idx: usize) -> usize {
@@ -494,10 +527,17 @@ impl MemoryMapper for BandaiFcgMapper {
     }
 
     fn mapper_id(&self) -> u8 {
-        16
+        if self.is_mapper159 {
+            159
+        } else {
+            16
+        }
     }
 
     fn submapper_id(&self) -> u8 {
+        if self.is_mapper159 {
+            return 0;
+        }
         match self.submapper {
             Submapper::Fcg => 4,
             Submapper::Lz93d50 => 5,
@@ -717,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_eeprom_write_and_read() {
-        let mut eeprom = Eeprom24C02::new(None);
+        let mut eeprom = Eeprom24C02::new(None, false);
 
         // Helper to clock a bit
         fn clock_bit(eeprom: &mut Eeprom24C02, bit: bool) {
@@ -756,8 +796,67 @@ mod tests {
     }
 
     #[test]
+    fn test_x24c01_write_and_read() {
+        let mut eeprom = Eeprom24C02::new(None, true);
+
+        fn clock_bit(eeprom: &mut Eeprom24C02, bit: bool) {
+            eeprom.write(bit, false);
+            eeprom.write(bit, true);
+            eeprom.write(bit, false);
+        }
+
+        fn start(eeprom: &mut Eeprom24C02) {
+            eeprom.write(true, true);
+            eeprom.write(false, true);
+            eeprom.write(false, false);
+        }
+
+        fn stop(eeprom: &mut Eeprom24C02) {
+            eeprom.write(false, true);
+            eeprom.write(true, true);
+        }
+
+        fn clock_byte(eeprom: &mut Eeprom24C02, byte: u8) {
+            for i in (0..8).rev() {
+                clock_bit(eeprom, (byte >> i) & 1 != 0);
+            }
+            clock_bit(eeprom, true); // ACK cycle
+        }
+
+        // X24C01: first byte is word address (bits 7-1) + R/W (bit 0)
+        // Write 0x42 to address 0x05
+        start(&mut eeprom);
+        clock_byte(&mut eeprom, 0x05 << 1);
+        clock_byte(&mut eeprom, 0x42);
+        stop(&mut eeprom);
+        assert_eq!(eeprom.data[0x05], 0x42);
+
+        // Read it back: address byte with R/W=1, then clock out 8 bits
+        start(&mut eeprom);
+        clock_byte(&mut eeprom, (0x05 << 1) | 1);
+        let mut read_back = 0u8;
+        for _ in 0..8 {
+            eeprom.write(true, false);
+            eeprom.write(true, true);
+            read_back = (read_back << 1) | (eeprom.read_bit() as u8);
+            eeprom.write(true, false);
+        }
+        stop(&mut eeprom);
+        assert_eq!(read_back, 0x42);
+
+        // Word address wraps at 128 bytes
+        start(&mut eeprom);
+        clock_byte(&mut eeprom, 0x7F << 1);
+        clock_byte(&mut eeprom, 0x11); // addr 0x7F, then wraps to 0x00
+        clock_byte(&mut eeprom, 0x22);
+        stop(&mut eeprom);
+        assert_eq!(eeprom.data[0x7F], 0x11);
+        assert_eq!(eeprom.data[0x00], 0x22);
+    }
+
+    #[test]
     fn test_eeprom_ack_visible_during_9th_clock() {
-        let mut eeprom = Eeprom24C02::new(None);
+        let mut eeprom = Eeprom24C02::new(None, false);
 
         fn start(eeprom: &mut Eeprom24C02) {
             eeprom.write(true, true);

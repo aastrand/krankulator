@@ -10,8 +10,14 @@ const PRG_ROM_ADDR: usize = 0x8000;
 
 #[derive(Copy, Clone, PartialEq)]
 enum Type {
+    M70,
     M78,
+    M86,
     M87,
+    M89,
+    M93,
+    M94,
+    M97,
     M152,
     M184,
     M185,
@@ -70,12 +76,20 @@ impl SimpleMapper {
                         .copy_from_slice(&prg_banks_16k[last]);
                 }
             }
-            Type::M78 | Type::M152 => {
+            Type::M78 | Type::M152 | Type::M70 | Type::M89 | Type::M93 | Type::M94 => {
                 if !prg_banks_16k.is_empty() {
                     mem[PRG_ROM_ADDR..PRG_ROM_ADDR + PRG_16K].copy_from_slice(&prg_banks_16k[0]);
                     let last = prg_banks_16k.len() - 1;
                     mem[PRG_ROM_ADDR + PRG_16K..PRG_ROM_ADDR + PRG_32K]
                         .copy_from_slice(&prg_banks_16k[last]);
+                }
+            }
+            Type::M97 => {
+                if !prg_banks_16k.is_empty() {
+                    let last = prg_banks_16k.len() - 1;
+                    mem[PRG_ROM_ADDR..PRG_ROM_ADDR + PRG_16K].copy_from_slice(&prg_banks_16k[last]);
+                    mem[PRG_ROM_ADDR + PRG_16K..PRG_ROM_ADDR + PRG_32K]
+                        .copy_from_slice(&prg_banks_16k[0]);
                 }
             }
             _ => {
@@ -110,7 +124,7 @@ impl SimpleMapper {
             selected_prg: 0,
             selected_chr: 0,
             selected_chr_hi: 1,
-            chr_enabled: mapper_type != Type::M185,
+            chr_enabled: mapper_type != Type::M185 && mapper_type != Type::M93,
             submapper: 0,
             ppu,
             controllers: [controller::Controller::new(), controller::Controller::new()],
@@ -150,6 +164,30 @@ impl SimpleMapper {
 
     pub fn mapper152(prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
         Self::new_inner(Type::M152, prg, chr, NametableMirror::Lower)
+    }
+
+    pub fn mapper70(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M70, prg, chr, mirroring_from_flags(flags))
+    }
+
+    pub fn mapper86(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M86, prg, chr, mirroring_from_flags(flags))
+    }
+
+    pub fn mapper89(prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M89, prg, chr, NametableMirror::Lower)
+    }
+
+    pub fn mapper93(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M93, prg, chr, mirroring_from_flags(flags))
+    }
+
+    pub fn mapper94(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M94, prg, chr, mirroring_from_flags(flags))
+    }
+
+    pub fn mapper97(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
+        Self::new_inner(Type::M97, prg, chr, mirroring_from_flags(flags))
     }
 
     pub fn mapper184(flags: u8, prg: Vec<[u8; PRG_16K]>, chr: Vec<[u8; CHR_8K]>) -> Self {
@@ -288,6 +326,75 @@ impl MemoryMapper for SimpleMapper {
                 }
                 _ => {}
             },
+            Type::M70 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    let value = self.bus_conflict(addr, value);
+                    if !self.chr_banks_8k.is_empty() {
+                        self.switch_chr_8k((value & 0x0F) as usize);
+                    }
+                    self.switch_prg_16k_low(((value >> 4) & 0x0F) as usize);
+                }
+                _ => {}
+            },
+            Type::M86 => match page {
+                0x0 | 0x10 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x60 => {
+                    self.switch_prg_32k(((value >> 4) & 0x03) as usize);
+                    if !self.chr_banks_8k.is_empty() {
+                        let chr = (((value >> 6) & 0x01) << 2) | (value & 0x03);
+                        self.switch_chr_8k(chr as usize);
+                    }
+                }
+                _ => {}
+            },
+            Type::M89 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    let value = self.bus_conflict(addr, value);
+                    self.ppu.mirroring = if value & 0x08 != 0 {
+                        NametableMirror::Higher
+                    } else {
+                        NametableMirror::Lower
+                    };
+                    self.switch_prg_16k_low(((value >> 4) & 0x07) as usize);
+                    if !self.chr_banks_8k.is_empty() {
+                        let chr = (value & 0x07) | ((value >> 4) & 0x08);
+                        self.switch_chr_8k(chr as usize);
+                    }
+                }
+                _ => {}
+            },
+            Type::M93 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    let value = self.bus_conflict(addr, value);
+                    self.switch_prg_16k_low(((value >> 4) & 0x07) as usize);
+                    self.chr_enabled = value & 0x01 != 0;
+                }
+                _ => {}
+            },
+            Type::M94 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    let value = self.bus_conflict(addr, value);
+                    self.switch_prg_16k_low(((value >> 2) & 0x07) as usize);
+                }
+                _ => {}
+            },
+            Type::M97 => match page {
+                0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
+                0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
+                    self.ppu.mirroring = match (value >> 6) & 0x03 {
+                        0 => NametableMirror::Lower,
+                        1 => NametableMirror::Horizontal,
+                        2 => NametableMirror::Vertical,
+                        _ => NametableMirror::Higher,
+                    };
+                    self.switch_prg_16k_high((value & 0x0F) as usize);
+                }
+                _ => {}
+            },
             Type::M152 => match page {
                 0x0 | 0x10 | 0x60 => unsafe { *self.addr_space_ptr.offset(addr as isize) = value },
                 0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0 | 0xf0 => {
@@ -353,6 +460,9 @@ impl MemoryMapper for SimpleMapper {
     }
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
+        if self.mapper_type == Type::M93 && !self.chr_enabled && addr < 0x2000 {
+            return;
+        }
         self.ppu.write(addr, value);
     }
 
@@ -371,8 +481,14 @@ impl MemoryMapper for SimpleMapper {
 
     fn mapper_id(&self) -> u8 {
         match self.mapper_type {
+            Type::M70 => 70,
             Type::M78 => 78,
+            Type::M86 => 86,
             Type::M87 => 87,
+            Type::M89 => 89,
+            Type::M93 => 93,
+            Type::M94 => 94,
+            Type::M97 => 97,
             Type::M140 => 140,
             Type::M152 => 152,
             Type::M180 => 180,
@@ -502,6 +618,122 @@ mod tests {
         // Actually mapper 184 hi bank adds 4, so value $01 => lo=1, hi=4
         m.cpu_write(0x6000, 0x01);
         assert_eq!(m.ppu_read(0x0000), 0x22); // 4K bank 1
+    }
+
+    fn numbered_prg(n: usize) -> Vec<[u8; PRG_16K]> {
+        let mut banks = Vec::new();
+        for i in 0..n {
+            let mut bank = [0xFFu8; PRG_16K];
+            bank[0] = i as u8;
+            banks.push(bank);
+        }
+        banks
+    }
+
+    fn numbered_chr(n: usize) -> Vec<[u8; CHR_8K]> {
+        (0..n).map(|i| [(i * 0x11) as u8; CHR_8K]).collect()
+    }
+
+    #[test]
+    fn test_mapper70_prg_chr() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper70(0, numbered_prg(8), numbered_chr(4)));
+
+        assert_eq!(m.cpu_read(0x8000), 0);
+        assert_eq!(m.cpu_read(0xC000), 7);
+        m.cpu_write(0x8001, 0x23); // PRG 2, CHR 3 (ROM=0xFF at $8001)
+        assert_eq!(m.cpu_read(0x8000), 2);
+        assert_eq!(m.cpu_read(0xC000), 7);
+        assert_eq!(m.ppu_read(0x0000), 0x33);
+    }
+
+    #[test]
+    fn test_mapper86_prg_chr_split_field() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper86(0, numbered_prg(8), numbered_chr(8)));
+
+        // CHR bank = bit 6 << 2 | bits 1-0; PRG 32KB = bits 5-4 ($6000, no conflicts)
+        m.cpu_write(0x6000, 0x45); // CHR = 4|1 = 5, PRG 32KB bank 0
+        assert_eq!(m.ppu_read(0x0000), 0x55);
+        m.cpu_write(0x6000, 0x10); // PRG 32KB bank 1
+        assert_eq!(m.cpu_read(0x8000), 2);
+    }
+
+    #[test]
+    fn test_mapper89_chr_bit7_and_mirroring() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper89(numbered_prg(8), numbered_chr(16)));
+
+        // [CPPP MCCC]: bit7 = CHR bit 3, bits 6-4 PRG, bit 3 one-screen select
+        m.cpu_write(0x8001, 0x25); // PRG 2, CHR 5, 1ScA
+        assert_eq!(m.cpu_read(0x8000), 2);
+        assert_eq!(m.ppu_read(0x0000), 0x55);
+
+        m.cpu_write(0x8001, 0x81); // CHR 9 (bit7 set)
+        assert_eq!(m.ppu_read(0x0000), 0x99);
+
+        // One-screen select
+        m.cpu_write(0x8001, 0x00);
+        m.ppu_write(0x2000, 0x11);
+        m.cpu_write(0x8001, 0x08);
+        m.ppu_write(0x2000, 0x22);
+        assert_eq!(m.ppu_read(0x2C00), 0x22);
+        m.cpu_write(0x8001, 0x00);
+        assert_eq!(m.ppu_read(0x2C00), 0x11);
+    }
+
+    #[test]
+    fn test_mapper93_prg_and_chr_ram_enable() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper93(0, numbered_prg(8), vec![]));
+
+        // CHR-RAM starts disabled: writes dropped, reads open bus
+        m.ppu_write(0x0000, 0x42);
+        assert_eq!(m.ppu_read(0x0000), 0xFF);
+
+        m.cpu_write(0x8001, 0x31); // PRG 3, CHR-RAM enabled
+        assert_eq!(m.cpu_read(0x8000), 3);
+        assert_eq!(m.cpu_read(0xC000), 7);
+        m.ppu_write(0x0000, 0x42);
+        assert_eq!(m.ppu_read(0x0000), 0x42);
+
+        m.cpu_write(0x8001, 0x30); // disable again
+        m.ppu_write(0x0000, 0x99);
+        assert_eq!(m.ppu_read(0x0000), 0xFF);
+        m.cpu_write(0x8001, 0x31);
+        assert_eq!(m.ppu_read(0x0000), 0x42);
+    }
+
+    #[test]
+    fn test_mapper94_shifted_prg() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper94(0, numbered_prg(8), vec![]));
+
+        assert_eq!(m.cpu_read(0x8000), 0);
+        m.cpu_write(0x8001, 3 << 2);
+        assert_eq!(m.cpu_read(0x8000), 3);
+        assert_eq!(m.cpu_read(0xC000), 7);
+    }
+
+    #[test]
+    fn test_mapper97_fixed_8000_switch_c000() {
+        let mut m: Box<dyn MemoryMapper> =
+            Box::new(SimpleMapper::mapper97(0, numbered_prg(8), vec![]));
+
+        // Power-on: last bank at $8000, bank 0 at $C000
+        assert_eq!(m.cpu_read(0x8000), 7);
+        assert_eq!(m.cpu_read(0xC000), 0);
+
+        m.cpu_write(0xC000, 0x03); // register decoded across $8000-$FFFF
+        assert_eq!(m.cpu_read(0xC000), 3);
+        assert_eq!(m.cpu_read(0x8000), 7);
+
+        // Mirroring bits 7-6: %01 horizontal, %10 vertical
+        m.cpu_write(0x8000, 0x40);
+        m.ppu_write(0x2000, 0x11);
+        assert_eq!(m.ppu_read(0x2400), 0x11);
+        m.cpu_write(0x8000, 0x80);
+        assert_eq!(m.ppu_read(0x2800), 0x11);
     }
 
     #[test]

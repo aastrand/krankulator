@@ -314,8 +314,12 @@ fn load_nes_from_bytes_inner(
             combine_prg_banks_32k(&prg_banks),
             chr_banks,
         )),
+        13 => Box::new(mapper::cprom::CpromMapper::new(flags, prg_banks)),
         16 => Box::new(mapper::bandai_fcg::BandaiFcgMapper::new(
             flags, prg_banks, chr_banks, submapper, sram_data,
+        )),
+        32 => Box::new(mapper::irem_g101::IremG101Mapper::new(
+            flags, prg_banks, chr_banks, submapper,
         )),
         18 => Box::new(mapper::jaleco_ss88006::JalecoSS88006Mapper::new(
             flags,
@@ -400,7 +404,34 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        70 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper70(
+                flags, prg_banks, chr,
+            ))
+        }
         71 => Box::new(mapper::camerica::CamericaMapper::new(flags, prg_banks)),
+        72 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::jaleco_jf::JalecoJfMapper::new(
+                flags, prg_banks, chr, false,
+            ))
+        }
+        76 => Box::new(mapper::namco108::Namco108Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            mapper::namco108::Namco108Variant::M76,
+        )),
+        77 => Box::new(mapper::mapper77::Mapper77::new(flags, prg_banks, chr_banks)),
         73 => {
             let chr = if num_chr_blocks > 0 {
                 chr_banks
@@ -416,9 +447,76 @@ fn load_nes_from_bytes_inner(
         87 => Box::new(mapper::simple::SimpleMapper::mapper87(
             flags, prg_banks, chr_banks,
         )),
+        86 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper86(
+                flags, prg_banks, chr,
+            ))
+        }
         88 => Box::new(mapper::namco108::Namco108Mapper::new(
-            flags, prg_banks, chr_banks, true,
+            flags,
+            prg_banks,
+            chr_banks,
+            mapper::namco108::Namco108Variant::M88,
         )),
+        89 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper89(prg_banks, chr))
+        }
+        92 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::jaleco_jf::JalecoJfMapper::new(
+                flags, prg_banks, chr, true,
+            ))
+        }
+        93 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper93(
+                flags, prg_banks, chr,
+            ))
+        }
+        94 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper94(
+                flags, prg_banks, chr,
+            ))
+        }
+        95 => Box::new(mapper::namco108::Namco108Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            mapper::namco108::Namco108Variant::M95,
+        )),
+        97 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::simple::SimpleMapper::mapper97(
+                flags, prg_banks, chr,
+            ))
+        }
         105 => Box::new(mapper::nes_event::NesEventMapper::new(flags, prg_banks)),
         118 => {
             let (mmc3_chr, mmc3_chr_ram_banks) = if num_chr_blocks > 0 {
@@ -460,6 +558,22 @@ fn load_nes_from_bytes_inner(
         152 => Box::new(mapper::simple::SimpleMapper::mapper152(
             prg_banks, chr_banks,
         )),
+        154 => Box::new(mapper::namco108::Namco108Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            mapper::namco108::Namco108Variant::M154,
+        )),
+        155 => Box::new(mapper::mmc1::MMC1Mapper::new_mmc1a(
+            flags,
+            prg_banks,
+            chr_banks,
+            has_battery,
+            sram_data,
+        )),
+        159 => Box::new(mapper::bandai_fcg::BandaiFcgMapper::new_mapper159(
+            flags, prg_banks, chr_banks, sram_data,
+        )),
         180 => {
             let chr = if num_chr_blocks > 0 {
                 chr_banks
@@ -477,7 +591,10 @@ fn load_nes_from_bytes_inner(
             flags, prg_banks, chr_banks, submapper,
         )),
         206 => Box::new(mapper::namco108::Namco108Mapper::new(
-            flags, prg_banks, chr_banks, false,
+            flags,
+            prg_banks,
+            chr_banks,
+            mapper::namco108::Namco108Variant::M206,
         )),
         210 => Box::new(mapper::namco175_340::Namco175_340Mapper::new(
             flags, prg_banks, chr_banks, submapper,

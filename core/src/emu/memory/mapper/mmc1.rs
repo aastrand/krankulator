@@ -45,6 +45,7 @@ pub struct MMC1Mapper {
 
     pub controllers: [controller::Controller; 2],
     palette_ram: [u8; PALETTE_SIZE],
+    is_mmc1a: bool,
 }
 
 impl MMC1Mapper {
@@ -120,6 +121,7 @@ impl MMC1Mapper {
 
             controllers: [controller::Controller::new(), controller::Controller::new()],
             palette_ram: [0; PALETTE_SIZE],
+            is_mmc1a: false,
         };
 
         mapper.high_bank_idx = mapper.banks.len() - 1;
@@ -130,6 +132,18 @@ impl MMC1Mapper {
         // Ensure shift register and write count are initialized
         mapper.reg_write_shift_register = SR_INITIAL_VALUE;
         mapper.reg_write_count = 0;
+        mapper
+    }
+
+    pub fn new_mmc1a(
+        flags: u8,
+        prg_banks: Vec<[u8; BANK_SIZE]>,
+        chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]>,
+        has_battery: bool,
+        sram_data: Option<Vec<u8>>,
+    ) -> MMC1Mapper {
+        let mut mapper = Self::new(flags, prg_banks, chr_banks, has_battery, sram_data);
+        mapper.is_mmc1a = true;
         mapper
     }
 
@@ -199,8 +213,8 @@ impl MMC1Mapper {
             }
             _ => {}
         }
-        // RAM enable (bit 4 of reg3)
-        self.mmc_ram_enabled = (self.reg3 & 0b10000) == 0;
+        // RAM enable (bit 4 of reg3); MMC1A has no RAM disable
+        self.mmc_ram_enabled = self.is_mmc1a || (self.reg3 & 0b10000) == 0;
     }
 
     fn _read_bus(&mut self, addr: u16) -> u8 {
@@ -423,7 +437,11 @@ impl MemoryMapper for MMC1Mapper {
     }
 
     fn mapper_id(&self) -> u8 {
-        1
+        if self.is_mmc1a {
+            155
+        } else {
+            1
+        }
     }
 
     fn save_state(&self, w: &mut SavestateWriter) {
@@ -502,6 +520,31 @@ mod tests {
             Box::new(MMC1Mapper::new(0, prg_banks, chr_banks, false, None));
 
         assert_eq!(mapper.code_start(), 0x4711);
+    }
+
+    fn serial_write(mapper: &mut MMC1Mapper, addr: u16, value: u8) {
+        for i in 0..5 {
+            mapper._write_bus(addr, (value >> i) & 1);
+        }
+    }
+
+    #[test]
+    fn test_mmc1a_ignores_ram_disable() {
+        let prg_banks: Vec<[u8; BANK_SIZE]> = vec![[0; BANK_SIZE]; 16];
+        let chr_banks: Vec<[u8; io::loader::CHR_BANK_SIZE as _]> =
+            vec![[0; io::loader::CHR_BANK_SIZE as _]; 2];
+
+        let mut mmc1b = MMC1Mapper::new(0, prg_banks.clone(), chr_banks.clone(), false, None);
+        serial_write(&mut mmc1b, 0xE000, 0x10);
+        mmc1b._write_bus(0x6000, 0x55);
+        assert_eq!(mmc1b._read_bus(0x6000), 0);
+        assert_eq!(mmc1b.mapper_id(), 1);
+
+        let mut mmc1a = MMC1Mapper::new_mmc1a(0, prg_banks, chr_banks, false, None);
+        serial_write(&mut mmc1a, 0xE000, 0x10);
+        mmc1a._write_bus(0x6000, 0x55);
+        assert_eq!(mmc1a._read_bus(0x6000), 0x55);
+        assert_eq!(mmc1a.mapper_id(), 155);
     }
 
     #[test]

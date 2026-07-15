@@ -11,6 +11,15 @@ const CHR_BANK_SIZE: usize = 0x0400; // 1KB
 
 const FOUR_SCREEN_VRAM_SIZE: usize = 0x1000; // 4KB
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum Namco108Variant {
+    M206,
+    M88,
+    M76,
+    M95,
+    M154,
+}
+
 pub struct Namco108Mapper {
     controllers: [io::controller::Controller; 2],
 
@@ -21,7 +30,7 @@ pub struct Namco108Mapper {
     chr_banks: [u8; 6],
     prg_banks: [u8; 2],
     mirroring: NametableMirror,
-    is_mapper88: bool,
+    variant: Namco108Variant,
     four_screen: bool,
 
     vram: Vec<u8>,
@@ -34,7 +43,7 @@ impl Namco108Mapper {
         flags: u8,
         prg_banks_16k: Vec<[u8; 16384]>,
         chr_banks_8k: Vec<[u8; 8192]>,
-        is_mapper88: bool,
+        variant: Namco108Variant,
     ) -> Self {
         let mut prg_rom = vec![];
         for bank in &prg_banks_16k {
@@ -77,14 +86,14 @@ impl Namco108Mapper {
             prg_rom,
             chr_rom,
             bank_select: 0,
-            chr_banks: if is_mapper88 {
-                [0, 2, 0x44, 0x45, 0x46, 0x47]
-            } else {
-                [0, 2, 4, 5, 6, 7]
+            chr_banks: match variant {
+                Namco108Variant::M88 | Namco108Variant::M154 => [0, 2, 0x44, 0x45, 0x46, 0x47],
+                Namco108Variant::M76 => [0, 0, 0, 1, 2, 3],
+                _ => [0, 2, 4, 5, 6, 7],
             },
             prg_banks: [0, 1],
             mirroring,
-            is_mapper88,
+            variant,
             four_screen,
             vram: vec![0; vram_size],
             cpu_ram: Box::new([0; CPU_RAM_SIZE as usize]),
@@ -92,16 +101,44 @@ impl Namco108Mapper {
         }
     }
 
-    fn chr_bank_index(&self, slot: usize) -> usize {
-        self.chr_banks[slot] as usize % self.chr_rom.len().max(1)
+    fn chr_1k_index(&self, addr: u16) -> usize {
+        let slot_1k = (addr as usize >> 10) & 7;
+        let idx = if self.variant == Namco108Variant::M76 {
+            // NAMCOT-3446: regs 2-5 select 2KB banks at $0000/$0800/$1000/$1800
+            let reg = self.chr_banks[2 + (slot_1k >> 1)] as usize;
+            reg * 2 + (slot_1k & 1)
+        } else {
+            match slot_1k {
+                0 => self.chr_banks[0] as usize,
+                1 => self.chr_banks[0] as usize + 1,
+                2 => self.chr_banks[1] as usize,
+                3 => self.chr_banks[1] as usize + 1,
+                s => self.chr_banks[s - 2] as usize,
+            }
+        };
+        idx % self.chr_rom.len().max(1)
     }
 
     fn nt_addr(&self, addr: u16) -> usize {
         if self.four_screen {
             (addr & 0xFFF) as usize
+        } else if self.variant == Namco108Variant::M95 {
+            // NAMCOT-3425: CIRAM A10 is driven by CHR A15, i.e. bit 5 of the
+            // 2KB CHR register covering the mirrored nametable range
+            let reg = if addr & 0x0800 == 0 {
+                self.chr_banks[0]
+            } else {
+                self.chr_banks[1]
+            };
+            let page = ((reg >> 5) & 1) as usize;
+            page << 10 | (addr & 0x03FF) as usize
         } else {
             mirror_nametable_addr(addr, self.mirroring) as usize & 0x7FF
         }
+    }
+
+    fn is_mapper88_chr(&self) -> bool {
+        matches!(self.variant, Namco108Variant::M88 | Namco108Variant::M154)
     }
 }
 
@@ -173,12 +210,24 @@ impl MemoryMapper for Namco108Mapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x8000..=0x9FFF => {
+            0x8000..=0xFFFF => {
+                // NAMCOT-3453: one-screen select decoded across the whole range
+                if self.variant == Namco108Variant::M154 {
+                    self.mirroring = if value & 0x40 != 0 {
+                        NametableMirror::Higher
+                    } else {
+                        NametableMirror::Lower
+                    };
+                }
+                if addr > 0x9FFF {
+                    return;
+                }
                 if addr & 1 == 0 {
                     self.bank_select = value & 0x07;
                 } else {
                     let reg = self.bank_select as usize;
-                    let v = if self.is_mapper88 {
+                    let is_m88 = self.is_mapper88_chr();
+                    let v = if is_m88 {
                         if reg < 2 {
                             value & 0x3F
                         } else {
@@ -188,12 +237,12 @@ impl MemoryMapper for Namco108Mapper {
                         value
                     };
                     match reg {
-                        0 => self.chr_banks[0] = if self.is_mapper88 { v & 0xFE } else { v & 0x3E },
-                        1 => self.chr_banks[1] = if self.is_mapper88 { v & 0xFE } else { v & 0x3E },
-                        2 => self.chr_banks[2] = if self.is_mapper88 { v } else { v & 0x3F },
-                        3 => self.chr_banks[3] = if self.is_mapper88 { v } else { v & 0x3F },
-                        4 => self.chr_banks[4] = if self.is_mapper88 { v } else { v & 0x3F },
-                        5 => self.chr_banks[5] = if self.is_mapper88 { v } else { v & 0x3F },
+                        0 => self.chr_banks[0] = if is_m88 { v & 0xFE } else { v & 0x3E },
+                        1 => self.chr_banks[1] = if is_m88 { v & 0xFE } else { v & 0x3E },
+                        2 => self.chr_banks[2] = if is_m88 { v } else { v & 0x3F },
+                        3 => self.chr_banks[3] = if is_m88 { v } else { v & 0x3F },
+                        4 => self.chr_banks[4] = if is_m88 { v } else { v & 0x3F },
+                        5 => self.chr_banks[5] = if is_m88 { v } else { v & 0x3F },
                         6 => self.prg_banks[0] = value & 0x0F,
                         7 => self.prg_banks[1] = value & 0x0F,
                         _ => {}
@@ -206,43 +255,10 @@ impl MemoryMapper for Namco108Mapper {
 
     fn ppu_read(&self, addr: u16) -> u8 {
         match addr {
-            0x0000..=0x07FF => {
-                let bank = self.chr_bank_index(0);
-                let sub_bank = if addr < 0x0400 { bank } else { bank + 1 };
-                let idx = sub_bank % self.chr_rom.len().max(1);
+            0x0000..=0x1FFF => {
+                let idx = self.chr_1k_index(addr);
                 self.chr_rom
                     .get(idx)
-                    .map_or(0, |b| b[addr as usize & 0x3FF])
-            }
-            0x0800..=0x0FFF => {
-                let bank = self.chr_bank_index(1);
-                let within_2k = addr as usize & 0x3FF;
-                let sub_bank = if addr < 0x0C00 { bank } else { bank + 1 };
-                let idx = sub_bank % self.chr_rom.len().max(1);
-                self.chr_rom.get(idx).map_or(0, |b| b[within_2k])
-            }
-            0x1000..=0x13FF => {
-                let bank = self.chr_bank_index(2);
-                self.chr_rom
-                    .get(bank)
-                    .map_or(0, |b| b[addr as usize & 0x3FF])
-            }
-            0x1400..=0x17FF => {
-                let bank = self.chr_bank_index(3);
-                self.chr_rom
-                    .get(bank)
-                    .map_or(0, |b| b[addr as usize & 0x3FF])
-            }
-            0x1800..=0x1BFF => {
-                let bank = self.chr_bank_index(4);
-                self.chr_rom
-                    .get(bank)
-                    .map_or(0, |b| b[addr as usize & 0x3FF])
-            }
-            0x1C00..=0x1FFF => {
-                let bank = self.chr_bank_index(5);
-                self.chr_rom
-                    .get(bank)
                     .map_or(0, |b| b[addr as usize & 0x3FF])
             }
             0x2000..=0x3EFF => self.vram[self.nt_addr(addr)],
@@ -260,18 +276,7 @@ impl MemoryMapper for Namco108Mapper {
     unsafe fn ppu_copy(&self, addr: u16, dest: *mut u8, size: usize) {
         match addr {
             0x0000..=0x1FFF => {
-                let slot = (addr as usize) >> 10;
-                let bank_idx = match slot {
-                    0 => self.chr_bank_index(0),
-                    1 => (self.chr_bank_index(0) + 1) % self.chr_rom.len().max(1),
-                    2 => self.chr_bank_index(1),
-                    3 => (self.chr_bank_index(1) + 1) % self.chr_rom.len().max(1),
-                    4 => self.chr_bank_index(2),
-                    5 => self.chr_bank_index(3),
-                    6 => self.chr_bank_index(4),
-                    7 => self.chr_bank_index(5),
-                    _ => 0,
-                };
+                let bank_idx = self.chr_1k_index(addr);
                 if let Some(b) = self.chr_rom.get(bank_idx) {
                     let offset = addr as usize & 0x3FF;
                     let copy_size = size.min(CHR_BANK_SIZE - offset);
@@ -320,10 +325,12 @@ impl MemoryMapper for Namco108Mapper {
     }
 
     fn mapper_id(&self) -> u8 {
-        if self.is_mapper88 {
-            88
-        } else {
-            206
+        match self.variant {
+            Namco108Variant::M206 => 206,
+            Namco108Variant::M88 => 88,
+            Namco108Variant::M76 => 76,
+            Namco108Variant::M95 => 95,
+            Namco108Variant::M154 => 154,
         }
     }
 
@@ -363,10 +370,10 @@ impl MemoryMapper for Namco108Mapper {
 mod tests {
     use super::*;
 
-    fn make_mapper(
+    fn make_variant(
         num_prg_16k: usize,
         num_chr_8k: usize,
-        is_mapper88: bool,
+        variant: Namco108Variant,
     ) -> Box<dyn MemoryMapper> {
         let mut prg = Vec::new();
         for i in 0..num_prg_16k {
@@ -385,7 +392,23 @@ mod tests {
             chr.push(bank);
         }
 
-        Box::new(Namco108Mapper::new(0, prg, chr, is_mapper88))
+        Box::new(Namco108Mapper::new(0, prg, chr, variant))
+    }
+
+    fn make_mapper(
+        num_prg_16k: usize,
+        num_chr_8k: usize,
+        is_mapper88: bool,
+    ) -> Box<dyn MemoryMapper> {
+        make_variant(
+            num_prg_16k,
+            num_chr_8k,
+            if is_mapper88 {
+                Namco108Variant::M88
+            } else {
+                Namco108Variant::M206
+            },
+        )
     }
 
     #[test]
@@ -432,6 +455,70 @@ mod tests {
         m.cpu_write(0x8001, 2); // becomes 2 | 0x40 = 0x42
         let bank = (0x42 & 0x3F) as usize; // 2
         assert_eq!(m.ppu_read(0x1000), bank as u8);
+    }
+
+    #[test]
+    fn test_mapper76_2k_chr_banks() {
+        let mut m = make_variant(2, 4, Namco108Variant::M76); // 32 x 1KB CHR banks
+
+        // Reg 2 selects the 2KB bank at $0000 (value in 2KB units)
+        m.cpu_write(0x8000, 2);
+        m.cpu_write(0x8001, 3); // 2KB bank 3 = 1KB banks 6,7
+        assert_eq!(m.ppu_read(0x0000), 6);
+        assert_eq!(m.ppu_read(0x0400), 7);
+
+        // Reg 5 selects the 2KB bank at $1800
+        m.cpu_write(0x8000, 5);
+        m.cpu_write(0x8001, 8); // 2KB bank 8 = 1KB banks 16,17
+        assert_eq!(m.ppu_read(0x1800), 16);
+        assert_eq!(m.ppu_read(0x1C00), 17);
+    }
+
+    #[test]
+    fn test_mapper95_nametable_from_chr_bit5() {
+        let mut m = make_variant(2, 4, Namco108Variant::M95);
+
+        // Bit 5 of reg 0 drives CIRAM A10 for $2000-$27FF; reg 1 for $2800-$2FFF
+        m.cpu_write(0x8000, 0);
+        m.cpu_write(0x8001, 0x20); // bit 5 set -> page 1
+        m.cpu_write(0x8000, 1);
+        m.cpu_write(0x8001, 0x00); // bit 5 clear -> page 0
+
+        m.ppu_write(0x2000, 0xAA);
+        // $2000 goes to page 1, $2800 to page 0: no aliasing
+        assert_eq!(m.ppu_read(0x2000), 0xAA);
+        assert_eq!(m.ppu_read(0x2800), 0x00);
+
+        // $2400 shares page 1 with $2000
+        assert_eq!(m.ppu_read(0x2400), 0xAA);
+    }
+
+    #[test]
+    fn test_mapper154_one_screen_select() {
+        let mut m = make_variant(2, 4, Namco108Variant::M154);
+
+        // Bit 6 clear: one-screen A
+        m.cpu_write(0x8000, 0x00);
+        m.ppu_write(0x2000, 0x11);
+        assert_eq!(m.ppu_read(0x2C00), 0x11);
+
+        // Bit 6 set (decoded over the whole $8000-$FFFF range): one-screen B
+        m.cpu_write(0xC000, 0x40);
+        m.ppu_write(0x2000, 0x22);
+        assert_eq!(m.ppu_read(0x2C00), 0x22);
+        // Page A content still intact underneath
+        m.cpu_write(0xC000, 0x00);
+        assert_eq!(m.ppu_read(0x2000), 0x11);
+    }
+
+    #[test]
+    fn test_mapper154_chr_forced_bit6() {
+        let mut m = make_variant(2, 16, Namco108Variant::M154); // 128 x 1KB CHR banks
+
+        // Like mapper 88: 1KB regs (2-5) get bit 6 forced on
+        m.cpu_write(0x8000, 2);
+        m.cpu_write(0x8001, 2); // stored as 0x42 = 1KB bank 66
+        assert_eq!(m.ppu_read(0x1000), 66);
     }
 
     #[test]

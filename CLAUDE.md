@@ -149,7 +149,7 @@ git config core.hooksPath .githooks
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC2, MMC3, MMC4, MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM, Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/152/180/184/185)
+- Memory mappers for different cartridge types (NROM, MMC1, MMC1A (155), MMC2, MMC3, MMC4, MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, CPROM (13), BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Bandai 74*161 (70/152), Jaleco SS88006 (18), Jaleco JF-13 (86), Jaleco JF-17/JF-19 (72/92), Sunsoft-2 (89/93), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Irem G-101 (32), Irem 74*161 (77), Irem TAM-S1 (97), UN1ROM (94), Namco 108/DxROM (76/88/95/154/206), Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/180/184/185)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, `audio_expansion_output()` for expansion audio mixing, `set_debug_capture()` and `expansion_audio_debug()` for debug panel waveforms
@@ -284,6 +284,7 @@ Two macros in `core/src/lib.rs`:
 Cargo.toml          — Virtual workspace manifest
 core/               — Platform-independent emulation library
   src/lib.rs        — Crate root, exports test_input! and test_rom! macros
+  examples/mapper_smoke.rs — Headless real-ROM smoke test harness (see Testing Strategy)
   src/emu/          — Emulator core (cpu, ppu, apu, memory, io, gfx, audio, rewind, region, debug)
   src/emu/debug.rs  — Debug snapshot structs and nametable/sprite rendering
   src/emu/cpu/disasm.rs — 6502 disassembler (side-effect-free via cpu_peek)
@@ -320,13 +321,13 @@ test-roms/          — NES test ROM submodule (christopherpow/nes-test-roms)
 input/              — Non-NES test data files
   ascii/            — ASCII assembly test files
   bin/              — Binary test files
-scripts/            — APU mixer test scripts (Python)
+scripts/            — Python tooling (APU mixer tests, rom_inventory.py mapper coverage, verify_mappers.py smoke tests)
 docs/               — Design documents and dev setup guides
 ```
 
 ## Testing Strategy
 
-All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 tests including audio backend wiring, binding data model, binding UI state machine, and settings roundtrip.
+All emulation tests live in `core/` (742 tests, 18 ignored). Desktop has 16 tests including audio backend wiring, binding data model, binding UI state machine, and settings roundtrip.
 
 **Unit Tests**
 - Test individual CPU instructions and flag behavior
@@ -339,6 +340,12 @@ All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 test
 - Test various cartridge mappers
 - Savestate roundtrip tests
 - Tests that fail are `#[ignore]`d — run with `cargo test -- --ignored` to check progress
+
+**Mapper Smoke Tests (real ROMs)**
+- `core/examples/mapper_smoke.rs` — headless harness: runs a ROM for N frames while tapping Start/A, reports framebuffer stats (`colors`, `unique_frames`, hash), optionally dumps the final frame as PPM
+- `scripts/verify_mappers.py` — scans a ROM collection for given mapper ids, runs each game through the smoke harness, converts screenshots to PNG, prints per-mapper PASS/FAIL
+- `cargo build --release -p krankulator-core --example mapper_smoke`, then e.g. `python3 scripts/verify_mappers.py --mappers 32,70,72`
+- The stat thresholds only prove a game boots and renders — eyeball the screenshots for real verification
 
 **APU Mixer Tests**
 - Compare emulator WAV output against hardware reference MP3 recordings
@@ -364,15 +371,20 @@ All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 test
 - Sprite 0 hit is approximate (position-based, not pixel-overlap)
 
 **Memory Mappers**
-- NROM, MMC1, MMC2, MMC3, MMC4 (10), MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Namco 108/DxROM (88/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/152/180/184/185)
+- NROM, MMC1, MMC1A (155), MMC2, MMC3, MMC4 (10), MMC5, NES-ZZ (37), TxSROM, TQROM, UxROM, AxROM, CNROM, CPROM (13), BNROM, GxROM, Color Dreams (11), Bandai FCG (16/159), Bandai 74*161 (70/152), Jaleco SS88006 (18), Jaleco JF-13 (86), Jaleco JF-17/JF-19 (72/92), Sunsoft-2 (89/93), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), Irem G-101 (32), Irem 74*161 (77), Irem TAM-S1 (97), UN1ROM (94), Namco 108/DxROM (76/88/95/154/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/180/184/185)
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo
 - Simple mappers (BNROM, GxROM, CNROM, UxROM, AxROM) share PPU logic via `PpuBus`
-- SimpleMapper (78/87/140/152/180/184/185): unified PpuBus-based implementation for trivial discrete-logic mappers with 8KB/4KB CHR and 16KB/32KB PRG banking
+- SimpleMapper (70/78/86/87/89/93/94/97/140/152/180/184/185): unified PpuBus-based implementation for trivial discrete-logic mappers with 8KB/4KB CHR and 16KB/32KB PRG banking; 89 adds a CHR high bit + one-screen mirroring; 93 gates CHR-RAM reads/writes behind an enable bit; 97 fixes the last bank at $8000 with the switchable bank at $C000 and 2-bit mirroring (incl. one-screen)
+- JalecoJfMapper (72/92): 16KB PRG + 8KB CHR banks latched on the 0-to-1 edge of write bits 7/6; JF-17 switches $8000, JF-19 switches $C000 (µPD7756C ADPCM sound not emulated)
+- IremG101Mapper (32): 8KB PRG banking with two modes (mode 1 fixes $8000 to second-last and moves the switchable bank to $C000), 8x1KB CHR regs, mirroring bit; submapper 1 (Major League) hardwires one-screen and disables $9000
+- Mapper77 (Irem 74*161): 32KB PRG banking, 2KB switchable CHR-ROM at $0000 with 6KB CHR-RAM at $0800-$1FFF, four-screen VRAM
+- CpromMapper (13): fixed 32KB PRG, 16KB CHR-RAM with 4KB switchable page at $1000
+- MMC1A (155): MMC1 with the PRG-RAM disable bit ignored
 - VRC1 (mapper 75): 8KB PRG banking (3 switchable + 1 fixed), 4KB CHR with high bits from $9000, mirroring control
 - VRC3 (mapper 73): 16KB PRG banking, 16-bit/8-bit IRQ counter with latch, CHR RAM only
-- Namco108Mapper (88/206): direct CHR/VRAM/palette management with 1KB CHR granularity; mapper 88 forces bit 6 on 1KB CHR bank writes
+- Namco108Mapper (76/88/95/154/206): direct CHR/VRAM/palette management with 1KB CHR granularity; mapper 88 forces bit 6 on 1KB CHR bank writes; mapper 76 (NAMCOT-3446) uses regs 2-5 as 2KB banks; mapper 95 (NAMCOT-3425) drives CIRAM A10 from bit 5 of CHR regs 0/1; mapper 154 (NAMCOT-3453) is mapper 88 plus a one-screen select bit decoded across $8000-$FFFF
 - Taito33Mapper (33/48): 8KB PRG + 2KB/1KB CHR banking; mapper 33 has mirroring via PRG register bit 6; mapper 48 adds A12-based scanline IRQ and mirroring via $E000
 - Namco163Mapper (19): 3 switchable 8KB PRG + 8 independent 1KB CHR + 4 nametable banks; CHR-ROM as nametables (banks $00-$DF → CHR-ROM, $E0-$FF → CIRAM); 15-bit CPU-cycle IRQ counter; 128-byte internal sound RAM; 8-channel wavetable expansion audio; WRAM write protection
 - Namco175_340Mapper (210): 3 switchable 8KB PRG + 8 independent 1KB CHR banks; submapper 1 (175) has hardwired mirroring + PRG RAM, submapper 2 (340) has software mirroring
@@ -380,7 +392,7 @@ All emulation tests live in `core/` (669 tests, 17 ignored). Desktop has 16 test
 - VRC6 (mappers 24/26): 16KB+8KB switchable PRG + 8×1KB CHR with configurable granularity (1KB/2KB/4KB via $B003); VRC4-style scanline/cycle IRQ; 3-channel expansion audio (2 pulse + 1 sawtooth) with frequency halt/scaling; mapper 26 swaps A0/A1; debug panel waveforms via `expansion_audio_debug()`
 - MMC4 (mapper 10): MMC2 variant with 16KB switchable PRG + 16KB fixed, 8KB battery-backed PRG RAM at $6000, range-based left-half CHR latch triggers ($0FD8-$0FDF / $0FE8-$0FEF)
 - NES-ZZ (mapper 37, SMB+Tetris+NWC multicart): MMC3 variant with outer bank register at $6000-$7FFF windowing PRG (64KB/128KB blocks) and CHR (128KB halves); MMC3 fixed banks resolve to last banks within the active PRG window
-- BandaiFcgMapper (16/159): two submappers — FCG (registers at $6000, direct IRQ) and LZ93D50 (registers at $8000, latched IRQ + I2C EEPROM 24C02 with full START/STOP/ACK state machine); 16KB PRG + 8x1KB CHR + 4-way mirroring
+- BandaiFcgMapper (16/159): two submappers — FCG (registers at $6000, direct IRQ) and LZ93D50 (registers at $8000, latched IRQ + I2C EEPROM with full START/STOP/ACK state machine); 16KB PRG + 8x1KB CHR + 4-way mirroring; mapper 16 uses a 24C02 (256B, device-address byte), mapper 159 an X24C01 (128B, word address in the first byte)
 - JalecoSs88006Mapper (18): 3 switchable 8KB PRG + 8 independent 1KB CHR via nibble-split writes ($x000/$x001 = low/high nibble per bank); CPU-cycle IRQ with configurable width mask (4/8/12/16-bit); PRG RAM with chip-enable and write-protect
 
 **Audio System**
