@@ -218,7 +218,7 @@ fn draw_palette(ui: &mut egui::Ui, palette_ram: &[u8; 32]) {
                     ui.painter().rect_stroke(
                         rect,
                         0.0,
-                        egui::Stroke::new(0.5, egui::Color32::from_rgb(60, 60, 60)),
+                        egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(60, 60, 60)),
                         egui::StrokeKind::Outside,
                     );
                     if col < 3 {
@@ -296,7 +296,7 @@ fn draw_scroll_viewport(
 
     let scale_x = img_w / 256.0;
     let scale_y = img_h / 240.0;
-    let stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 100, 100));
+    let stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(255, 100, 100));
 
     for dx in [0.0, -512.0, 512.0] {
         let vp_x = scroll_origin_x + dx - nt_origin_x;
@@ -422,7 +422,10 @@ fn draw_waveform(ui: &mut egui::Ui, label: &str, waveform: &[f32], enabled: bool
         .collect();
 
     if points.len() >= 2 {
-        painter.add(egui::Shape::line(points, PathStroke::new(1.0, wave_color)));
+        painter.add(egui::Shape::line(
+            points,
+            PathStroke::new(1.0_f32, wave_color),
+        ));
     }
 }
 
