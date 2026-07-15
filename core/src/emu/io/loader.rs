@@ -296,6 +296,16 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        6 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::front_fareast::FrontFareastMapper::new(
+                flags, prg_banks, chr,
+            ))
+        }
         7 => Box::new(mapper::axrom::AxROMMapper::new(
             flags,
             combine_prg_banks_32k(&prg_banks),
@@ -315,6 +325,7 @@ fn load_nes_from_bytes_inner(
             chr_banks,
         )),
         13 => Box::new(mapper::cprom::CpromMapper::new(flags, prg_banks)),
+        15 => Box::new(mapper::k1029::K1029Mapper::new(prg_banks)),
         16 => Box::new(mapper::bandai_fcg::BandaiFcgMapper::new(
             flags, prg_banks, chr_banks, submapper, sram_data,
         )),
@@ -372,6 +383,29 @@ fn load_nes_from_bytes_inner(
             flags, prg_banks, chr_banks,
         )),
         48 => Box::new(mapper::taito::Taito33Mapper::new_mapper48(
+            flags, prg_banks, chr_banks,
+        )),
+        47 => {
+            let (mmc3_chr, mmc3_chr_ram_banks) = if num_chr_blocks > 0 {
+                (chr_banks, 0)
+            } else {
+                (vec![], chr_ram_size / 1024)
+            };
+            Box::new(MMC3Mapper::new_variant(
+                flags,
+                prg_banks,
+                mmc3_chr,
+                has_battery,
+                sram_data,
+                submapper,
+                MMC3Variant::Mapper47,
+                mmc3_chr_ram_banks,
+            ))
+        }
+        65 => Box::new(mapper::irem_h3001::IremH3001Mapper::new(
+            flags, prg_banks, chr_banks,
+        )),
+        67 => Box::new(mapper::sunsoft3::Sunsoft3Mapper::new(
             flags, prg_banks, chr_banks,
         )),
         34 => {
@@ -457,6 +491,12 @@ fn load_nes_from_bytes_inner(
                 flags, prg_banks, chr,
             ))
         }
+        80 => Box::new(mapper::taito_x1005::TaitoX1005Mapper::new(
+            flags, prg_banks, chr_banks, false, sram_data,
+        )),
+        82 => Box::new(mapper::taito_x1017::TaitoX1017Mapper::new(
+            flags, prg_banks, chr_banks, sram_data,
+        )),
         88 => Box::new(mapper::namco108::Namco108Mapper::new(
             flags,
             prg_banks,
@@ -501,6 +541,7 @@ fn load_nes_from_bytes_inner(
                 flags, prg_banks, chr,
             ))
         }
+        96 => Box::new(mapper::oeka_kids::OekaKidsMapper::new(flags, prg_banks)),
         95 => Box::new(mapper::namco108::Namco108Mapper::new(
             flags,
             prg_banks,
@@ -564,6 +605,16 @@ fn load_nes_from_bytes_inner(
             chr_banks,
             mapper::namco108::Namco108Variant::M154,
         )),
+        153 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::bandai_fcg::BandaiFcgMapper::new_mapper153(
+                flags, prg_banks, chr, sram_data,
+            ))
+        }
         155 => Box::new(mapper::mmc1::MMC1Mapper::new_mmc1a(
             flags,
             prg_banks,
@@ -571,8 +622,25 @@ fn load_nes_from_bytes_inner(
             has_battery,
             sram_data,
         )),
+        156 => Box::new(mapper::daou::DaouMapper::new(prg_banks, chr_banks)),
+        157 => {
+            let chr = if num_chr_blocks > 0 {
+                chr_banks
+            } else {
+                vec![]
+            };
+            Box::new(mapper::bandai_fcg::BandaiFcgMapper::new_mapper157(
+                flags, prg_banks, chr, sram_data,
+            ))
+        }
         159 => Box::new(mapper::bandai_fcg::BandaiFcgMapper::new_mapper159(
             flags, prg_banks, chr_banks, sram_data,
+        )),
+        188 => Box::new(mapper::bandai_karaoke::BandaiKaraokeMapper::new(
+            flags, prg_banks,
+        )),
+        207 => Box::new(mapper::taito_x1005::TaitoX1005Mapper::new(
+            flags, prg_banks, chr_banks, true, sram_data,
         )),
         180 => {
             let chr = if num_chr_blocks > 0 {
@@ -601,6 +669,16 @@ fn load_nes_from_bytes_inner(
         )),
         _ => return Err(format!("Mapper {mapper_id} not implemented")),
     };
+
+    let mut result = result;
+    if has_trainer && bytes.len() >= INES_HEADER_SIZE + TRAINER_SIZE {
+        for (i, &b) in bytes[INES_HEADER_SIZE..INES_HEADER_SIZE + TRAINER_SIZE]
+            .iter()
+            .enumerate()
+        {
+            result.cpu_write(0x7000 + i as u16, b);
+        }
+    }
 
     Ok(result)
 }

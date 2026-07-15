@@ -81,6 +81,8 @@ pub trait MemoryMapper {
     }
 
     // Called when PPU address changes to detect A12 transitions for MMC3
+    fn notify_vram_addr(&mut self, _addr: u16) {}
+
     fn ppu_a12_transition(&mut self, _addr: u16, _dot: u64) {
         // Default implementation does nothing
     }

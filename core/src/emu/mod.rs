@@ -1100,6 +1100,7 @@ impl Emulator {
             if reg == ppu::DATA_ADDR {
                 let a = self.ppu.get_current_vram_addr();
                 self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
+                self.mem.notify_vram_addr(a);
             }
             (v, true)
         } else if addr == APU_STATUS_ADDR {
@@ -1941,8 +1942,9 @@ impl Emulator {
                 self.mem.ppu_write(waddr, wval);
             }
             if reg == ppu::DATA_ADDR || (reg == ppu::ADDR_ADDR && !self.ppu.write_toggle()) {
-                self.mem
-                    .ppu_a12_transition(self.ppu.get_current_vram_addr(), self.ppu.last_synced_dot);
+                let a = self.ppu.get_current_vram_addr();
+                self.mem.ppu_a12_transition(a, self.ppu.last_synced_dot);
+                self.mem.notify_vram_addr(a);
             }
         } else if addr == ppu::OAM_DMA {
             if self.cpu.cycle < self.ppu_register_warmup_until_cpu_cycle {

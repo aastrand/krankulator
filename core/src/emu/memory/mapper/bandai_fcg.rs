@@ -6,6 +6,8 @@ use crate::emu::savestate::{SavestateReader, SavestateWriter};
 const PRG_BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: usize = 1024;
 const EEPROM_SIZE_24C02: usize = 256;
+const WRAM_SIZE: usize = 8 * 1024;
+const CHR_RAM_SIZE: usize = 8 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum EepromState {
@@ -206,9 +208,18 @@ pub struct BandaiFcgMapper {
     irq_enabled: bool,
     irq_pending: bool,
     submapper: Submapper,
-    is_mapper159: bool,
+    mapper_num: u8,
+    // Mapper 153: outer 256KB PRG bank (bit 4) from CHR reg bits 0
+    prg_bank_select: usize,
+    wram: Option<Box<[u8; WRAM_SIZE]>>,
+    wram_enabled: bool,
+    chr_ram: Option<Box<[u8; CHR_RAM_SIZE]>>,
 
     eeprom: Option<Eeprom24C02>,
+    // Mapper 157 (Datach): X24C01 on the game cart, ANDed with the internal 24C02
+    extra_eeprom: Option<Eeprom24C02>,
+    extra_scl: bool,
+    extra_sda: bool,
 
     _vram: Box<[u8; VRAM_SIZE as usize]>,
     vram_ptr: *mut u8,
@@ -253,6 +264,7 @@ impl BandaiFcgMapper {
         } else {
             None
         };
+        let has_chr_ram = chr_rom.is_empty();
 
         BandaiFcgMapper {
             _cpu_ram: cpu_ram,
@@ -267,8 +279,19 @@ impl BandaiFcgMapper {
             irq_enabled: false,
             irq_pending: false,
             submapper: variant,
-            is_mapper159: false,
+            mapper_num: 16,
+            prg_bank_select: 0,
+            wram: None,
+            wram_enabled: false,
+            chr_ram: if has_chr_ram {
+                Some(Box::new([0; CHR_RAM_SIZE]))
+            } else {
+                None
+            },
             eeprom,
+            extra_eeprom: None,
+            extra_scl: false,
+            extra_sda: false,
             _vram: vram,
             vram_ptr,
             palette_ram: [0x0F; PALETTE_SIZE],
@@ -283,8 +306,40 @@ impl BandaiFcgMapper {
         sram_data: Option<Vec<u8>>,
     ) -> Self {
         let mut mapper = Self::new(flags, prg_banks_16k, chr_banks_8k, 5, None);
-        mapper.is_mapper159 = true;
+        mapper.mapper_num = 159;
         mapper.eeprom = Some(Eeprom24C02::new(sram_data.as_deref(), true));
+        mapper
+    }
+
+    pub fn new_mapper153(
+        flags: u8,
+        prg_banks_16k: Vec<[u8; PRG_BANK_SIZE]>,
+        chr_banks_8k: Vec<[u8; io::loader::CHR_BANK_SIZE]>,
+        sram_data: Option<Vec<u8>>,
+    ) -> Self {
+        let mut mapper = Self::new(flags, prg_banks_16k, chr_banks_8k, 5, None);
+        mapper.mapper_num = 153;
+        mapper.eeprom = None;
+        // Famicom Jump II freezes when WRAM is all zeroes at boot
+        let mut wram = Box::new([0xFF; WRAM_SIZE]);
+        if let Some(data) = sram_data {
+            let len = data.len().min(WRAM_SIZE);
+            wram[..len].copy_from_slice(&data[..len]);
+        }
+        mapper.wram = Some(wram);
+        mapper
+    }
+
+    pub fn new_mapper157(
+        flags: u8,
+        prg_banks_16k: Vec<[u8; PRG_BANK_SIZE]>,
+        chr_banks_8k: Vec<[u8; io::loader::CHR_BANK_SIZE]>,
+        sram_data: Option<Vec<u8>>,
+    ) -> Self {
+        let mut mapper = Self::new(flags, prg_banks_16k, chr_banks_8k, 5, None);
+        mapper.mapper_num = 157;
+        mapper.eeprom = Some(Eeprom24C02::new(sram_data.as_deref(), false));
+        mapper.extra_eeprom = Some(Eeprom24C02::new(None, true));
         mapper
     }
 
@@ -297,7 +352,21 @@ impl BandaiFcgMapper {
 
     fn write_register(&mut self, reg: u8, value: u8) {
         match reg {
-            0..=7 => self.chr_regs[reg as usize] = value as usize,
+            0..=7 => {
+                self.chr_regs[reg as usize] = value as usize;
+                if self.mapper_num == 153 {
+                    self.prg_bank_select = 0;
+                    for r in &self.chr_regs {
+                        self.prg_bank_select |= (r & 0x01) << 4;
+                    }
+                } else if self.mapper_num == 157 && reg <= 3 {
+                    self.extra_scl = value & 0x08 != 0;
+                    let (sda, scl) = (self.extra_sda, self.extra_scl);
+                    if let Some(ref mut extra) = self.extra_eeprom {
+                        extra.write(sda, scl);
+                    }
+                }
+            }
             8 => {
                 self.prg_bank_idx = if self.prg_rom.is_empty() {
                     0
@@ -335,10 +404,21 @@ impl BandaiFcgMapper {
                 }
             }
             0x0D => {
-                if let Some(ref mut eeprom) = self.eeprom {
+                if self.mapper_num == 153 {
+                    self.wram_enabled = value & 0x20 != 0;
+                } else {
                     let sda = (value >> 6) & 1 != 0;
                     let scl = (value >> 5) & 1 != 0;
-                    eeprom.write(sda, scl);
+                    if let Some(ref mut eeprom) = self.eeprom {
+                        eeprom.write(sda, scl);
+                    }
+                    if self.mapper_num == 157 {
+                        self.extra_sda = sda;
+                        let scl = self.extra_scl;
+                        if let Some(ref mut extra) = self.extra_eeprom {
+                            extra.write(sda, scl);
+                        }
+                    }
                 }
             }
             _ => {}
@@ -348,38 +428,7 @@ impl BandaiFcgMapper {
 
 impl MemoryMapper for BandaiFcgMapper {
     fn cpu_read(&mut self, addr: u16) -> u8 {
-        let addr = super::mirror_addr(addr);
-        let page = addr_to_page(addr);
-        match page {
-            0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
-            0x20 | 0x40 => 0,
-            0x60 | 0x70 if self.submapper == Submapper::Lz93d50 => {
-                if let Some(ref eeprom) = self.eeprom {
-                    let bit = eeprom.read_bit();
-                    if bit {
-                        0x10
-                    } else {
-                        0x00
-                    }
-                } else {
-                    0
-                }
-            }
-            0x80 | 0x90 | 0xA0 | 0xB0 => {
-                if self.prg_rom.is_empty() {
-                    return 0;
-                }
-                self.prg_rom[self.prg_bank_idx][(addr - 0x8000) as usize]
-            }
-            0xC0 | 0xD0 | 0xE0 | 0xF0 => {
-                if self.prg_rom.is_empty() {
-                    return 0;
-                }
-                let fixed = self.prg_rom.len() - 1;
-                self.prg_rom[fixed][(addr - 0xC000) as usize]
-            }
-            _ => 0,
-        }
+        self.cpu_peek(addr)
     }
 
     fn cpu_peek(&self, addr: u16) -> u8 {
@@ -388,9 +437,21 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
+            0x60 | 0x70 if self.mapper_num == 153 => {
+                if self.wram_enabled {
+                    self.wram
+                        .as_ref()
+                        .map_or(0, |w| w[(addr - 0x6000) as usize])
+                } else {
+                    0
+                }
+            }
             0x60 | 0x70 if self.submapper == Submapper::Lz93d50 => {
                 if let Some(ref eeprom) = self.eeprom {
-                    let bit = eeprom.read_bit();
+                    let mut bit = eeprom.read_bit();
+                    if let Some(ref extra) = self.extra_eeprom {
+                        bit = bit && extra.read_bit();
+                    }
                     if bit {
                         0x10
                     } else {
@@ -404,13 +465,18 @@ impl MemoryMapper for BandaiFcgMapper {
                 if self.prg_rom.is_empty() {
                     return 0;
                 }
-                self.prg_rom[self.prg_bank_idx][(addr - 0x8000) as usize]
+                let bank = (self.prg_bank_idx | self.prg_bank_select) % self.prg_rom.len();
+                self.prg_rom[bank][(addr - 0x8000) as usize]
             }
             0xC0 | 0xD0 | 0xE0 | 0xF0 => {
                 if self.prg_rom.is_empty() {
                     return 0;
                 }
-                let fixed = self.prg_rom.len() - 1;
+                let fixed = if self.mapper_num == 153 {
+                    (0x0F | self.prg_bank_select) % self.prg_rom.len()
+                } else {
+                    self.prg_rom.len() - 1
+                };
                 self.prg_rom[fixed][(addr - 0xC000) as usize]
             }
             _ => 0,
@@ -423,6 +489,13 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 | 0x40 | 0x50 => {}
+            0x60 | 0x70 if self.mapper_num == 153 => {
+                if self.wram_enabled {
+                    if let Some(ref mut w) = self.wram {
+                        w[(addr - 0x6000) as usize] = value;
+                    }
+                }
+            }
             0x60 | 0x70 if self.submapper == Submapper::Fcg => {
                 let reg = (addr & 0x0F) as u8;
                 self.write_register(reg, value);
@@ -446,6 +519,9 @@ impl MemoryMapper for BandaiFcgMapper {
         }
         match addr_to_page(addr) {
             0x00 | 0x10 => {
+                if let Some(ref chr_ram) = self.chr_ram {
+                    return chr_ram[addr as usize];
+                }
                 if self.chr_rom.is_empty() {
                     return 0;
                 }
@@ -466,6 +542,12 @@ impl MemoryMapper for BandaiFcgMapper {
         let addr = addr % MAX_VRAM_ADDR;
         match addr_to_page(addr) {
             0x00 | 0x10 => {
+                if let Some(ref chr_ram) = self.chr_ram {
+                    let offset = addr as usize;
+                    let copy_size = size.min(CHR_RAM_SIZE - offset);
+                    unsafe { std::ptr::copy(chr_ram.as_ptr().add(offset), dest, copy_size) }
+                    return;
+                }
                 if self.chr_rom.is_empty() {
                     return;
                 }
@@ -493,7 +575,11 @@ impl MemoryMapper for BandaiFcgMapper {
             return;
         }
         match addr_to_page(addr) {
-            0x00 | 0x10 => {}
+            0x00 | 0x10 => {
+                if let Some(ref mut chr_ram) = self.chr_ram {
+                    chr_ram[addr as usize] = value;
+                }
+            }
             0x20 | 0x30 => {
                 let a = mirror_nametable_addr(addr, self.mirroring) % VRAM_SIZE;
                 unsafe { *self.vram_ptr.offset(a as _) = value }
@@ -527,15 +613,11 @@ impl MemoryMapper for BandaiFcgMapper {
     }
 
     fn mapper_id(&self) -> u8 {
-        if self.is_mapper159 {
-            159
-        } else {
-            16
-        }
+        self.mapper_num
     }
 
     fn submapper_id(&self) -> u8 {
-        if self.is_mapper159 {
+        if self.mapper_num != 16 {
             return 0;
         }
         match self.submapper {
@@ -545,10 +627,16 @@ impl MemoryMapper for BandaiFcgMapper {
     }
 
     fn sram_data(&self) -> Option<&[u8]> {
+        if self.mapper_num == 153 {
+            return self.wram.as_ref().map(|w| w.as_slice());
+        }
         self.eeprom.as_ref().map(|e| e.data.as_slice())
     }
 
     fn sram_data_mut(&mut self) -> Option<&mut [u8]> {
+        if self.mapper_num == 153 {
+            return self.wram.as_mut().map(|w| w.as_mut_slice());
+        }
         self.eeprom.as_mut().map(|e| e.data.as_mut_slice())
     }
 
@@ -584,6 +672,27 @@ impl MemoryMapper for BandaiFcgMapper {
         w.write_bytes(vram);
         w.write_bytes(&self.palette_ram);
         save_controllers(w, &self.controllers);
+        // Mapper 153/157 additions; absent for 16/159 to keep their layout stable
+        if let Some(ref wram) = self.wram {
+            w.write_bytes(&**wram);
+            w.write_bool(self.wram_enabled);
+        }
+        if let Some(ref chr_ram) = self.chr_ram {
+            w.write_bytes(&**chr_ram);
+        }
+        if let Some(ref extra) = self.extra_eeprom {
+            w.write_bytes(&extra.data);
+            w.write_u8(extra.state as u8);
+            w.write_u8(extra.scl as u8);
+            w.write_u8(extra.sda_out as u8);
+            w.write_u8(extra.sda_in as u8);
+            w.write_u8(extra.bit_count);
+            w.write_u8(extra.shift_reg);
+            w.write_u8(extra.word_addr);
+            w.write_u8(extra.output_bit as u8);
+            w.write_bool(self.extra_scl);
+            w.write_bool(self.extra_sda);
+        }
     }
 
     fn load_state(&mut self, r: &mut SavestateReader) -> std::io::Result<()> {
@@ -625,6 +734,38 @@ impl MemoryMapper for BandaiFcgMapper {
         r.read_bytes_into(vram)?;
         r.read_bytes_into(&mut self.palette_ram)?;
         load_controllers(r, &mut self.controllers)?;
+        if let Some(ref mut wram) = self.wram {
+            r.read_bytes_into(&mut **wram)?;
+            self.wram_enabled = r.read_bool()?;
+        }
+        if let Some(ref mut chr_ram) = self.chr_ram {
+            r.read_bytes_into(&mut **chr_ram)?;
+        }
+        if let Some(ref mut extra) = self.extra_eeprom {
+            r.read_bytes_into(&mut extra.data)?;
+            extra.state = match r.read_u8()? {
+                0 => EepromState::Idle,
+                1 => EepromState::DeviceAddr,
+                2 => EepromState::WordAddr,
+                3 => EepromState::WriteData,
+                _ => EepromState::ReadData,
+            };
+            extra.scl = r.read_u8()? != 0;
+            extra.sda_out = r.read_u8()? != 0;
+            extra.sda_in = r.read_u8()? != 0;
+            extra.bit_count = r.read_u8()?;
+            extra.shift_reg = r.read_u8()?;
+            extra.word_addr = r.read_u8()?;
+            extra.output_bit = r.read_u8()? != 0;
+            self.extra_scl = r.read_bool()?;
+            self.extra_sda = r.read_bool()?;
+        }
+        if self.mapper_num == 153 {
+            self.prg_bank_select = 0;
+            for reg in &self.chr_regs {
+                self.prg_bank_select |= (reg & 0x01) << 4;
+            }
+        }
         Ok(())
     }
 }

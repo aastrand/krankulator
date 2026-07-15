@@ -15,6 +15,7 @@ pub enum MMC3Variant {
     TxSROM,   // Mapper 118: mirroring from CHR bank bit 7
     TQROM,    // Mapper 119: bit 6 selects CHR-RAM vs CHR-ROM
     Mapper37, // NES-ZZ multicart: outer bank register at $6000-$7FFF windows PRG/CHR
+    Mapper47, // Super Spike V'Ball + NWC multicart: 1-bit outer bank at $6000-$7FFF
 }
 
 pub struct MMC3Mapper {
@@ -178,6 +179,11 @@ impl MMC3Mapper {
                 4..=6 => (0x0F, 0x10),
                 _ => (0x07, 0x18),
             }),
+            MMC3Variant::Mapper47 => Some(if self.outer_bank & 0x01 != 0 {
+                (0x0F, 0x10)
+            } else {
+                (0x0F, 0x00)
+            }),
             _ => None,
         }
     }
@@ -186,6 +192,11 @@ impl MMC3Mapper {
     fn chr_window(&self) -> Option<(usize, usize)> {
         match self.variant {
             MMC3Variant::Mapper37 => Some(if self.outer_bank & 0x04 != 0 {
+                (0x7F, 0x80)
+            } else {
+                (0x7F, 0x00)
+            }),
+            MMC3Variant::Mapper47 => Some(if self.outer_bank & 0x01 != 0 {
                 (0x7F, 0x80)
             } else {
                 (0x7F, 0x00)
@@ -461,14 +472,16 @@ impl MemoryMapper for MMC3Mapper {
                     *self.cpu_ram.as_mut_ptr().offset(ram_addr as isize) = value;
                 }
             }
-            0x6000..=0x7FFF => {
-                if self.variant == MMC3Variant::Mapper37 {
+            0x6000..=0x7FFF => match self.variant {
+                MMC3Variant::Mapper37 => {
                     // NES-ZZ: outer bank register instead of PRG RAM
                     self.outer_bank = value & 0x07;
-                } else {
-                    self.prg_ram[(addr - 0x6000) as usize] = value;
                 }
-            }
+                MMC3Variant::Mapper47 => {
+                    self.outer_bank = value & 0x01;
+                }
+                _ => self.prg_ram[(addr - 0x6000) as usize] = value,
+            },
             0x8000..=0x9FFF => {
                 if addr & 1 == 0 {
                     // Bank select
@@ -645,6 +658,7 @@ impl MemoryMapper for MMC3Mapper {
             MMC3Variant::TxSROM => 118,
             MMC3Variant::TQROM => 119,
             MMC3Variant::Mapper37 => 37,
+            MMC3Variant::Mapper47 => 47,
         }
     }
     fn submapper_id(&self) -> u8 {
