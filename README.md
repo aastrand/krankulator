@@ -17,7 +17,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **MOS 6502 CPU** — all official opcodes plus common unofficial ones (LAX, SAX, DCP, ISB, SLO, SRE, RLA, RRA, ANC, ALR, ARR, SBX, SHA, SHX, SHY, TAS, LAS, XAA)
 - **PPU** — per-dot cycle-accurate rendering, sprite evaluation, sprite 0 hit, even/odd frame timing, NTSC (262 scanlines) and PAL (312 scanlines)
 - **APU** — pulse, triangle, noise, and DMC channels with nonlinear NES mixing, per-cycle accumulation, and IIR high-pass/low-pass filtering at 44.1 kHz
-- **Mappers** — 44 mappers covering 100% of licensed NES games (NTSC and PAL) plus ~148 Famicom exclusives and homebrew (see [Mapper support](#mapper-support) below)
+- **Mappers** — 75 mappers covering 100% of licensed NES games (NTSC and PAL) and effectively the whole licensed Famicom library, including expansion audio: MMC5 pulses, VRC6 pulse/saw, VRC7 FM synthesis, Namco 163 wavetable (see [Mapper support](#mapper-support) below)
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
@@ -41,11 +41,14 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 3 | CNROM | Nintendo | Switchable 8KB CHR |
 | 4 | MMC3 | Nintendo | Scanline IRQ, fine-grained banking |
 | 5 | MMC5 | Nintendo | Most complex NES mapper, expansion audio |
+| 6 | FFE F4 | Front Fareast | Copier format, CHR-RAM banking, IRQ, trainer |
 | 7 | AxROM | Nintendo | 32KB PRG banking, single-screen mirroring |
 | 9 | MMC2 | Nintendo | CHR latch switching (Punch-Out!!) |
 | 10 | MMC4 | Nintendo | MMC2 variant with 16KB PRG + PRG RAM (Fire Emblem) |
 | 11 | Color Dreams | Color Dreams | 32KB PRG + 8KB CHR, bus conflicts |
-| 16/159 | Bandai FCG | Bandai | PRG/CHR banking, IRQ, I2C EEPROM (Dragon Ball Z) |
+| 13 | CPROM | Nintendo | 4KB switchable CHR-RAM page (Videomation) |
+| 15 | K-1029 | Multicart | Four PRG modes (100-in-1 Contra Function 16) |
+| 16/153/157/159 | Bandai FCG | Bandai | IRQ, I2C EEPROM saves, Datach (Dragon Ball Z, Famicom Jump II) |
 | 18 | Jaleco SS88006 | Jaleco | Nibble-split banking, configurable IRQ (Ninja Jajamaru) |
 | 19 | Namco 163 | Namco | 8-ch wavetable audio, IRQ, CHR-ROM nametables |
 | 21 | VRC4a/VRC4c | Konami | 8KB PRG + 1KB CHR banking, IRQ |
@@ -57,30 +60,55 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 28 | Action 53 | Homebrew | Multicart mapper, 4 banking modes |
 | 30 | UNROM 512 | Homebrew | 16KB PRG + 32KB CHR RAM, NESmaker |
 | 31 | NSF/Homebrew | Homebrew | 4KB PRG bank granularity, 8 slots |
+| 32 | Irem G-101 | Irem | Two PRG modes (Image Fight, Major League) |
 | 33 | Taito TC0190 | Taito | 8KB PRG + 2KB/1KB CHR banking |
 | 34 | BNROM | Nintendo | 32KB PRG banking, bus conflicts |
+| 37 | NES-ZZ | Nintendo | SMB + Tetris + Nintendo World Cup multicart (MMC3 outer bank) |
+| 47 | NES-QJ | Nintendo | Super Spike V'Ball + NWC multicart (MMC3 outer bank) |
 | 48 | Taito TC0690 | Taito | Mapper 33 + scanline IRQ |
+| 65 | Irem H3001 | Irem | 16-bit CPU-cycle IRQ (Spartan X 2) |
 | 66 | GxROM | Nintendo | Combined PRG/CHR select, bus conflicts |
-| 71 | Camerica | Camerica | 16KB PRG banking, Fire Hawk mirroring |
+| 67 | Sunsoft-3 | Sunsoft | Write-twice 16-bit IRQ (Fantasy Zone II) |
 | 68 | Sunsoft 4 | Sunsoft | CHR-mapped nametables |
 | 69 | Sunsoft FME-7 | Sunsoft | CPU-cycle IRQ, versatile banking |
+| 70 | Bandai 74*161 | Bandai | 16KB PRG + 8KB CHR latch (Kamen Rider Club) |
+| 71 | Camerica | Camerica | 16KB PRG banking, Fire Hawk mirroring |
+| 72 | Jaleco JF-17 | Jaleco | Banks latched on write-bit edge (Pinball Quest) |
 | 73 | VRC3 | Konami | 16-bit IRQ counter, CHR RAM |
 | 75 | VRC1 | Konami | 8KB PRG + 4KB CHR banking |
+| 76 | NAMCOT-3446 | Namco | Namco 108 with 2KB CHR banking (Megami Tensei) |
+| 77 | Irem 74*161 | Irem | 2KB CHR-ROM + 6KB CHR-RAM, four-screen (Napoleon Senki) |
 | 78 | Irem 74161/32 | Irem | PRG/CHR select + submapper mirroring |
+| 80 | Taito X1-005 | Taito | 128B battery RAM behind security writes (Minelvaton Saga) |
+| 82 | Taito X1-017 | Taito | Segmented 5KB battery RAM (Kyuukyoku Harikiri Stadium) |
+| 85 | VRC7 | Konami | 6-channel FM expansion audio, OPLL (Lagrange Point) |
+| 86 | Jaleco JF-13 | Jaleco | Registers at $6000 (Moero!! Pro Yakyuu) |
 | 87 | Jaleco/Konami | Jaleco | CHR bank swap (2-bit swapped latch) |
 | 88 | Namcot 3433 | Namco | Namco 108 subset with CHR offset |
+| 89 | Sunsoft-2 | Sunsoft | CHR high bit + one-screen mirroring (Mito Koumon) |
+| 92 | Jaleco JF-19 | Jaleco | Switchable $C000 bank (Moero!! Pro Soccer) |
+| 93 | Sunsoft-2 (74161) | Sunsoft | CHR-RAM enable gate (Fantasy Zone) |
+| 94 | UN1ROM | Capcom | 16KB PRG banking (Senjou no Ookami) |
+| 95 | NAMCOT-3425 | Namco | CIRAM A10 from CHR banks (Dragon Buster) |
+| 96 | Oeka Kids | Bandai | CHR-RAM page latched from PPU address bus |
+| 97 | Irem TAM-S1 | Irem | Reversed fixed/switchable PRG (Kaiketsu Yanchamaru) |
 | 105 | NES-EVENT | Nintendo | MMC1 variant (World Championships 1990) |
 | 118 | TxSROM | Nintendo | MMC3 variant, per-bank mirroring |
 | 119 | TQROM | Nintendo | MMC3 variant, mixed CHR ROM/RAM |
 | 140 | JF-11/JF-14 | Jaleco | Combined 32KB PRG + 8KB CHR select |
 | 152 | Bandai discrete | Bandai | Single-screen mirror + CHR banking |
+| 154 | NAMCOT-3453 | Namco | Namco 108 + one-screen select (Devil Man) |
+| 155 | MMC1A | Nintendo | MMC1 without PRG-RAM disable (Tatakae!! Ramen Man) |
+| 156 | DIS23C01 | Daou Infosys | 9-bit bank indexes (Metal Force) |
 | 180 | UNROM variant | Nihon Bussan | Fixed first bank, switchable second |
 | 184 | Sunsoft | Sunsoft | 4KB CHR banking |
 | 185 | CNROM+protection | Nintendo | CNROM with copy protection diodes |
+| 188 | Bandai Karaoke | Bandai | Karaoke Studio, expansion ROM + microphone |
 | 206 | DxROM/Namco 108 | Namco | Simplified MMC3 subset, 1KB CHR banking |
+| 207 | Taito X1-005 (b) | Taito | X1-005 with CHR-driven nametables (Fudou Myouou Den) |
 | 210 | Namco 175/340 | Namco | 3-bank PRG + 8-bank CHR, two submapper variants |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL), plus ~148 Famicom exclusives and popular homebrew.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL) and effectively the whole licensed Famicom library — 99.8% of the reference GoodNES set. Remaining gaps: Study Box (186, also unsupported by Mesen) and a handful of misheadered educational carts.
 
 ## Architecture
 
@@ -100,7 +128,7 @@ graph TD
     Mem --> MMC2["MMC2<br/>CHR latch switching"]
     Mem --> MMC3["MMC3 family<br/>MMC3, TxSROM, TQROM"]
     Mem --> MMC5["MMC5<br/>ExROM + expansion audio"]
-    Mem --> VRC["VRC1/VRC2/VRC3/VRC4/VRC6<br/>Konami"]
+    Mem --> VRC["VRC1-VRC7<br/>Konami, VRC6+VRC7 expansion audio"]
     Mem --> Bandai["Bandai FCG<br/>I2C EEPROM + IRQ"]
     Mem --> Jaleco["Jaleco SS88006<br/>nibble-split banking"]
     Mem --> Sunsoft["Sunsoft<br/>Sunsoft 4, FME-7"]
@@ -137,8 +165,9 @@ mixed CHR-ROM/RAM respectively. The VRC2/VRC4 family (mappers 21/22/23/25) uses 
 implementation with address-line remapping to handle 9 Konami chip variants; VRC4 adds
 scanline/cycle IRQ and PRG swap mode. Sunsoft 4 can map CHR ROM into nametable space. Simple
 discrete-logic mappers (UxROM, CNROM, AxROM, BNROM, GxROM) share PPU bus logic via
-`PpuBus`; BNROM and GxROM emulate AND-type bus conflicts. MMC5 adds expansion audio
-(two pulse channels) mixed into the APU's nonlinear mixer.
+`PpuBus`; BNROM and GxROM emulate AND-type bus conflicts. Expansion audio from MMC5 (two pulse channels), VRC6 (two pulses + sawtooth), VRC7
+(six-channel OPLL FM synthesis), and Namco 163 (eight-channel wavetable) is mixed into
+the APU's nonlinear mixer.
 The IO and audio layers are traits, allowing desktop, web, or headless operation with the
 same emulation core.
 

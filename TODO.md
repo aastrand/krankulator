@@ -2,8 +2,8 @@
 
 ## Mappers
 
-Currently implemented: **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), AxROM (7), MMC2 (9), MMC4 (10), Color Dreams (11), Bandai FCG (16/159), Jaleco SS88006 (18), Namco 163 (19), VRC2/VRC4 (21/22/23/25), VRC6 (24/26), Action 53 (28), UNROM 512 (30), Mapper 31, Taito TC0190 (33), BNROM (34), Taito TC0690 (48), GxROM (66), Sunsoft 4 (68), Sunsoft FME-7 (69), Camerica (71), VRC3 (73), VRC1 (75), Irem 74161/32 (78), Simple (87/140/152/180/184/185), Namco 108 (88/206), NES-EVENT (105), TxSROM (118), TQROM (119), Namco 175/340 (210)**
-Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA and PAL titles. Remaining gaps are Japan-only Famicom games.
+Currently implemented (75 ids): **NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), MMC5 (5), FFE F4 (6), AxROM (7), MMC2 (9), MMC4 (10), Color Dreams (11), CPROM (13), K-1029 (15), Bandai FCG (16/153/157/159), Jaleco SS88006 (18), Namco 163 (19), VRC2/VRC4 (21/22/23/25), VRC6 (24/26), Action 53 (28), UNROM 512 (30), Mapper 31, Irem G-101 (32), Taito TC0190 (33), BNROM (34), NES-ZZ (37), MMC3 multicart (47), Taito TC0690 (48), Irem H3001 (65), GxROM (66), Sunsoft-3 (67), Sunsoft 4 (68), Sunsoft FME-7 (69), Bandai 74*161 (70/152), Camerica (71), Jaleco JF-17/JF-19 (72/92), VRC3 (73), VRC1 (75), NAMCOT-3446 (76), Irem 74*161 (77), Irem 74161/32 (78), Taito X1-005 (80/207), Taito X1-017 (82), VRC7 (85), Jaleco JF-13 (86), Simple (87/140/180/184/185), Namco 108 (88/95/154/206), Sunsoft-2 (89/93), UN1ROM (94), Oeka Kids (96), Irem TAM-S1 (97), NES-EVENT (105), TxSROM (118), TQROM (119), MMC1A (155), DIS23C01 Daou (156), Bandai Karaoke (188), Namco 175/340 (210)**
+Coverage: 100% of licensed NES games (NTSC-NA and PAL) and effectively the whole licensed Famicom library — 99.8% of the reference GoodNES set. Remaining: Study Box (186, unsupported by Mesen too), a bad Campus Challenge dump (43), and 4 misheadered NHK educational carts (35).
 
 ### Completed: Priority 1 quick wins
 
@@ -76,11 +76,11 @@ Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA an
 - Games: Akumajou Densetsu (Castlevania III JP — the definitive version), Madara, Esper Dream 2
 - VRC6 expansion audio: 2 pulse + 1 sawtooth channels. Address swap between 24 and 26. Debug panel waveform visualization.
 
-### Priority 5 (remaining): Famicom — Konami VRC expansion audio
+### Completed: Priority 5 (remaining) — Famicom Konami VRC expansion audio
 
-**Mapper 85 — VRC7 (Konami)** [L] — 2 games
+**Mapper 85 — VRC7 (Konami)** [done]
 - Games: Lagrange Point (acclaimed sci-fi RPG with OPLL FM synthesis), Tiny Toon 2 JP
-- VRC4-style banking + IRQ + 6-channel FM synthesis (YM2413 subset). FM synth is the hard part.
+- VRC4-style banking + IRQ + 6-channel FM synthesis (OPLL). emu2413-accurate FM core in `vrc7_audio.rs` with die-dumped patch ROM, verified by pitch/envelope/tremolo unit tests and real-game spectral analysis. Debug panel shows FM1-FM6 waveforms.
 
 ### Completed: Priority 6a — Famicom trivial mappers
 
@@ -127,72 +127,72 @@ Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA an
 - Games (15): Pizza Pop!, Saiyuuki World 2, Ninja Jajamaru: Ginga Daisakusen, Holy Diver (JP)
 - 3 switchable 8KB PRG + 1 fixed, 8 independent 1KB CHR banks via nibble-split register writes (D0-D3 per write, two writes per register). CPU-cycle IRQ with configurable counter width (4/8/12/16-bit). PRG RAM with chip-enable and write-protect.
 
-### Priority 6 (remaining): Famicom — Taito/Irem/Sunsoft
+### Completed: Priority 6 (remaining) — Famicom Taito/Irem/Sunsoft
 
-**Mapper 80 — Taito X1-005** [S-M] — 7 games
+**Mapper 80 — Taito X1-005** [done]
 - Games: Minelvaton Saga, Fudou Myouou Den, Mirai Shinwa Jarvas, Kyonshiizu 2, Taito Grand Prix
 - 8KB PRG / 1KB CHR banking, 128-byte on-die RAM with security byte ($A0→$A0 check).
 - Mapper 207 is a variant with different nametable banking — implement together.
 
-**Mapper 82 — Taito X1-017** [S] — 4 games
+**Mapper 82 — Taito X1-017** [done]
 - Games: SD Keiji: Blader, Kyuukyoku Harikiri Stadium (3 versions)
 - Similar to X1-005 but with banked PRG RAM and CHR banking control. Japan only.
 
-**Mapper 65 — Irem H-3001** [S-M] — 3 games
+**Mapper 65 — Irem H-3001** [done]
 - Games: Spartan X 2 (Kung-Fu Master sequel), Kaiketsu Yanchamaru 3, Daiku no Gen-san 2
 - 8KB PRG banking + 16-bit IRQ counter.
 
-**Mapper 32 — Irem G-101** [S] — 4 games
+**Mapper 32 — Irem G-101** [done]
 - Games: Image Fight, Major League, Kaiketsu Yanchamaru 2, Ai Senshi Nicol
 - 8KB PRG banking with one-screen mirroring option. Japan only.
 
-**Mapper 67 — Sunsoft 3** [S] — 3 games
+**Mapper 67 — Sunsoft 3** [done]
 - Games: Fantasy Zone II, Maharaja, Nantettatte!! Baseball
 - 2KB CHR banking + IRQ counter (4-step latch write sequence).
 
-### Priority 7: Famicom — Trivial discrete mappers
+### Completed: Priority 7 — Famicom trivial discrete mappers
 
-**Mapper 86 — Jaleco JF-13** [XS] — 3-4 games
+**Mapper 86 — Jaleco JF-13** [done]
 - Games: Moero!! Pro Yakyuu (Red/Blue), Urusei Yatsura
 - 32KB PRG + 8KB CHR via registers at $6000-$7FFF. Trivial.
 
-**Mapper 72 — Jaleco JF-17** [XS] — 3 games
+**Mapper 72 — Jaleco JF-17** [done]
 - Games: Pinball Quest, Moero!! Pro Tennis, Moero!! Pro Soccer
 - 16KB PRG + 8KB CHR with acknowledge bit (write twice: once with bit 7, once without).
 
-**Mapper 76 — Namco 109 (NAMCOT-3446)** [XS] — 3 games
+**Mapper 76 — Namco 109 (NAMCOT-3446)** [done]
 - Games: Megami Tensei (Digital Devil Story), Famista series
 - Subset of Namco 108 using only first 6 registers with 2KB CHR granularity. May already work via mapper 206.
 
-**Mapper 70 — Bandai 74161/32** [XS] — 2-3 games
+**Mapper 70 — Bandai 74161/32** [done]
 - Games: Kamen Rider Club, Space Shadow, Family Trainer: Manhattan Police
 - 16KB PRG + 8KB CHR via single register. Very similar to mapper 152.
 
-**Mapper 89 — Sunsoft-2 (early)** [XS] — 2-3 games
+**Mapper 89 — Sunsoft-2 (early)** [done]
 - Games: Mito Koumon, Tenka no Goikenban
 - 16KB PRG + 8KB CHR + single-screen mirroring via single register.
 
-**Mapper 95 — Namco 3425 (NAMCOT-3425)** [XS] — 2 games
+**Mapper 95 — Namco 3425 (NAMCOT-3425)** [done]
 - Games: Dragon Buster, Star Wars (Namco)
 - Namco 108 variant with nametable control via CHR bank bit.
 
-**Mapper 154 — Namco 3453 (NAMCOT-3453)** [XS] — 2 games
+**Mapper 154 — Namco 3453 (NAMCOT-3453)** [done]
 - Games: Devil Man, Youma Ninpou Chou
 - Namco 108 variant with single-screen mirroring via bit 6 of bank register.
 
-**Mapper 92 — Jaleco JF-19** [XS] — 2 games
+**Mapper 92 — Jaleco JF-19** [done]
 - Games: Moero!! Pro Yakyuu '88 Kettei Ban, Moero!! Pro Soccer
 - 16KB PRG (fixed low, switchable high) + 8KB CHR. Upper bank switched by writing with acknowledge bits.
 
-**Mapper 93 — Sunsoft-2 (74161)** [XS] — 2 games
+**Mapper 93 — Sunsoft-2 (74161)** [done]
 - Games: Fantasy Zone, Shanghai
 - 16KB switchable PRG only, no CHR banking. Board-level enable for CHR RAM.
 
-**Mapper 94 — Senjou no Ookami** [XS] — 1 game
+**Mapper 94 — Senjou no Ookami** [done]
 - Game: Senjou no Ookami (Commando)
 - 16KB PRG banking, no CHR banking. Single register.
 
-**Mapper 97 — Irem TAM-S1** [XS] — 1 game
+**Mapper 97 — Irem TAM-S1** [done]
 - Game: Kaiketsu Yanchamaru
 - 16KB PRG (fixed low, switchable high — reversed from typical), mirroring control.
 
@@ -234,17 +234,13 @@ Coverage: ~93-95% of all licensed NES/Famicom games. 100% of licensed NTSC-NA an
 
 ### Mapper coverage summary
 
-Current coverage: **~93-95% of all licensed NES/Famicom games**. Nearly all missing games are **Japan-only Famicom** titles. NA/EU coverage is essentially 100%.
+Current coverage: **100% of licensed NES games (NTSC + PAL) and effectively the whole licensed Famicom library** — 99.8% of the reference GoodNES set by file count.
 
-| Priority | Mappers | Category | New games | Effort | Highlight titles |
-|----------|---------|----------|-----------|--------|------------------|
-| Done | 0-5,7,9-11,16,18,19,21-26,28,30,31,33,34,48,66,68,69,71,73,75,78,87,88,105,118,119,140,152,159,180,184,185,206,210 | Licensed NES + Famicom + homebrew | ~2303 | — | 100% licensed (NTSC+PAL) + VRC + Namco + Taito + Bandai + Jaleco + homebrew |
-| 5 | 85 | Famicom Konami expansion audio | ~2 | L | Lagrange Point |
-| 6 | 32,65,67,80,82,207 | Famicom Taito/Irem/Sunsoft | ~20 | S-M | Minelvaton Saga, Spartan X 2, Image Fight, Fantasy Zone II |
-| 7 | 70,72,76,86,89,92,93,94,95,97,154 | Famicom trivial discrete | ~25 | XS each | Megami Tensei, Pinball Quest, Dragon Buster |
-| 8 | 64,79,113,228 | Unlicensed | ~30 | XS-M | Shinobi, Rolling Thunder, Tiles of Fate |
-
-Implementing priorities 6+7 (trivial/moderate mappers) would bring coverage to **~98%**. VRC7 (priority 5) is low game count but high prestige — it's the remaining expansion audio showcase (FM synthesis).
+| Status | Mappers | Category | Highlight titles |
+|--------|---------|----------|------------------|
+| Done | 75 ids incl. all licensed-game mappers, VRC7 FM audio, multicarts, homebrew | Licensed NES + Famicom + homebrew | Lagrange Point, Minelvaton Saga, Spartan X 2, Image Fight, Fantasy Zone II, Megami Tensei |
+| Remaining | 64 (RAMBO-1), 79 (NINA), 113 (HES), 228 (Action 52) | Unlicensed only | Shinobi, Rolling Thunder, Tiles of Fate, Action 52 |
+| Not planned | 186 (Study Box), 547, 555 | Oddities unsupported by Mesen too | — |
 
 PAL-exclusive licensed games need **zero** new mappers — all use mappers 0/1/2/4/7 already supported.
 
