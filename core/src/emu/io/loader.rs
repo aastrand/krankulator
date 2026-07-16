@@ -365,6 +365,14 @@ fn load_nes_from_bytes_inner(
             sram_data,
             mapper_id as u8,
         )),
+        85 => Box::new(mapper::vrc7::Vrc7Mapper::new(
+            flags,
+            prg_banks,
+            chr_banks,
+            num_chr_blocks == 0,
+            has_battery,
+            sram_data,
+        )),
         37 => Box::new(MMC3Mapper::new_variant(
             flags,
             prg_banks,
