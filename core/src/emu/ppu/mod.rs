@@ -253,6 +253,12 @@ pub struct PPU {
     scanline_pixels_written: usize,
     render_line_v: u16,
     next_render_line_v: u16,
+    /// Dots remaining until the delayed `t`→`v` copy from a `$2006` second
+    /// write applies (0 = no update pending). The chip applies the copy ~3
+    /// dots after the write's φ2 edge, which itself falls 3 dots after the
+    /// CPU write cycle starts — 6 dots from our bus-access attribution.
+    v_update_delay: u8,
+    v_update_value: u16,
     bg_pattern_shift_low: u16,
     bg_pattern_shift_high: u16,
     bg_attr_shift_low: u16,
@@ -351,6 +357,8 @@ impl PPU {
             scanline_pixels_written: 0,
             render_line_v: 0,
             next_render_line_v: 0,
+            v_update_delay: 0,
+            v_update_value: 0,
             bg_pattern_shift_low: 0,
             bg_pattern_shift_high: 0,
             bg_attr_shift_low: 0,
@@ -533,6 +541,7 @@ impl PPU {
         } else {
             self.update_nmi_output();
         }
+        self.v_update_delay = 0;
         Ok(())
     }
 
@@ -667,8 +676,8 @@ impl PPU {
                         (self.t & T_CLEAR_HIGH_BYTE) | (((value & PPUADDR_HIGH_MASK) as u16) << 8);
                 } else {
                     self.t = (self.t & 0xFF00) | (value as u16);
-                    self.v = self.t;
-                    self.sync_render_origin_after_v_write();
+                    self.v_update_delay = 6;
+                    self.v_update_value = self.t;
                 }
 
                 self.w = !self.w;
@@ -710,11 +719,40 @@ impl PPU {
     }
 
     pub fn get_current_vram_addr(&self) -> u16 {
-        self.v
+        if self.v_update_delay > 0 {
+            self.v_update_value
+        } else {
+            self.v
+        }
     }
 
     pub fn get_temp_vram_addr(&self) -> u16 {
         self.t
+    }
+
+    pub fn v_update_delay(&self) -> u8 {
+        self.v_update_delay
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flush_v_update(&mut self) {
+        if self.v_update_delay > 0 {
+            self.v_update_delay = 0;
+            self.v = self.v_update_value;
+            self.sync_render_origin_after_v_write();
+        }
+    }
+
+    pub fn set_v_update_delay(&mut self, delay: u8) {
+        self.v_update_delay = delay;
+    }
+
+    pub fn v_update_value(&self) -> u16 {
+        self.v_update_value
+    }
+
+    pub fn set_v_update_value(&mut self, value: u16) {
+        self.v_update_value = value;
     }
 
     pub fn write_toggle(&self) -> bool {
@@ -916,6 +954,22 @@ impl PPU {
 
         if rendering_scanline && self.cycle == MAPPER_NOTIFY_DOT {
             result.ppu_cycle_260_scanline = Some(self.scanline);
+        }
+
+        // Delayed t->v copy from a $2006 second write. Applied after this
+        // dot's own scroll updates, so a copy landing on dot 256/257
+        // overwrites the Y increment and horizontal copy, as on hardware.
+        // The hardware also corrupts the value (AND with the incremented
+        // address) when the copy lands exactly on an increment dot, but our
+        // CPU write attribution is not dot-exact enough to place that race
+        // reliably - emulating it flashes frames real hardware renders
+        // cleanly, so the copy is applied intact.
+        if self.v_update_delay > 0 {
+            self.v_update_delay -= 1;
+            if self.v_update_delay == 0 {
+                self.v = self.v_update_value;
+                self.sync_render_origin_after_v_write();
+            }
         }
 
         result
@@ -1668,10 +1722,14 @@ mod tests {
         ppu.write(ADDR_ADDR, 0x32);
         // v is not updated yet, only t is
         ppu.write(ADDR_ADDR, 0x11);
+        // The t->v copy is delayed ~3 dots after the second write
+        assert_ne!(ppu.v, 0x3211);
+        ppu.flush_v_update();
         assert_eq!(ppu.v, 0x3211);
         ppu.write(ADDR_ADDR, 0x40);
         // v is not updated yet, only t is
         ppu.write(ADDR_ADDR, 0x1);
+        ppu.flush_v_update();
         assert_eq!(ppu.v, 0x0001);
     }
 
@@ -1688,6 +1746,7 @@ mod tests {
         ppu.write(ADDR_ADDR, 0x32);
         assert_eq!(ppu.v, 0);
         ppu.write(ADDR_ADDR, 0x11);
+        ppu.flush_v_update();
 
         assert_eq!(ppu.v, 0x3211);
     }
@@ -1701,6 +1760,7 @@ mod tests {
         ppu.read(STATUS_REG_ADDR, &mem);
         ppu.write(ADDR_ADDR, 0x37);
         ppu.write(ADDR_ADDR, 0x11);
+        ppu.flush_v_update();
 
         for b in 0..10 {
             let should_write = ppu.write(DATA_ADDR, b);
@@ -1722,12 +1782,14 @@ mod tests {
         // Set address using proper PPU interface
         ppu.write(ADDR_ADDR, 0x30);
         ppu.write(ADDR_ADDR, 0x00);
+        ppu.flush_v_update();
 
         let first = ppu.read(DATA_ADDR, mem);
 
         // Reset address for second read
         ppu.write(ADDR_ADDR, 0x30);
         ppu.write(ADDR_ADDR, 0x00);
+        ppu.flush_v_update();
         let second = ppu.read(DATA_ADDR, mem);
 
         mem.ppu_write(0x3000, 0x14);
@@ -1735,11 +1797,13 @@ mod tests {
         // Reset address for third read
         ppu.write(ADDR_ADDR, 0x30);
         ppu.write(ADDR_ADDR, 0x00);
+        ppu.flush_v_update();
         let third = ppu.read(DATA_ADDR, mem);
 
         // Reset address for fourth read
         ppu.write(ADDR_ADDR, 0x30);
         ppu.write(ADDR_ADDR, 0x00);
+        ppu.flush_v_update();
         let fourth = ppu.read(DATA_ADDR, mem);
 
         assert_eq!(first, 0);
@@ -1993,14 +2057,15 @@ mod tests {
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16, 0);
         mem.ppu_write(UNIVERSAL_BG_COLOR_ADDR as u16 + 1, 3);
 
-        for _ in 0..8 {
+        for _ in 0..2 {
             ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 
+        // The t->v copy applies 6 dots after the second write (end of dot 8)
         ppu.write(ADDR_ADDR, 0x00);
         ppu.write(ADDR_ADDR, 0x02);
 
-        for _ in 0..248 {
+        for _ in 0..254 {
             ppu.step_dot_with_rendering(&mut mem, &mut framebuffer);
         }
 

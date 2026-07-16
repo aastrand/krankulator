@@ -365,6 +365,7 @@ All emulation tests live in `core/` (784 tests, 18 ignored). Desktop has 16 test
 - VBlank timing with level-based NMI output signal and CPU edge detection
 - VBL flag suppression when $2002 read races with VBL set (dot 0 prevents flag, same-dot cancels NMI edge)
 - Scroll register updates at correct cycle points during rendering
+- The `$2006` second write applies the t→v copy with the hardware delay (~3 dots after the write's φ2 edge, 6 dots from the bus-access attribution), so a copy landing on dot 256/257 overrides the Y increment as on hardware; the copy is applied intact (the hardware's AND-glitch on increment-dot collisions is deliberately not emulated — CPU write attribution is not dot-exact enough to place it). Keeps IRQ-timed split-screen scrolls (VRC7 Tiny Toon 2 title) stable
 - Per-dot cycle-accurate rendering, scanline count from region (262 NTSC, 312 PAL)
 - Odd-frame skip (NTSC only, disabled for PAL)
 - Overscan masking skipped for PAL (PAL TVs show full 240 lines)

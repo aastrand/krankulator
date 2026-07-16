@@ -494,6 +494,8 @@ impl Emulator {
         w.write_u8(self.region.region.to_byte());
         w.write_u64(self.master_clock_sub);
         w.write_u64(self.instruction_start_sub);
+        w.write_u8(self.ppu.v_update_delay());
+        w.write_u16(self.ppu.v_update_value());
         w.finish()
     }
 
@@ -583,6 +585,14 @@ impl Emulator {
         } else {
             self.master_clock_sub = 0;
             self.instruction_start_sub = 0;
+        }
+        if r.version() >= 10 {
+            let delay = r.read_u8()?;
+            self.ppu.set_v_update_delay(delay);
+            let value = r.read_u16()?;
+            self.ppu.set_v_update_value(value);
+        } else {
+            self.ppu.set_v_update_delay(0);
         }
         Ok(())
     }
@@ -4105,8 +4115,9 @@ mod emu_tests {
             emu.cycle();
         }
         let saved = emu.save_state_to_bytes();
-        // Patch version byte back to 7 and strip the 3 new fields (u8 + u64 + u64 = 17 bytes)
-        let mut v7_data = saved[..saved.len() - 17].to_vec();
+        // Patch version byte back to 7 and strip the post-v7 tail fields
+        // (v8: u8 + u64 + u64 = 17 bytes, v10: u8 + u16 = 3 bytes)
+        let mut v7_data = saved[..saved.len() - 20].to_vec();
         v7_data[4] = 7;
         let mut emu2 = Emulator::_new();
         emu2.load_state_from_bytes(&v7_data).unwrap();
