@@ -147,14 +147,12 @@ impl TaitoX1005Mapper {
                 }
             }
             0x7EF2..=0x7EF5 => self.chr_regs[(addr - 0x7EF0) as usize] = value,
-            0x7EF6 | 0x7EF7 => {
-                if !self.alternate_mirroring {
-                    self.mirroring = if value & 0x01 != 0 {
-                        NametableMirror::Vertical
-                    } else {
-                        NametableMirror::Horizontal
-                    };
-                }
+            0x7EF6 | 0x7EF7 if !self.alternate_mirroring => {
+                self.mirroring = if value & 0x01 != 0 {
+                    NametableMirror::Vertical
+                } else {
+                    NametableMirror::Horizontal
+                };
             }
             0x7EF8 | 0x7EF9 => self.ram_permission = value,
             0x7EFA | 0x7EFB => self.prg_regs[0] = value,

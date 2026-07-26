@@ -139,15 +139,13 @@ impl MemoryMapper for IremG101Mapper {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
             0x6000..=0x7FFF => self.wram[(addr - 0x6000) as usize] = value,
             0x8000..=0x8FFF => self.prg_reg0 = value & 0x1F,
-            0x9000..=0x9FFF => {
-                if !self.is_submapper1 {
-                    self.mirroring = if value & 1 != 0 {
-                        NametableMirror::Horizontal
-                    } else {
-                        NametableMirror::Vertical
-                    };
-                    self.prg_mode = value & 2 != 0;
-                }
+            0x9000..=0x9FFF if !self.is_submapper1 => {
+                self.mirroring = if value & 1 != 0 {
+                    NametableMirror::Horizontal
+                } else {
+                    NametableMirror::Vertical
+                };
+                self.prg_mode = value & 2 != 0;
             }
             0xA000..=0xAFFF => self.prg_reg1 = value & 0x1F,
             0xB000..=0xBFFF => self.chr_regs[(addr & 7) as usize] = value,

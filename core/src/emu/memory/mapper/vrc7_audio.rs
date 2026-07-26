@@ -740,22 +740,18 @@ impl Vrc7Audio {
         }
 
         match slot.eg_state {
-            EgState::Damp => {
-                // DAMP->ATTACK happens at max attenuation, synchronized with
-                // the envelope tick; the carrier resets both slots' phases.
-                if slot.eg_out >= EG_MAX && (cnt & mask) == 0 {
-                    slot.start_envelope();
-                    if slot.is_carrier {
-                        slot.pg_phase = 0;
-                        self.slots[i ^ 1].pg_phase = 0;
-                    }
+            // DAMP->ATTACK happens at max attenuation, synchronized with
+            // the envelope tick; the carrier resets both slots' phases.
+            EgState::Damp if slot.eg_out >= EG_MAX && (cnt & mask) == 0 => {
+                slot.start_envelope();
+                if slot.is_carrier {
+                    slot.pg_phase = 0;
+                    self.slots[i ^ 1].pg_phase = 0;
                 }
             }
-            EgState::Attack => {
-                if slot.eg_out == 0 {
-                    slot.eg_state = EgState::Decay;
-                    slot.update_requests |= UPDATE_EG;
-                }
+            EgState::Attack if slot.eg_out == 0 => {
+                slot.eg_state = EgState::Decay;
+                slot.update_requests |= UPDATE_EG;
             }
             // Checked every cycle, not synchronized with the rate counter.
             EgState::Decay if (slot.eg_out >> 3) == slot.patch.sl => {

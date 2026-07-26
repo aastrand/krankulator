@@ -166,10 +166,8 @@ impl MemoryMapper for TaitoX1017Mapper {
     fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000..=0x1FFF => self.cpu_ram[(addr & 0x7FF) as usize] = value,
-            0x6000..=0x73FF => {
-                if self.ram_segment_enabled(addr) {
-                    self.ram[(addr - 0x6000) as usize] = value;
-                }
+            0x6000..=0x73FF if self.ram_segment_enabled(addr) => {
+                self.ram[(addr - 0x6000) as usize] = value;
             }
             0x7EF0..=0x7EFF => self.write_register(addr, value),
             _ => {}

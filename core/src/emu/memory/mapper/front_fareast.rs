@@ -195,11 +195,9 @@ impl MemoryMapper for FrontFareastMapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         match addr {
-            0x0000..=0x1FFF => {
-                if self.has_chr_ram() {
-                    let a = (self.chr_bank * CHR_8K + addr as usize) & (CHR_RAM_SIZE - 1);
-                    self.chr_ram[a] = value;
-                }
+            0x0000..=0x1FFF if self.has_chr_ram() => {
+                let a = (self.chr_bank * CHR_8K + addr as usize) & (CHR_RAM_SIZE - 1);
+                self.chr_ram[a] = value;
             }
             0x2000..=0x3EFF => {
                 let idx = self.nt_addr(addr);

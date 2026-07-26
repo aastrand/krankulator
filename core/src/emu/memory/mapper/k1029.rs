@@ -162,10 +162,8 @@ impl MemoryMapper for K1029Mapper {
 
     fn ppu_write(&mut self, addr: u16, value: u8) {
         match addr {
-            0x0000..=0x1FFF => {
-                if !self.chr_write_protect {
-                    self.chr_ram[addr as usize] = value;
-                }
+            0x0000..=0x1FFF if !self.chr_write_protect => {
+                self.chr_ram[addr as usize] = value;
             }
             0x2000..=0x3EFF => {
                 let idx = self.nt_addr(addr);

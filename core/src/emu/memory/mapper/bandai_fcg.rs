@@ -437,15 +437,11 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) },
             0x20 | 0x40 => 0,
-            0x60 | 0x70 if self.mapper_num == 153 => {
-                if self.wram_enabled {
-                    self.wram
-                        .as_ref()
-                        .map_or(0, |w| w[(addr - 0x6000) as usize])
-                } else {
-                    0
-                }
-            }
+            0x60 | 0x70 if self.mapper_num == 153 && self.wram_enabled => self
+                .wram
+                .as_ref()
+                .map_or(0, |w| w[(addr - 0x6000) as usize]),
+            0x60 | 0x70 if self.mapper_num == 153 => 0,
             0x60 | 0x70 if self.submapper == Submapper::Lz93d50 => {
                 if let Some(ref eeprom) = self.eeprom {
                     let mut bit = eeprom.read_bit();
@@ -489,11 +485,9 @@ impl MemoryMapper for BandaiFcgMapper {
         match page {
             0x00 | 0x10 => unsafe { *self.cpu_ram_ptr.offset(addr as _) = value },
             0x20 | 0x40 | 0x50 => {}
-            0x60 | 0x70 if self.mapper_num == 153 => {
-                if self.wram_enabled {
-                    if let Some(ref mut w) = self.wram {
-                        w[(addr - 0x6000) as usize] = value;
-                    }
+            0x60 | 0x70 if self.mapper_num == 153 && self.wram_enabled => {
+                if let Some(ref mut w) = self.wram {
+                    w[(addr - 0x6000) as usize] = value;
                 }
             }
             0x60 | 0x70 if self.submapper == Submapper::Fcg => {
