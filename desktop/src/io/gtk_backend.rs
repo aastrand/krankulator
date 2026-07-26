@@ -34,6 +34,21 @@ extern "C" {
     fn eglGetProcAddress(name: *const std::ffi::c_char) -> *const std::ffi::c_void;
 }
 
+fn suppress_gtk_warnings() {
+    glib::log_set_writer_func(|level, fields| {
+        for field in fields {
+            if field.key() == "MESSAGE" {
+                if let Some(msg) = field.value_str() {
+                    if msg.contains("no accelerator") || msg.contains("Locale not supported") {
+                        return glib::LogWriterOutput::Handled;
+                    }
+                }
+            }
+        }
+        glib::log_writer_default(level, fields)
+    });
+}
+
 fn screensaver_inhibit() -> Option<u32> {
     let output = Command::new("gdbus")
         .args([
@@ -163,6 +178,7 @@ pub struct GtkPixelsIOHandler {
 
 impl GtkPixelsIOHandler {
     pub fn new(_width: u32, _height: u32, rom_name: &str, settings: &mut Settings) -> Self {
+        suppress_gtk_warnings();
         gtk::init().expect("Failed to initialize GTK");
 
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
