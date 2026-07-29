@@ -196,7 +196,7 @@ git config core.hooksPath .githooks
 ### Desktop Frontend (`desktop/src/`)
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
-- `debug_ui.rs` — egui 0.34 debug panels (F12 toggle, P to pause). Left panel: scrolling disassembly (10+10 lines around PC) and 4 nametables in 2x2 grid with scroll viewport overlay. Right panel: CPU registers, PPU state, APU oscilloscope waveforms, and sprite tile grid. Window widens by 2×PANEL_WIDTH when active. macOS/Windows only (wgpu/egui); not available on Linux GTK backend.
+- `debug/` — egui debug panels (F12 toggle, P to pause), split into a shared `common.rs` and per-backend renderers. `common.rs` draws both panels and exports `PANEL_WIDTH`; `winit.rs` renders via `egui_wgpu` (macOS/Windows), `gtk.rs` via `egui_glow` (Linux) — the debug UI is available on all three platforms. `mod.rs` cfg-selects the backend's `DebugUi`. Left panel: PPU state, palette, pattern tables, 4 nametables in a 2x2 grid, and the sprite/OAM tile grid. Right panel: scrolling disassembly (10+10 lines around PC), CPU registers + stack, and APU oscilloscope waveforms. Window widens by 2×PANEL_WIDTH when active. Both backends convert core snapshot RGB images to egui textures via `rgb_to_color_image()`.
 - `bindings.rs` — Configurable input bindings data model: `Action` enum (33 variants for P1/P2 NES buttons, turbo buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs; `turbo_controller_bit()` does the same for turbo variants.
 - `bindings_ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, `correct_aspect_ratio`, `window_scale`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
@@ -292,7 +292,11 @@ core/               — Platform-independent emulation library
   src/util/         — Hex parsing, file I/O utilities
 desktop/            — Native frontend binary
   src/main.rs       — CLI entry point
-  src/debug_ui.rs   — egui debug panels (F12 toggle, disasm + nametables + CPU/PPU/APU + sprites)
+  src/debug/        — egui debug panels (F12 toggle, disasm + nametables + pattern tables + CPU/PPU/APU + sprites)
+    common.rs       — shared panel drawing (both panels, waveforms, PANEL_WIDTH)
+    winit.rs        — macOS/Windows renderer (egui_wgpu)
+    gtk.rs          — Linux renderer (egui_glow)
+    mod.rs          — cfg-selects backend DebugUi
   src/bindings.rs   — Input bindings data model (Action incl. turbo variants, KeyId, GamepadButtonId, InputBindings)
   src/bindings_ui.rs — Press-to-bind overlay UI (state machine, framebuffer drawing)
   src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, correct_aspect_ratio, window_scale, input bindings)
