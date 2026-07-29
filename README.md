@@ -21,11 +21,11 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 - **Battery-backed SRAM** — persistent `.sav` files for MMC1/MMC3/MMC5/VRC cartridges
 - **Savestates** — 4 slots per game, custom binary format with full state serialization (CPU, PPU, APU including audio filter state, memory, mappers, controllers)
 - **Audio output** via [rodio](https://github.com/RustAudio/rodio), plus headless capture and WAV export for analysis
-- **Windowed and fullscreen rendering** via [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) with integer and fill scaling modes
+- **Windowed and fullscreen rendering** — [winit](https://github.com/rust-windowing/winit) + [pixels](https://github.com/parasyte/pixels) on macOS/Windows, GTK3 + GLArea (OpenGL) on Linux, with integer and fill scaling modes and an optional CRT-Lottes shader (F9)
 - **Configurable input bindings** — rebind keyboard and gamepad buttons via in-game press-to-bind UI (F10 or Emulation → Input Settings); persisted to settings file
 - **Turbo buttons** — A/B turbo (~30 Hz toggle) on gamepad face buttons (Y/X) or rebindable keyboard keys; works for both players
 - **Gamepad support** — GCController on macOS, gilrs on Linux/Windows; two-player with Joy-Con pair auto-split
-- **WebAssembly frontend** — runs in the browser with Canvas 2D rendering, AudioWorklet audio, and touch controls for mobile
+- **WebAssembly frontend** — runs in the browser with a WebGL2 CRT-Lottes shader (Canvas 2D fallback), AudioWorklet audio, and touch controls for mobile
 - **RetroArch / libretro core** — load as a core in RetroArch for shaders, netplay, achievements, and universal controller support (Linux x86_64/aarch64, Windows, macOS)
 - **On-screen overlay** — 8x8 bitmap font with outlined text for frame time display (Tab) and toast notifications (save/load/slot); double-tap on mobile
 - **NTSC and PAL region support** — auto-detected from iNES header and filename, with `--region` CLI override. Master clock sub-dot accumulator handles PAL's non-integer 3.2:1 PPU:CPU ratio
@@ -108,7 +108,7 @@ Started as a learning-Rust project — a bare 6502 emulator iterating against th
 | 207 | Taito X1-005 (b) | Taito | X1-005 with CHR-driven nametables (Fudou Myouou Den) |
 | 210 | Namco 175/340 | Namco | 3-bank PRG + 8-bank CHR, two submapper variants |
 
-**Coverage:** 100% of licensed NES games (NTSC US and PAL) and effectively the whole licensed Famicom library — 99.8% of the reference GoodNES set. Remaining gaps: Study Box (186, also unsupported by Mesen) and a handful of misheadered educational carts.
+**Coverage:** 100% of licensed NES games (NTSC US and PAL) and effectively the whole licensed Famicom library — 99.8% of the reference GoodNES set. Remaining gaps: only mappers 186 (Study Box), 547, and 555.
 
 ## Architecture
 
@@ -138,8 +138,9 @@ graph TD
     Simple --> PpuBus["PpuBus<br/>shared CHR/VRAM/palette"]
 
     Emu --> IO["IOHandler<br/>trait object"]
-    IO --> Winit["WinitPixels<br/>window + input"]
-    IO --> WebIO["WebIO<br/>Canvas 2D + keyboard + touch"]
+    IO --> Winit["WinitPixels<br/>macOS/Windows window + input"]
+    IO --> GtkIO["GtkGlArea<br/>Linux window + input"]
+    IO --> WebIO["WebIO<br/>WebGL2 CRT + keyboard + touch"]
     IO --> Headless["Headless<br/>testing"]
     IO --> LibretroIO["LibretroIO<br/>RetroArch callbacks"]
 
@@ -240,6 +241,8 @@ All keyboard and gamepad bindings are configurable. Press **F10** or use **Emula
 | F9 | Toggle CRT scanlines |
 | F10 | Input settings |
 | F11 | Toggle fullscreen |
+| F12 | Toggle debug panel |
+| P | Pause |
 | I | Toggle integer/fill scaling |
 | Space | Fast forward (hold) |
 | Tab | Toggle frame time overlay |
@@ -316,7 +319,7 @@ waveform, spectrum, and envelope comparisons.
 
 ### Test ROM suites
 
-669 tests passing, 13 ignored (pending accuracy work), 4 slow (APU mixer, release-only CI). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
+784 tests passing, 14 ignored (pending accuracy work), 4 slow (APU mixer, release-only CI). Test ROMs sourced from the [nes-test-roms](https://github.com/christopherpow/nes-test-roms) submodule.
 
 | Suite | Tests | Status |
 |-------|-------|--------|
@@ -369,8 +372,8 @@ Pre-built binaries are available on the [Releases](https://github.com/aastrand/k
 
 ## Platform support
 
-**Desktop:** Built on cross-platform crates (winit, pixels, rodio) — runs on macOS, Linux, and
-Windows. Tested primarily on macOS and Linux.
+**Desktop:** winit + pixels on macOS/Windows and GTK3 + GLArea (OpenGL) on Linux, with rodio
+audio — runs on macOS, Linux, and Windows. Tested primarily on macOS and Linux.
 
 **Web:** Runs in any modern browser (Firefox, Chrome, Safari) via WebAssembly. Requires
 AudioWorklet support for sound. Mobile devices get a dedicated landscape touch layout with

@@ -22,8 +22,8 @@ The project is a Cargo workspace with four crates:
 - **`libretro/`** (`krankulator-libretro`) — RetroArch/libretro core. Raw C FFI, no extra dependencies. Produces `krankulator_libretro.so/.dll/.dylib`.
 
 Key traits defined in core that frontends implement:
-- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`, `set_frame_duration_nanos()`, `set_overscan_available()`
-- `AudioBackend` (`core/src/emu/audio/mod.rs`) — `push_samples()`, `flush()`, `clear()`
+- `IOHandler` (`core/src/emu/io/mod.rs`) — `init()`, `log()`, `poll()`, `render()`, `exit()`, `frame_time_ms()`, `set_frame_duration_nanos()`, `set_overscan_available()`, `set_debug_snapshot()`, `on_debug()`
+- `AudioBackend` (`core/src/emu/audio/mod.rs`) — `push_samples()`, `clear()`, `flush()`, `drain_captured()`
 
 ## Common Commands
 
@@ -149,7 +149,7 @@ git config core.hooksPath .githooks
 - Per-dot cycle-accurate rendering
 
 **Memory System (`emu/memory/`)**
-- Memory mappers for different cartridge types (NROM, MMC1, MMC1A (155), MMC2, MMC3, MMC4, MMC5, NES-ZZ (37), MMC3 multicart (47), TxSROM, TQROM, UxROM, AxROM, CNROM, CPROM (13), BNROM, GxROM, Color Dreams (11), FFE F4 (6), K-1029 (15), Bandai FCG (16/153/157/159), Bandai 74*161 (70/152), Bandai Oeka Kids (96), Bandai Karaoke (188), Jaleco SS88006 (18), Jaleco JF-13 (86), Jaleco JF-17/JF-19 (72/92), Sunsoft-2 (89/93), Sunsoft-3 (67), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), VRC7 (85), Irem G-101 (32), Irem 74*161 (77), Irem H3001 (65), Irem TAM-S1 (97), UN1ROM (94), Namco 108/DxROM (76/88/95/154/206), Namco 163, Namco 175/340, Taito TC0190, Taito TC0690, Taito X1-005 (80/207), Taito X1-017 (82), DIS23C01 Daou (156), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete: 78/87/140/180/184/185)
+- Memory mappers for the full range of supported cartridge types — see the canonical mapper list under **Important Implementation Details → Memory Mappers** below for the complete enumeration and per-chip detail (do not duplicate the list here)
 - Handles bank switching and memory mirroring
 - Separates CPU and PPU memory spaces
 - Mapper trait includes `ppu_cycle_260()` hook for scanline-counting mappers (MMC3), `cpu_cycle(ppu_dot)` for per-cycle mapper logic (MMC5 audio/IRQ, receives current PPU dot for timing), `notify_ppu_ctrl()` for sprite size tracking, `notify_vram_addr()` for CPU-driven PPU address transitions ($2006/$2007, used by Oeka Kids CHR latch), `audio_expansion_output()` for expansion audio mixing, `set_debug_capture()` and `expansion_audio_debug()` for debug panel waveforms
@@ -170,7 +170,7 @@ git config core.hooksPath .githooks
 - CRT shaders (`shaders/`): CRT-Lottes-Fast (Timothy Lottes, public domain) in WGSL (`crt_lottes.wgsl`) and GLSL ES 3.0 (`crt_lottes_web.vert`/`.frag`). 8-tap gaussian filter, windowed cosine scanlines, aperture grille mask, barrel distortion, auto-exposure tonemapper. Toggled via F9 key or menu. GLSL version also used on Linux GTK backend (adapted to GL 3.30 at runtime).
 
 **Audio (`emu/audio/`)**
-- `AudioBackend` trait with `push_samples()`, `flush()`, `clear()`
+- `AudioBackend` trait with `push_samples()`, `clear()`, `flush()`, `drain_captured()`
 - `SilentAudioOutput`, `CapturingAudioOutput` for headless/test use
 - WAV writer (`wav.rs`) for capturing test output
 
@@ -197,8 +197,9 @@ git config core.hooksPath .githooks
 
 - `main.rs` — CLI (clap), wires IOHandler + AudioBackend to core; `--region auto|ntsc|pal` flag; region auto-detection from header + filename; no-ROM launch shows banner screen; outer loop handles Open ROM by reloading mapper and re-entering `run()`; unsupported mapper errors toast on-screen
 - `debug/` — egui debug panels (F12 toggle, P to pause), split into a shared `common.rs` and per-backend renderers. `common.rs` draws both panels and exports `PANEL_WIDTH`; `winit.rs` renders via `egui_wgpu` (macOS/Windows), `gtk.rs` via `egui_glow` (Linux) — the debug UI is available on all three platforms. `mod.rs` cfg-selects the backend's `DebugUi`. Left panel: PPU state, palette, pattern tables, 4 nametables in a 2x2 grid, and the sprite/OAM tile grid. Right panel: scrolling disassembly (10+10 lines around PC), CPU registers + stack, and APU oscilloscope waveforms. Window widens by 2×PANEL_WIDTH when active. Both backends convert core snapshot RGB images to egui textures via `rgb_to_color_image()`.
-- `bindings.rs` — Configurable input bindings data model: `Action` enum (33 variants for P1/P2 NES buttons, turbo buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs; `turbo_controller_bit()` does the same for turbo variants.
-- `bindings_ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
+- `bindings/` — input bindings module (`data.rs`, `ui.rs`, `mod.rs`):
+  - `bindings/data.rs` — Configurable input bindings data model: `Action` enum (33 variants for P1/P2 NES buttons, turbo buttons + system actions), `KeyId` (platform-agnostic key identifier using winit KeyCode names), `GamepadButtonId` (gilrs Button variant names), `InputBindings` struct with keyboard and gamepad binding vectors. Default bindings reproduce previous hardcoded behavior. `controller_bit()` maps NES button actions to (player, bit) pairs; `turbo_controller_bit()` does the same for turbo variants.
+  - `bindings/ui.rs` — Press-to-bind overlay UI drawn on the NES framebuffer using the 8x8 font. State machine: SelectAction (scrollable list) → ActionMenu (Set Key/Set Button/Restore Default/Back) → WaitingForInput (captures next key or gamepad button press). Activated via F10 or Emulation → Input Settings menu item. Game continues rendering but controller input is zeroed while UI is active.
 - `settings.rs` — Persistent settings (`~/.config/krankulator/settings.txt`): `integer_scaling`, `scanlines`, `overscan`, `correct_aspect_ratio`, `window_scale`, input bindings. Simple key=value format, no serde. Bindings serialized as `bind_kb_{action}={KeyId}` and `bind_gp_{action}={GamepadButtonId}`. No `bind_*` keys in file = use defaults (backward compatible).
 - `io/mod.rs` — Shared menu construction (`build_menu_contents()`), `MenuIds`/`MenuItems` structs, recent ROMs persistence (`~/.config/krankulator/recent_roms.txt`, last 10), platform re-export (`PlatformIOHandler`), `TurboState` (frame counter for alternating turbo presses), `apply_gamepad()` merges keyboard + gamepad + turbo state into controllers, `display_width()`/`window_size_for_scale()` helpers for 8:7 PAR viewport calculation
 - `io/winit_backend.rs` — macOS/Windows: `WinitPixelsIOHandler` using winit 0.30 + pixels (wgpu), muda menu via `init_for_nsapp()`/`init_for_hwnd()`, CRT shader via `pixels.render_with()` + wgpu render pipeline, debug shell (shrust). Keyboard input routed through `InputBindings` lookup. Binding UI integration via captured key buffer (PollHandler borrows bindings immutably, captured keys processed after handler is dropped).
@@ -214,6 +215,7 @@ git config core.hooksPath .githooks
 - `src/audio.rs` — `WebAudioBackend`: AudioWorklet ring buffer, context setup, resume-on-interaction, visibility pause
 - `src/input.rs` — keyboard handling, touch controls (dpad, action buttons), double-tap overlay toggle, Gamepad API polling, fullscreen toggle (F key / double-click)
 - `src/persistence.rs` — localStorage save states/SRAM, base64 encoding, beforeunload handler
+- `src/loading_screen.rs` — Canvas 2D loading screen with a fetch-progress bar (`fetch_with_progress`/`get_fetch_progress` JS bridge) shown while a ROM downloads
 - `index.html` — HTML shell with desktop canvas, touch layout (landscape), rotate prompt (portrait)
 - `assets/audio_processor.js` — AudioWorklet ring buffer processor
 - `assets/mario-walking.png` — Sprite sheet for rotate-prompt animation
@@ -297,8 +299,9 @@ desktop/            — Native frontend binary
     winit.rs        — macOS/Windows renderer (egui_wgpu)
     gtk.rs          — Linux renderer (egui_glow)
     mod.rs          — cfg-selects backend DebugUi
-  src/bindings.rs   — Input bindings data model (Action incl. turbo variants, KeyId, GamepadButtonId, InputBindings)
-  src/bindings_ui.rs — Press-to-bind overlay UI (state machine, framebuffer drawing)
+  src/bindings/     — Input bindings module
+    data.rs         — data model (Action incl. turbo variants, KeyId, GamepadButtonId, InputBindings)
+    ui.rs           — Press-to-bind overlay UI (state machine, framebuffer drawing)
   src/settings.rs   — Persistent settings (integer_scaling, scanlines, overscan, correct_aspect_ratio, window_scale, input bindings)
   src/gamepad.rs    — Platform-abstracted gamepad input (GCController/gilrs), binding-based mapping
   src/io/mod.rs     — Shared menu, recent ROMs, platform re-export, TurboState, gamepad + turbo merging, PAR/viewport helpers
@@ -314,6 +317,7 @@ web/                — WebAssembly frontend
   src/audio.rs      — WebAudioBackend (AudioWorklet, context setup)
   src/input.rs      — Keyboard, touch controls, double-tap overlay toggle, Gamepad API
   src/persistence.rs — localStorage save states/SRAM, base64, beforeunload
+  src/loading_screen.rs — Canvas 2D ROM-download loading screen (fetch progress bar)
   index.html        — HTML shell (desktop + touch layout + rotate prompt)
   assets/           — Static assets (audio_processor.js, background.jpg, mario-walking.png, PressStart2P.woff2)
   Trunk.toml        — Build config
@@ -377,7 +381,7 @@ All emulation tests live in `core/` (784 tests, 18 ignored). Desktop has 16 test
 
 **Memory Mappers**
 - NROM, MMC1, MMC1A (155), MMC2, MMC3, MMC4 (10), MMC5, NES-ZZ (37), MMC3 multicart (47), TxSROM, TQROM, UxROM, AxROM, CNROM, CPROM (13), BNROM, GxROM, Color Dreams (11), FFE F4 (6), K-1029 (15), Bandai FCG (16/153/157/159), Bandai 74*161 (70/152), Bandai Oeka Kids (96), Bandai Karaoke (188), Jaleco SS88006 (18), Jaleco JF-13 (86), Jaleco JF-17/JF-19 (72/92), Sunsoft-2 (89/93), Sunsoft-3 (67), Sunsoft 4, Sunsoft FME-7, NES-EVENT, VRC1, VRC2/VRC4, VRC3, VRC6 (24/26), VRC7 (85), Irem G-101 (32), Irem 74*161 (77), Irem H3001 (65), Irem TAM-S1 (97), UN1ROM (94), Namco 108/DxROM (76/88/95/154/206), Namco 163 (19), Namco 175/340 (210), Taito TC0190 (33), Taito TC0690 (48), Taito X1-005 (80/207), Taito X1-017 (82), DIS23C01 Daou (156), Action 53 (28), UNROM 512 (30), Mapper 31, Camerica (71), Simple discrete (78/87/140/180/184/185)
-- Only mappers 186, 547, and 555 remain unimplemented for the reference GoodNES set (all three are also unsupported by Mesen)
+- Only mappers 186, 547, and 555 remain unimplemented for the reference GoodNES set
 - Proper mirroring for nametables and palettes
 - BNROM/GxROM use AND-type bus conflicts (written value ANDed with ROM byte at write address)
 - BNROM uses full 8-bit bank register (not masked to 2 bits), wrapping via modulo
